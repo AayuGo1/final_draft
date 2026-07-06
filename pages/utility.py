@@ -1,11 +1,10 @@
-"""Utility monitoring page for the Engineering Monitoring Dashboard.
+"""Engineering overview page for the Engineering Monitoring Dashboard.
 
-This module renders the real Utility overview, discovering the Utility
-section dynamically from the departments/sections found in the overview
-worksheet. It reuses the shared ``services.dashboard_loader`` service for
-loading dashboard data and ``dashboard_data.build_overview_dashboard`` for
-section discovery. It performs no engineering KPI calculation beyond
-simple counts, no fake data generation, and no hardcoded meter names.
+This module renders the top-level Engineering overview, combining every
+department/section discovered on the engineering overview worksheet via
+``services.page_service``. It performs no engineering KPI calculation
+beyond simple counts, no fake data generation, and no hardcoded
+department or meter names.
 """
 
 from __future__ import annotations
@@ -15,82 +14,27 @@ import streamlit as st
 
 import ui
 from dashboard_data import build_overview_dashboard, get_date_columns
-from services.dashboard_loader import load_dashboard
-
-UTILITY_KEYWORD: str = "utility"
-"""Keyword used to identify the Utility section among discovered sections."""
+from services.page_service import load_overview
 
 
-def load_overview_dataframe() -> pd.DataFrame | None:
-    """Load dashboard data and extract the engineering overview worksheet.
-
-    Returns:
-        The overview DataFrame if it was loaded successfully, otherwise
-        ``None`` after an error banner has been displayed.
-    """
-    try:
-        dashboard_data = load_dashboard()
-    except TimeoutError as exc:
-        ui.render_error_banner(f"The workbook source timed out: {exc}")
-        return None
-    except ConnectionError as exc:
-        ui.render_error_banner(
-            f"Could not connect to the workbook source: {exc}"
-        )
-        return None
-    except FileNotFoundError as exc:
-        ui.render_error_banner(f"Workbook not found: {exc}")
-        return None
-    except ValueError as exc:
-        ui.render_error_banner(f"The workbook data is invalid: {exc}")
-        return None
-    except RuntimeError as exc:
-        ui.render_error_banner(
-            f"An error occurred while loading the workbook: {exc}"
-        )
-        return None
-
-    overview_dataframe = dashboard_data["overview"]
-
-    if overview_dataframe is None:
-        ui.render_info_banner(
-            "No engineering overview worksheet was found in the workbook."
-        )
-        return None
-
-    return overview_dataframe
-
-
-def get_utility_section(overview_dataframe: pd.DataFrame) -> dict | None:
-    """Discover the Utility section from the overview sheet's sections.
+def count_total_meters(sections: list[dict]) -> int:
+    """Count the total number of meters across every discovered section.
 
     Args:
-        overview_dataframe: The engineering overview worksheet DataFrame.
+        sections: The list of section dictionaries produced by
+            ``dashboard_data.build_overview_dashboard``.
 
     Returns:
-        The section dictionary (with keys ``name``, ``meters``,
-        ``latest_values``, and ``dataframe``) whose name matches the
-        Utility keyword, case-insensitively, or ``None`` if no such
-        section was discovered.
+        The combined number of meters across all sections.
     """
-    overview_dashboard = build_overview_dashboard(overview_dataframe)
-    sections = overview_dashboard["sections"]
-
-    return next(
-        (
-            section
-            for section in sections
-            if UTILITY_KEYWORD in section["name"].lower()
-        ),
-        None,
-    )
+    return sum(len(section["meters"]) for section in sections)
 
 
 def count_available_readings(dataframe: pd.DataFrame) -> int:
-    """Count the total number of non-null readings in a section worksheet.
+    """Count the total number of non-null readings in a worksheet.
 
     Args:
-        dataframe: The section DataFrame.
+        dataframe: The overview DataFrame.
 
     Returns:
         The total count of non-null cells in the DataFrame.
@@ -121,19 +65,18 @@ def get_latest_timestamp(overview_dataframe: pd.DataFrame) -> str:
     return "N/A"
 
 
-def render_kpi_row(section: dict, overview_dataframe: pd.DataFrame) -> None:
-    """Render the top KPI row derived from the Utility section.
+def render_kpi_row(overview_dataframe: pd.DataFrame, sections: list[dict]) -> None:
+    """Render the top KPI row derived from the engineering overview.
 
     Args:
-        section: The discovered Utility section dictionary.
-        overview_dataframe: The engineering overview worksheet DataFrame,
-            used to discover the latest available timestamp.
+        overview_dataframe: The engineering overview worksheet DataFrame.
+        sections: The list of discovered section dictionaries.
     """
     cards = [
-        {"title": "Number of Meters", "value": len(section["meters"])},
+        {"title": "Number of Meters", "value": count_total_meters(sections)},
         {
             "title": "Available Readings",
-            "value": count_available_readings(section["dataframe"]),
+            "value": count_available_readings(overview_dataframe),
         },
         {
             "title": "Latest Timestamp",
@@ -144,15 +87,15 @@ def render_kpi_row(section: dict, overview_dataframe: pd.DataFrame) -> None:
     ui.render_kpi_cards(cards)
 
 
-def render_data_section(dataframe: pd.DataFrame) -> None:
-    """Render the Utility data table, limited to the first 15 rows.
+def render_data_section(overview_dataframe: pd.DataFrame) -> None:
+    """Render the engineering overview data table, limited to 15 rows.
 
     Args:
-        dataframe: The Utility section DataFrame.
+        overview_dataframe: The engineering overview worksheet DataFrame.
     """
     ui.render_section("Data")
     with st.container(border=True):
-        ui.render_dataframe(dataframe.head(15))
+        ui.render_dataframe(overview_dataframe.head(15))
 
 
 def render_trend_section() -> None:
@@ -163,27 +106,22 @@ def render_trend_section() -> None:
 
 
 def render() -> None:
-    """Render the complete Utility page."""
+    """Render the complete Engineering overview page."""
     ui.render_page_title(
-        "Utility",
-        "General utility consumption and performance tracking.",
+        "Engineering",
+        "Consolidated engineering overview across all departments.",
     )
 
-    overview_dataframe = load_overview_dataframe()
+    overview_dataframe = load_overview()
     if overview_dataframe is None:
         return
 
-    utility_section = get_utility_section(overview_dataframe)
-    if utility_section is None:
-        ui.render_info_banner(
-            "No Utility section was discovered in the workbook."
-        )
-        return
+    sections = build_overview_dashboard(overview_dataframe)["sections"]
 
-    render_kpi_row(utility_section, overview_dataframe)
+    render_kpi_row(overview_dataframe, sections)
     ui.render_divider()
 
-    render_data_section(utility_section["dataframe"])
+    render_data_section(overview_dataframe)
     ui.render_divider()
 
     render_trend_section()
