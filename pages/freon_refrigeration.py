@@ -4,10 +4,8 @@ Dashboard.
 This module renders the real Freon Refrigeration overview. It prefers a
 dedicated Freon worksheet when the workbook provides one, and falls back
 to dynamically discovering a Freon Refrigeration section from the
-engineering overview worksheet otherwise. It reuses the shared
-``services.dashboard_loader`` service for loading dashboard data and the
-existing helper functions in ``dashboard_data`` for discovery. It
-performs no engineering KPI calculation beyond simple counts, no fake
+engineering overview worksheet otherwise, via ``services.page_service``.
+It performs no engineering KPI calculation beyond simple counts, no fake
 data generation, and no hardcoded row, column, or meter names.
 """
 
@@ -17,104 +15,14 @@ import pandas as pd
 import streamlit as st
 
 import ui
-from dashboard_data import build_overview_dashboard, get_date_columns
-from services.dashboard_loader import load_dashboard
+from dashboard_data import get_date_columns
+from services.page_service import load_dedicated_sheet
+
+FREON_KEY: str = "freon"
+"""Dashboard data key used to locate the dedicated Freon worksheet."""
 
 FREON_KEYWORD: str = "freon"
 """Keyword used to identify the Freon section among discovered sections."""
-
-
-def load_freon_data() -> tuple[pd.DataFrame | None, dict | None]:
-    """Load dashboard data and resolve the Freon Refrigeration source.
-
-    Prefers the dedicated Freon worksheet, if the workbook has one.
-    Otherwise, falls back to discovering a Freon Refrigeration section
-    from the engineering overview worksheet's department/section
-    structure.
-
-    Returns:
-        A tuple of ``(freon_dataframe, section)``. When a dedicated
-        Freon worksheet is used, ``section`` is ``None`` and
-        ``freon_dataframe`` holds that worksheet. When a discovered
-        overview section is used instead, ``section`` holds the section
-        dictionary (with keys ``name``, ``meters``, ``latest_values``,
-        and ``dataframe``) and ``freon_dataframe`` holds
-        ``section["dataframe"]``. Returns ``(None, None)`` if no Freon
-        data could be found, after an appropriate banner has been
-        displayed.
-    """
-    try:
-        dashboard_data = load_dashboard()
-    except TimeoutError as exc:
-        ui.render_error_banner(f"The workbook source timed out: {exc}")
-        return None, None
-    except ConnectionError as exc:
-        ui.render_error_banner(
-            f"Could not connect to the workbook source: {exc}"
-        )
-        return None, None
-    except FileNotFoundError as exc:
-        ui.render_error_banner(f"Workbook not found: {exc}")
-        return None, None
-    except ValueError as exc:
-        ui.render_error_banner(f"The workbook data is invalid: {exc}")
-        return None, None
-    except RuntimeError as exc:
-        ui.render_error_banner(
-            f"An error occurred while loading the workbook: {exc}"
-        )
-        return None, None
-
-    dedicated_freon_dataframe = dashboard_data["freon"]
-    if dedicated_freon_dataframe is not None:
-        return dedicated_freon_dataframe, None
-
-    overview_dataframe = dashboard_data["overview"]
-    if overview_dataframe is None:
-        ui.render_info_banner(
-            "No Freon worksheet or engineering overview worksheet was "
-            "found in the workbook."
-        )
-        return None, None
-
-    section = get_freon_section(overview_dataframe)
-    if section is None:
-        return None, None
-
-    return section["dataframe"], section
-
-
-def get_freon_section(overview_dataframe: pd.DataFrame) -> dict | None:
-    """Discover the Freon Refrigeration section from the overview sheet.
-
-    Args:
-        overview_dataframe: The engineering overview worksheet DataFrame.
-
-    Returns:
-        The section dictionary (with keys ``name``, ``meters``,
-        ``latest_values``, and ``dataframe``) whose name matches the
-        Freon keyword, case-insensitively, or ``None`` if no such
-        section was discovered.
-    """
-    overview_dashboard = build_overview_dashboard(overview_dataframe)
-    sections = overview_dashboard["sections"]
-
-    section = next(
-        (
-            candidate
-            for candidate in sections
-            if FREON_KEYWORD in candidate["name"].lower()
-        ),
-        None,
-    )
-
-    if section is None:
-        ui.render_info_banner(
-            "No Freon Refrigeration section was discovered in the "
-            "workbook."
-        )
-
-    return section
 
 
 def count_available_readings(dataframe: pd.DataFrame) -> int:
@@ -224,7 +132,9 @@ def render() -> None:
         "Freon-based refrigeration monitoring and performance.",
     )
 
-    freon_dataframe, section = load_freon_data()
+    freon_dataframe, section = load_dedicated_sheet(
+        FREON_KEY, fallback_keyword=FREON_KEYWORD
+    )
     if freon_dataframe is None:
         return
 
