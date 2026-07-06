@@ -1,9 +1,11 @@
 """Main Streamlit entry point for the Engineering Monitoring Dashboard.
 
-This module is responsible ONLY for configuring the page, loading the
-workbook, and displaying basic workbook accessibility information (source,
-status, sheet count, and sheet names). It performs no parsing, no KPI
-calculation, no charting, and no sidebar navigation.
+This module orchestrates the dashboard by delegating to existing modules:
+``data_loader`` for downloading and loading the workbook, ``parser`` for
+reading worksheets into DataFrames, ``dashboard_data`` for organizing
+dashboard-ready data, and ``ui`` for all rendering. It contains no Excel
+parsing, no GitHub logic, no DataFrame manipulation, and no business or
+chart logic of its own.
 """
 
 from __future__ import annotations
@@ -11,88 +13,111 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from config import APP_NAME, PAGE_CONFIG, WORKBOOK_RAW_URL
+import ui
+from config import (
+    GITHUB_BRANCH,
+    GITHUB_OWNER,
+    GITHUB_REPO,
+    PAGE_CONFIG,
+    WORKBOOK_FILENAME,
+)
+from dashboard_data import get_dashboard_data
 from data_loader import load_excel
+from parser import read_all_sheets
 
 
-def render_header() -> None:
-    """Render the application title and workbook source information."""
-    st.title(APP_NAME)
-    with st.container(border=True):
-        st.caption("Workbook source")
-        st.code(WORKBOOK_RAW_URL, language="text")
-
-
-def render_workbook_summary(excel_file: pd.ExcelFile) -> None:
-    """Render the workbook status, sheet count, and sheet names.
+def render_workbook_information(sheet_names: list[str]) -> None:
+    """Render repository and workbook metadata.
 
     Args:
-        excel_file: A successfully loaded ``pandas.ExcelFile`` instance.
+        sheet_names: The list of sheet names available in the workbook.
     """
-    sheet_names = list(excel_file.sheet_names)
+    ui.render_section("Workbook Information")
 
-    with st.container(border=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(label="Workbook status", value="Loaded")
-        with col2:
-            st.metric(label="Number of sheets", value=len(sheet_names))
-
-    with st.container(border=True):
-        st.caption("Sheet names")
-        for name in sheet_names:
-            st.write(f"- {name}")
+    cards = [
+        {"title": "Repository", "value": f"{GITHUB_OWNER}/{GITHUB_REPO}"},
+        {"title": "Branch", "value": GITHUB_BRANCH},
+        {"title": "Workbook", "value": WORKBOOK_FILENAME},
+        {"title": "Sheet count", "value": len(sheet_names)},
+    ]
+    ui.render_kpi_cards(cards)
 
 
-def render_error(message: str) -> None:
-    """Render a descriptive error message for a failed workbook load.
+def render_available_sheets(sheet_names: list[str]) -> None:
+    """Render the list of available sheet names.
 
     Args:
-        message: Human-readable description of what went wrong.
+        sheet_names: The list of sheet names available in the workbook.
     """
-    with st.container(border=True):
-        st.error(message)
+    ui.render_section("Available Sheets")
+    for name in sheet_names:
+        st.write(f"- {name}")
 
 
-def load_workbook_safely() -> pd.ExcelFile | None:
-    """Load the workbook while handling all expected failure modes.
+def render_overview(overview_dataframe: pd.DataFrame) -> None:
+    """Render the overview worksheet as a dataframe.
+
+    Args:
+        overview_dataframe: The DataFrame to display as the overview.
+    """
+    ui.render_section("Overview")
+    ui.render_dataframe(overview_dataframe)
+
+
+def load_dashboard_data() -> dict | None:
+    """Load the workbook and assemble dashboard-ready data.
 
     Returns:
-        A ``pandas.ExcelFile`` instance if loading succeeds, otherwise
-        ``None`` after an appropriate error message has been displayed.
+        The dashboard data dictionary produced by
+        ``dashboard_data.get_dashboard_data``, or ``None`` if loading
+        failed after an error banner has been displayed.
     """
     try:
-        with st.spinner("Connecting to workbook source..."):
-            excel_file = load_excel()
+        excel_file = load_excel()
+        sheets = read_all_sheets(excel_file)
+        return get_dashboard_data(sheets)
     except TimeoutError as exc:
-        render_error(f"The workbook source timed out: {exc}")
-        return None
+        ui.render_error_banner(f"The workbook source timed out: {exc}")
     except ConnectionError as exc:
-        render_error(f"Could not connect to the workbook source: {exc}")
-        return None
+        ui.render_error_banner(
+            f"Could not connect to the workbook source: {exc}"
+        )
     except FileNotFoundError as exc:
-        render_error(f"Workbook not found: {exc}")
-        return None
+        ui.render_error_banner(f"Workbook not found: {exc}")
     except ValueError as exc:
-        render_error(f"The workbook file is invalid: {exc}")
-        return None
+        ui.render_error_banner(f"The workbook data is invalid: {exc}")
     except RuntimeError as exc:
-        render_error(f"An error occurred while loading the workbook: {exc}")
-        return None
+        ui.render_error_banner(
+            f"An error occurred while loading the workbook: {exc}"
+        )
 
-    st.success("Workbook loaded successfully.")
-    return excel_file
+    return None
 
 
 def main() -> None:
-    """Configure the page and orchestrate the workbook loading display."""
+    """Configure the page and orchestrate the dashboard rendering."""
     st.set_page_config(**PAGE_CONFIG)
 
-    render_header()
-    excel_file = load_workbook_safely()
+    ui.render_page_title(
+        "Engineering Monitoring Dashboard",
+        "Live workbook overview and diagnostics",
+    )
 
-    if excel_file is not None:
-        render_workbook_summary(excel_file)
+    dashboard_data = load_dashboard_data()
+    if dashboard_data is None:
+        return
+
+    ui.render_success_banner("Workbook loaded successfully.")
+    ui.render_divider()
+
+    sheet_names = dashboard_data["sheet_names"]
+    render_workbook_information(sheet_names)
+    ui.render_divider()
+
+    render_available_sheets(sheet_names)
+    ui.render_divider()
+
+    render_overview(dashboard_data["overview"])
 
 
 if __name__ == "__main__":
