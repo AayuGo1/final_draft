@@ -414,6 +414,88 @@ def _clean_label(value: object) -> str:
     return str(value).strip()
 
 
+def build_overview_dashboard(overview_dataframe: pd.DataFrame) -> dict:
+    """Build real dashboard-ready data for every discovered department section.
+
+    Uses ``get_department_meter_structure`` to discover the department and
+    meter hierarchy, then assembles, for every department, the meter list,
+    latest available reading per meter, and a combined DataFrame (one
+    column per meter) ready for rendering. No engineering KPI values are
+    calculated here.
+
+    Args:
+        overview_dataframe: The overview worksheet DataFrame, as returned
+            by ``parser.read_sheet`` / ``parser.read_all_sheets``.
+
+    Returns:
+        A dictionary of the form
+        ``{"sections": [{"name": ..., "meters": ..., "latest_values": ...,
+        "dataframe": ...}]}``, with one entry per discovered department, in
+        workbook order.
+
+    Raises:
+        ValueError: If ``overview_dataframe`` is not a valid
+            ``pandas.DataFrame``, or does not contain a department row, a
+            meter row, and at least one row of readings.
+    """
+    _validate_dataframe(overview_dataframe)
+
+    department_structure = get_department_meter_structure(overview_dataframe)
+
+    sections = [
+        {
+            "name": department_name,
+            "meters": list(meters.keys()),
+            "latest_values": _get_latest_values(meters),
+            "dataframe": _build_department_dataframe(meters),
+        }
+        for department_name, meters in department_structure.items()
+    ]
+
+    return {"sections": sections}
+
+
+def _get_latest_values(meters: dict[str, pd.Series]) -> dict[str, object]:
+    """Get the most recent non-null reading for every meter.
+
+    Args:
+        meters: A mapping of meter name to its readings ``pandas.Series``.
+
+    Returns:
+        A dictionary mapping each meter name to its latest non-null
+        reading, or ``None`` if the meter has no available readings.
+    """
+    latest_values: dict[str, object] = {}
+
+    for meter_name, series in meters.items():
+        non_null_values = series.dropna()
+        latest_values[meter_name] = (
+            non_null_values.iloc[-1] if not non_null_values.empty else None
+        )
+
+    return latest_values
+
+
+def _build_department_dataframe(meters: dict[str, pd.Series]) -> pd.DataFrame:
+    """Combine every meter's readings into a single department DataFrame.
+
+    Each column represents one meter and each row represents one
+    observation.
+
+    Args:
+        meters: A mapping of meter name to its readings ``pandas.Series``.
+
+    Returns:
+        A DataFrame with one column per meter, built via ``pd.concat``.
+        Returns an empty DataFrame if there are no meters.
+    """
+    if not meters:
+        return pd.DataFrame()
+
+    series_list = [series.rename(name) for name, series in meters.items()]
+    return pd.concat(series_list, axis=1)
+
+
 def _find_department_column(overview_dataframe: pd.DataFrame) -> int | None:
     """Identify the column most likely to hold department labels.
 
