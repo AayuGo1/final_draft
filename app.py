@@ -1,8 +1,8 @@
 """Main Streamlit entry point for the Engineering Monitoring Dashboard.
 
-This module orchestrates the first real dashboard page by delegating to
-existing modules: ``data_loader`` for downloading and loading the
-workbook, ``parser`` for reading worksheets into DataFrames,
+This module orchestrates the first real engineering dashboard page by
+delegating to existing modules: ``data_loader`` for downloading and
+loading the workbook, ``parser`` for reading worksheets into DataFrames,
 ``dashboard_data`` for organizing dashboard-ready data, and ``ui`` for all
 reusable rendering components. It contains no Excel parsing, no GitHub
 logic, no engineering KPI calculation, and no chart logic of its own.
@@ -14,86 +14,79 @@ import pandas as pd
 import streamlit as st
 
 import ui
-from config import PAGE_CONFIG, WORKBOOK_FILENAME
+from config import PAGE_CONFIG
 from dashboard_data import get_dashboard_data
 from data_loader import load_excel
 from parser import read_all_sheets
 
+KPI_CARD_TITLES: tuple[str, ...] = (
+    "NPCL",
+    "Utility",
+    "Engineering",
+    "Air Compressor",
+    "DG",
+    "GG",
+)
+"""Titles for the top-level engineering overview KPI cards."""
 
-def render_dashboard_cards(sheet_names: list[str]) -> None:
-    """Render the top row of high-level dashboard cards.
+PLACEHOLDER_SECTION_TITLES: tuple[str, ...] = (
+    "Energy Monitoring",
+    "Water Monitoring",
+    "Air Compressor",
+    "Freon Monitoring",
+)
+"""Titles for the bottom-row placeholder monitoring sections."""
 
-    Args:
-        sheet_names: The list of sheet names available in the workbook.
-    """
+
+def render_filters() -> None:
+    """Render the placeholder month and department filter selectors."""
+    ui.render_section("Filters")
+    month_column, department_column = st.columns(2)
+
+    with month_column:
+        st.selectbox("Month", options=["All Months"])
+    with department_column:
+        st.selectbox("Department", options=["All Departments"])
+
+
+def render_kpi_overview() -> None:
+    """Render the responsive row of top-level engineering KPI cards."""
+    ui.render_section("Overview")
+
     cards = [
-        {"title": "Workbook", "value": WORKBOOK_FILENAME},
-        {"title": "Last Updated", "value": "—"},
-        {"title": "Sheets Loaded", "value": len(sheet_names)},
-        {"title": "Dashboard Status", "value": "Online"},
+        {"title": title, "value": "Coming Soon"} for title in KPI_CARD_TITLES
     ]
     ui.render_kpi_cards(cards)
 
 
-def render_overview_summary(overview_dataframe: pd.DataFrame) -> None:
-    """Render generic summary metrics for the overview worksheet.
+def render_engineering_monitoring(overview_dataframe: pd.DataFrame) -> None:
+    """Render the overview worksheet inside a full-width bordered container.
 
     Args:
-        overview_dataframe: The DataFrame to summarize.
+        overview_dataframe: The DataFrame to display.
     """
-    rows, columns = overview_dataframe.shape
-    non_empty_cells = int(overview_dataframe.notna().sum().sum())
-    memory_usage_kb = overview_dataframe.memory_usage(deep=True).sum() / 1024
-
-    cards = [
-        {"title": "Rows", "value": rows},
-        {"title": "Columns", "value": columns},
-        {"title": "Non-empty Cells", "value": non_empty_cells},
-        {"title": "Memory Usage (KB)", "value": f"{memory_usage_kb:.1f}"},
-    ]
-    ui.render_kpi_cards(cards)
-
-
-def render_overview_panel(overview_dataframe: pd.DataFrame) -> None:
-    """Render the overview summary and worksheet inside a bordered container.
-
-    Args:
-        overview_dataframe: The DataFrame to display as the overview.
-    """
-    ui.render_section("Overview Data")
+    ui.render_section("Engineering Monitoring")
     with st.container(border=True):
-        st.write("**Overview Summary**")
-        render_overview_summary(overview_dataframe)
-        st.divider()
         ui.render_dataframe(overview_dataframe)
 
 
 def render_placeholder_section(title: str) -> None:
-    """Render a bordered placeholder section for a future dashboard page.
+    """Render a bordered placeholder section for a future monitoring page.
 
     Args:
         title: The heading text for the placeholder section.
     """
     with st.container(border=True):
         st.write(f"**{title}**")
-        st.caption("This section will be implemented in the next iteration.")
+        st.caption("This section will be populated dynamically.")
 
 
-def render_placeholder_sections() -> None:
-    """Render the four bordered placeholder sections in a responsive grid."""
-    ui.render_section("Coming Soon")
-
-    titles = [
-        "Engineering Overview",
-        "Department Analysis",
-        "Air Compressor",
-        "Freon Monitoring",
-    ]
-
+def render_monitoring_sections() -> None:
+    """Render the four bordered monitoring placeholder sections in a grid."""
     left_column, right_column = st.columns(2)
     columns = [left_column, right_column, left_column, right_column]
 
-    for title, column in zip(titles, columns):
+    for title, column in zip(PLACEHOLDER_SECTION_TITLES, columns):
         with column:
             render_placeholder_section(title)
 
@@ -134,7 +127,7 @@ def main() -> None:
 
     ui.render_page_title(
         "Engineering Monitoring Dashboard",
-        "Live workbook overview and diagnostics",
+        "Daily Energy Monitoring",
     )
 
     dashboard_data = load_dashboard_data()
@@ -142,15 +135,18 @@ def main() -> None:
         return
 
     ui.render_success_banner("Workbook loaded successfully.")
-
-    sheet_names = dashboard_data["sheet_names"]
-    render_dashboard_cards(sheet_names)
     ui.render_divider()
 
-    render_overview_panel(dashboard_data["overview"])
+    render_filters()
     ui.render_divider()
 
-    render_placeholder_sections()
+    render_kpi_overview()
+    ui.render_divider()
+
+    render_engineering_monitoring(dashboard_data["overview"])
+    ui.render_divider()
+
+    render_monitoring_sections()
 
 
 if __name__ == "__main__":
