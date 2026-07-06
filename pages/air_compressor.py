@@ -1,10 +1,9 @@
 """Air compressor monitoring page for the Engineering Monitoring Dashboard.
 
 This module renders the real Air Compressor section discovered from the
-workbook. It reuses the existing backend modules for downloading,
-loading, parsing, and organizing data, and performs no engineering KPI
-calculation, no fake data generation, and no hardcoded row, column, or
-meter references.
+workbook. It reuses the shared ``services.dashboard_loader`` service for
+loading dashboard data, and performs no engineering KPI calculation, no
+fake data generation, and no hardcoded row, column, or meter references.
 """
 
 from __future__ import annotations
@@ -13,17 +12,12 @@ import pandas as pd
 import streamlit as st
 
 import ui
-from dashboard_data import (
-    get_dashboard_data,
-    get_date_columns,
-    get_department_meter_structure,
-)
-from data_loader import load_excel
-from parser import read_all_sheets
+from dashboard_data import get_date_columns, get_department_meter_structure
+from services.dashboard_loader import load_dashboard
 
 
 def load_air_compressor_dataframe() -> pd.DataFrame | None:
-    """Load the workbook and extract the Air Compressor worksheet.
+    """Load dashboard data and extract the Air Compressor worksheet.
 
     Returns:
         The Air Compressor DataFrame if a matching worksheet was found,
@@ -31,9 +25,7 @@ def load_air_compressor_dataframe() -> pd.DataFrame | None:
         displayed.
     """
     try:
-        excel_file = load_excel()
-        sheets = read_all_sheets(excel_file)
-        dashboard_data = get_dashboard_data(sheets)
+        dashboard_data = load_dashboard()
     except TimeoutError as exc:
         ui.render_error_banner(f"The workbook source timed out: {exc}")
         return None
