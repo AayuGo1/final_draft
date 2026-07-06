@@ -1,11 +1,11 @@
 """Main Streamlit entry point for the Engineering Monitoring Dashboard.
 
-This module orchestrates the dashboard by delegating to existing modules:
-``data_loader`` for downloading and loading the workbook, ``parser`` for
-reading worksheets into DataFrames, ``dashboard_data`` for organizing
-dashboard-ready data, and ``ui`` for all rendering. It contains no Excel
-parsing, no GitHub logic, no DataFrame manipulation, and no business or
-chart logic of its own.
+This module orchestrates the first real dashboard page by delegating to
+existing modules: ``data_loader`` for downloading and loading the
+workbook, ``parser`` for reading worksheets into DataFrames,
+``dashboard_data`` for organizing dashboard-ready data, and ``ui`` for all
+reusable rendering components. It contains no Excel parsing, no GitHub
+logic, no engineering KPI calculation, and no chart logic of its own.
 """
 
 from __future__ import annotations
@@ -14,54 +14,88 @@ import pandas as pd
 import streamlit as st
 
 import ui
-from config import (
-    GITHUB_BRANCH,
-    GITHUB_OWNER,
-    GITHUB_REPO,
-    PAGE_CONFIG,
-    WORKBOOK_FILENAME,
-)
+from config import PAGE_CONFIG, WORKBOOK_FILENAME
 from dashboard_data import get_dashboard_data
 from data_loader import load_excel
 from parser import read_all_sheets
 
 
-def render_workbook_information(sheet_names: list[str]) -> None:
-    """Render repository and workbook metadata.
+def render_dashboard_cards(sheet_names: list[str]) -> None:
+    """Render the top row of high-level dashboard cards.
 
     Args:
         sheet_names: The list of sheet names available in the workbook.
     """
-    ui.render_section("Workbook Information")
-
     cards = [
-        {"title": "Repository", "value": f"{GITHUB_OWNER}/{GITHUB_REPO}"},
-        {"title": "Branch", "value": GITHUB_BRANCH},
         {"title": "Workbook", "value": WORKBOOK_FILENAME},
-        {"title": "Sheet count", "value": len(sheet_names)},
+        {"title": "Last Updated", "value": "—"},
+        {"title": "Sheets Loaded", "value": len(sheet_names)},
+        {"title": "Dashboard Status", "value": "Online"},
     ]
     ui.render_kpi_cards(cards)
 
 
-def render_available_sheets(sheet_names: list[str]) -> None:
-    """Render the list of available sheet names.
+def render_overview_summary(overview_dataframe: pd.DataFrame) -> None:
+    """Render generic summary metrics for the overview worksheet.
 
     Args:
-        sheet_names: The list of sheet names available in the workbook.
+        overview_dataframe: The DataFrame to summarize.
     """
-    ui.render_section("Available Sheets")
-    for name in sheet_names:
-        st.write(f"- {name}")
+    rows, columns = overview_dataframe.shape
+    non_empty_cells = int(overview_dataframe.notna().sum().sum())
+    memory_usage_kb = overview_dataframe.memory_usage(deep=True).sum() / 1024
+
+    cards = [
+        {"title": "Rows", "value": rows},
+        {"title": "Columns", "value": columns},
+        {"title": "Non-empty Cells", "value": non_empty_cells},
+        {"title": "Memory Usage (KB)", "value": f"{memory_usage_kb:.1f}"},
+    ]
+    ui.render_kpi_cards(cards)
 
 
-def render_overview(overview_dataframe: pd.DataFrame) -> None:
-    """Render the overview worksheet as a dataframe.
+def render_overview_panel(overview_dataframe: pd.DataFrame) -> None:
+    """Render the overview summary and worksheet inside a bordered container.
 
     Args:
         overview_dataframe: The DataFrame to display as the overview.
     """
-    ui.render_section("Overview")
-    ui.render_dataframe(overview_dataframe)
+    ui.render_section("Overview Data")
+    with st.container(border=True):
+        st.write("**Overview Summary**")
+        render_overview_summary(overview_dataframe)
+        st.divider()
+        ui.render_dataframe(overview_dataframe)
+
+
+def render_placeholder_section(title: str) -> None:
+    """Render a bordered placeholder section for a future dashboard page.
+
+    Args:
+        title: The heading text for the placeholder section.
+    """
+    with st.container(border=True):
+        st.write(f"**{title}**")
+        st.caption("This section will be implemented in the next iteration.")
+
+
+def render_placeholder_sections() -> None:
+    """Render the four bordered placeholder sections in a responsive grid."""
+    ui.render_section("Coming Soon")
+
+    titles = [
+        "Engineering Overview",
+        "Department Analysis",
+        "Air Compressor",
+        "Freon Monitoring",
+    ]
+
+    left_column, right_column = st.columns(2)
+    columns = [left_column, right_column, left_column, right_column]
+
+    for title, column in zip(titles, columns):
+        with column:
+            render_placeholder_section(title)
 
 
 def load_dashboard_data() -> dict | None:
@@ -108,16 +142,15 @@ def main() -> None:
         return
 
     ui.render_success_banner("Workbook loaded successfully.")
-    ui.render_divider()
 
     sheet_names = dashboard_data["sheet_names"]
-    render_workbook_information(sheet_names)
+    render_dashboard_cards(sheet_names)
     ui.render_divider()
 
-    render_available_sheets(sheet_names)
+    render_overview_panel(dashboard_data["overview"])
     ui.render_divider()
 
-    render_overview(dashboard_data["overview"])
+    render_placeholder_sections()
 
 
 if __name__ == "__main__":
