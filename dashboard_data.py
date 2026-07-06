@@ -335,6 +335,85 @@ def get_dashboard_overview(overview_dataframe: pd.DataFrame) -> dict:
     }
 
 
+def get_department_meter_structure(
+    overview_dataframe: pd.DataFrame,
+) -> dict[str, dict[str, pd.Series]]:
+    """Build a nested department-to-meter data structure from the overview sheet.
+
+    The first row of the worksheet is treated as the department / equipment
+    group header (with merged cells forward-filled to reconstruct the
+    group each meter belongs to), the second row is treated as the
+    individual meter / panel name, and all rows from the third onward are
+    treated as daily readings. Columns with no department label, no meter
+    label, or that are entirely empty are treated as metadata or spacer
+    columns and are ignored. Workbook order is preserved for both
+    departments and meters within each department.
+
+    Args:
+        overview_dataframe: The overview worksheet DataFrame, as returned
+            by ``parser.read_sheet`` / ``parser.read_all_sheets``.
+
+    Returns:
+        A nested dictionary of the form
+        ``{department_name: {meter_name: pandas.Series}}``, where each
+        ``pandas.Series`` holds the daily readings for that meter.
+
+    Raises:
+        ValueError: If ``overview_dataframe`` is not a valid
+            ``pandas.DataFrame``, or does not contain at least a
+            department row, a meter row, and one row of readings.
+    """
+    _validate_dataframe(overview_dataframe)
+
+    if overview_dataframe.shape[0] < 3:
+        raise ValueError(
+            "The overview worksheet must contain at least three rows: a "
+            "department header row, a meter header row, and one row of "
+            "readings."
+        )
+
+    department_row = overview_dataframe.iloc[0].ffill()
+    meter_row = overview_dataframe.iloc[1]
+    readings = overview_dataframe.iloc[2:].reset_index(drop=True)
+
+    structure: dict[str, dict[str, pd.Series]] = {}
+
+    for position in range(overview_dataframe.shape[1]):
+        department_value = department_row.iloc[position]
+        meter_value = meter_row.iloc[position]
+
+        department_name = _clean_label(department_value)
+        meter_name = _clean_label(meter_value)
+
+        if not department_name or not meter_name:
+            continue
+
+        meter_series = readings.iloc[:, position]
+        if meter_series.dropna().empty:
+            continue
+
+        department_meters = structure.setdefault(department_name, {})
+        department_meters[meter_name] = meter_series
+
+    return structure
+
+
+def _clean_label(value: object) -> str:
+    """Normalize a header cell value into a clean, non-empty label or "".
+
+    Args:
+        value: The raw header cell value.
+
+    Returns:
+        The stripped string representation of the value, or an empty
+        string if the value is null or blank.
+    """
+    if pd.isna(value):
+        return ""
+
+    return str(value).strip()
+
+
 def _find_department_column(overview_dataframe: pd.DataFrame) -> int | None:
     """Identify the column most likely to hold department labels.
 
