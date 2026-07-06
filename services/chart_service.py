@@ -1,16 +1,19 @@
 """Reusable Plotly chart service for the Engineering Monitoring Dashboard.
 
-This module is responsible ONLY for creating Plotly figures from
-already-loaded pandas DataFrames. It contains no Streamlit code, no
-workbook loading, no Excel parsing, no KPI calculations, and no
-dashboard rendering. Every dashboard page (Engineering, Utility, Air
-Compressor, Freon Refrigeration, Ammonia Refrigeration, and Home) may
-reuse these functions to build figures, which the calling page is then
-responsible for rendering (e.g. via ``st.plotly_chart``).
+This module is responsible for creating Plotly figures from
+already-loaded pandas DataFrames, and for preparing chart-ready data
+(date alignment and numeric meter selection) so that pages do not need
+to contain any chart-preparation logic of their own. It contains no
+Streamlit code, no workbook loading, and no Excel parsing. Every
+dashboard page (Engineering, Utility, Air Compressor, Freon
+Refrigeration, Ammonia Refrigeration, and Home) may reuse these
+functions to build figures, which the calling page is then responsible
+for rendering (e.g. via ``st.plotly_chart``).
 
 No column names, meter names, department names, or worksheet names are
 ever hardcoded; callers must supply the relevant column(s), title, and
-axis labels.
+axis labels, or a section dictionary from which these are discovered
+dynamically.
 """
 
 from __future__ import annotations
@@ -19,11 +22,16 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from dashboard_data import get_date_columns
+
 DEFAULT_TEMPLATE: str = "plotly_white"
 """Plotly template providing the clean, white-background dashboard theme."""
 
 DEFAULT_HOVER_MODE: str = "x unified"
 """Unified hover mode used consistently across every chart."""
+
+DEFAULT_DATE_COLUMN_LABEL: str = "Date"
+"""Default column name used for the aligned date axis in trend data."""
 
 
 def validate_columns(dataframe: pd.DataFrame, columns: list[str]) -> None:
@@ -81,6 +89,183 @@ def prepare_numeric_columns(
         prepared[column] = pd.to_numeric(prepared[column], errors="coerce")
 
     return prepared
+
+
+def find_first_numeric_column(dataframe: pd.DataFrame) -> str | None:
+    """Find the first column in a DataFrame with usable numeric readings.
+
+    A column is considered usable when at least one of its values can
+    be coerced to a number. Column order is preserved, so the first
+    match in workbook order is returned.
+
+    Args:
+        dataframe: The DataFrame to inspect.
+
+    Returns:
+        The name of the first column with at least one numeric value,
+        or ``None`` if no such column exists (including when
+        ``dataframe`` is empty).
+    """
+    if not isinstance(dataframe, pd.DataFrame) or dataframe.empty:
+        return None
+
+    return next(
+        (
+            column
+            for column in dataframe.columns
+            if pd.to_numeric(dataframe[column], errors="coerce").notna().any()
+        ),
+        None,
+    )
+
+
+def align_dates_with_meter(
+    overview_dataframe: pd.DataFrame,
+    meter_series: pd.Series,
+    date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
+) -> pd.DataFrame | None:
+    """Align a discovered date column with a single meter's readings.
+
+    Discovers a date column dynamically from ``overview_dataframe`` via
+    ``dashboard_data.get_date_columns``, skips the department/meter
+    header rows (the first two rows), and pairs each date with the
+    corresponding position in ``meter_series``. Rows with a missing date
+    or a missing reading are dropped.
+
+    Args:
+        overview_dataframe: The overview worksheet DataFrame, used only
+            to discover the date column.
+        meter_series: The single meter's readings to align against the
+            discovered dates.
+        date_column_label: The column name to use for the aligned date
+            axis in the returned DataFrame.
+
+    Returns:
+        A two-column DataFrame with ``date_column_label`` and the
+        original name of ``meter_series``, or ``None`` if no date
+        column could be discovered or no aligned rows remain.
+    """
+    if not isinstance(overview_dataframe, pd.DataFrame) or overview_dataframe.empty:
+        return None
+    if meter_series is None or meter_series.dropna().empty:
+        return None
+
+    date_columns = get_date_columns(overview_dataframe)
+    if not date_columns:
+        return None
+
+    date_column_index = date_columns[0]
+    date_values = (
+        overview_dataframe.iloc[2:, date_column_index].reset_index(drop=True)
+    )
+    meter_values = meter_series.reset_index(drop=True)
+
+    row_count = min(len(date_values), len(meter_values))
+    if row_count == 0:
+        return None
+
+    meter_name = meter_series.name or "Value"
+
+    trend_dataframe = pd.DataFrame(
+        {
+            date_column_label: date_values.iloc[:row_count].values,
+            meter_name: meter_values.iloc[:row_count].values,
+        }
+    ).dropna()
+
+    return trend_dataframe if not trend_dataframe.empty else None
+
+
+def build_section_trend_data(
+    overview_dataframe: pd.DataFrame,
+    section: dict,
+    date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
+) -> tuple[pd.DataFrame, str, str] | None:
+    """Build chart-ready trend data for a discovered department section.
+
+    Combines dynamic date-column discovery with dynamic selection of the
+    first meter that has usable numeric readings, then aligns the two
+    into a single DataFrame ready for ``create_line_chart``.
+
+    Args:
+        overview_dataframe: The overview worksheet DataFrame, used to
+            discover the date column.
+        section: A section dictionary (as produced by
+            ``dashboard_data.build_overview_dashboard``) containing a
+            ``"dataframe"`` key with one column per meter.
+        date_column_label: The column name to use for the aligned date
+            axis in the returned trend DataFrame.
+
+    Returns:
+        A tuple of ``(trend_dataframe, date_column_name, meter_column_name)``
+        if a valid date column and meter could be discovered and
+        aligned, otherwise ``None``.
+    """
+    if not section or "dataframe" not in section:
+        return None
+
+    meters_dataframe = section["dataframe"]
+    if not isinstance(meters_dataframe, pd.DataFrame) or meters_dataframe.empty:
+        return None
+
+    meter_column_name = find_first_numeric_column(meters_dataframe)
+    if meter_column_name is None:
+        return None
+
+    trend_dataframe = align_dates_with_meter(
+        overview_dataframe,
+        meters_dataframe[meter_column_name],
+        date_column_label=date_column_label,
+    )
+    if trend_dataframe is None:
+        return None
+
+    return trend_dataframe, date_column_label, meter_column_name
+
+
+def build_section_trend_chart(
+    overview_dataframe: pd.DataFrame,
+    section: dict,
+    date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
+) -> go.Figure | None:
+    """Build a ready-to-render trend chart for a discovered department section.
+
+    Discovers a date column and the first numeric meter dynamically via
+    ``build_section_trend_data``, then builds a styled line chart. Pages
+    calling this function need no chart-preparation logic of their own;
+    they only need to render the returned figure, or show a fallback
+    message when ``None`` is returned.
+
+    Args:
+        overview_dataframe: The overview worksheet DataFrame, used to
+            discover the date column.
+        section: A section dictionary (as produced by
+            ``dashboard_data.build_overview_dashboard``) containing a
+            ``"dataframe"`` key with one column per meter.
+        date_column_label: The column name to use for the aligned date
+            axis.
+
+    Returns:
+        A styled Plotly ``Figure`` for the discovered meter's trend, or
+        ``None`` if no valid date column or numeric meter could be
+        discovered.
+    """
+    trend_data = build_section_trend_data(
+        overview_dataframe, section, date_column_label=date_column_label
+    )
+    if trend_data is None:
+        return None
+
+    trend_dataframe, date_column_name, meter_column_name = trend_data
+
+    return create_line_chart(
+        trend_dataframe,
+        x_column=date_column_name,
+        y_column=meter_column_name,
+        title=f"{meter_column_name} Trend",
+        x_label=date_column_name,
+        y_label=meter_column_name,
+    )
 
 
 def apply_default_layout(
