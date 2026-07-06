@@ -5,13 +5,12 @@ This module renders the real Ammonia Refrigeration overview. It mirrors
 the architecture used by the Freon Refrigeration page: it would prefer a
 dedicated Ammonia Refrigeration worksheet if the shared dashboard data
 exposed one, and falls back to dynamically discovering an Ammonia
-Refrigeration section from the engineering overview worksheet otherwise.
-Since ``services.dashboard_loader.load_dashboard`` currently exposes no
-dedicated Ammonia worksheet key, this page relies on the overview-section
-discovery path. It reuses the existing helper functions in
-``dashboard_data`` and performs no engineering KPI calculation beyond
-simple counts, no fake data generation, and no hardcoded row, column, or
-meter names.
+Refrigeration section from the engineering overview worksheet otherwise,
+via ``services.page_service``. Since ``services.dashboard_loader.load_dashboard``
+currently exposes no dedicated Ammonia worksheet key, this page relies on
+the overview-section discovery path. It performs no engineering KPI
+calculation beyond simple counts, no fake data generation, and no
+hardcoded row, column, or meter names.
 """
 
 from __future__ import annotations
@@ -20,102 +19,15 @@ import pandas as pd
 import streamlit as st
 
 import ui
-from dashboard_data import build_overview_dashboard, get_date_columns
-from services.dashboard_loader import load_dashboard
+from dashboard_data import get_date_columns
+from services.page_service import load_dedicated_sheet
+
+AMMONIA_KEY: str = "ammonia"
+"""Dashboard data key used to locate a dedicated Ammonia worksheet."""
 
 AMMONIA_KEYWORD: str = "ammonia"
 """Keyword used to identify the Ammonia Refrigeration section among
 discovered sections."""
-
-
-def load_ammonia_data() -> tuple[pd.DataFrame | None, dict | None]:
-    """Load dashboard data and resolve the Ammonia Refrigeration source.
-
-    Would prefer a dedicated Ammonia Refrigeration worksheet if the
-    shared dashboard data exposed one. Since it currently does not, this
-    falls back to discovering an Ammonia Refrigeration section from the
-    engineering overview worksheet's department/section structure.
-
-    Returns:
-        A tuple of ``(ammonia_dataframe, section)``. ``section`` holds
-        the discovered section dictionary (with keys ``name``,
-        ``meters``, ``latest_values``, and ``dataframe``) and
-        ``ammonia_dataframe`` holds ``section["dataframe"]``. Returns
-        ``(None, None)`` if no Ammonia Refrigeration data could be
-        found, after an appropriate banner has been displayed.
-    """
-    try:
-        dashboard_data = load_dashboard()
-    except TimeoutError as exc:
-        ui.render_error_banner(f"The workbook source timed out: {exc}")
-        return None, None
-    except ConnectionError as exc:
-        ui.render_error_banner(
-            f"Could not connect to the workbook source: {exc}"
-        )
-        return None, None
-    except FileNotFoundError as exc:
-        ui.render_error_banner(f"Workbook not found: {exc}")
-        return None, None
-    except ValueError as exc:
-        ui.render_error_banner(f"The workbook data is invalid: {exc}")
-        return None, None
-    except RuntimeError as exc:
-        ui.render_error_banner(
-            f"An error occurred while loading the workbook: {exc}"
-        )
-        return None, None
-
-    dedicated_ammonia_dataframe = dashboard_data.get("ammonia")
-    if dedicated_ammonia_dataframe is not None:
-        return dedicated_ammonia_dataframe, None
-
-    overview_dataframe = dashboard_data["overview"]
-    if overview_dataframe is None:
-        ui.render_info_banner(
-            "No Ammonia Refrigeration worksheet or engineering overview "
-            "worksheet was found in the workbook."
-        )
-        return None, None
-
-    section = get_ammonia_section(overview_dataframe)
-    if section is None:
-        return None, None
-
-    return section["dataframe"], section
-
-
-def get_ammonia_section(overview_dataframe: pd.DataFrame) -> dict | None:
-    """Discover the Ammonia Refrigeration section from the overview sheet.
-
-    Args:
-        overview_dataframe: The engineering overview worksheet DataFrame.
-
-    Returns:
-        The section dictionary (with keys ``name``, ``meters``,
-        ``latest_values``, and ``dataframe``) whose name matches the
-        Ammonia keyword, case-insensitively, or ``None`` if no such
-        section was discovered.
-    """
-    overview_dashboard = build_overview_dashboard(overview_dataframe)
-    sections = overview_dashboard["sections"]
-
-    section = next(
-        (
-            candidate
-            for candidate in sections
-            if AMMONIA_KEYWORD in candidate["name"].lower()
-        ),
-        None,
-    )
-
-    if section is None:
-        ui.render_info_banner(
-            "No Ammonia Refrigeration section was discovered in the "
-            "workbook."
-        )
-
-    return section
 
 
 def count_available_readings(dataframe: pd.DataFrame) -> int:
@@ -225,7 +137,9 @@ def render() -> None:
         "Ammonia refrigeration monitoring and performance.",
     )
 
-    ammonia_dataframe, section = load_ammonia_data()
+    ammonia_dataframe, section = load_dedicated_sheet(
+        AMMONIA_KEY, fallback_keyword=AMMONIA_KEYWORD
+    )
     if ammonia_dataframe is None:
         return
 
