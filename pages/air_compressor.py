@@ -1,9 +1,9 @@
 """Air compressor monitoring page for the Engineering Monitoring Dashboard.
 
 This module renders the real Air Compressor section discovered from the
-workbook. It reuses the shared ``services.dashboard_loader`` service for
-loading dashboard data, and performs no engineering KPI calculation, no
-fake data generation, and no hardcoded row, column, or meter references.
+workbook via ``services.page_service``. It performs no engineering KPI
+calculation, no fake data generation, and no hardcoded row, column, or
+meter references.
 """
 
 from __future__ import annotations
@@ -13,48 +13,10 @@ import streamlit as st
 
 import ui
 from dashboard_data import get_date_columns, get_department_meter_structure
-from services.dashboard_loader import load_dashboard
+from services.page_service import load_dedicated_sheet
 
-
-def load_air_compressor_dataframe() -> pd.DataFrame | None:
-    """Load dashboard data and extract the Air Compressor worksheet.
-
-    Returns:
-        The Air Compressor DataFrame if a matching worksheet was found,
-        otherwise ``None`` after an error or info banner has been
-        displayed.
-    """
-    try:
-        dashboard_data = load_dashboard()
-    except TimeoutError as exc:
-        ui.render_error_banner(f"The workbook source timed out: {exc}")
-        return None
-    except ConnectionError as exc:
-        ui.render_error_banner(
-            f"Could not connect to the workbook source: {exc}"
-        )
-        return None
-    except FileNotFoundError as exc:
-        ui.render_error_banner(f"Workbook not found: {exc}")
-        return None
-    except ValueError as exc:
-        ui.render_error_banner(f"The workbook data is invalid: {exc}")
-        return None
-    except RuntimeError as exc:
-        ui.render_error_banner(
-            f"An error occurred while loading the workbook: {exc}"
-        )
-        return None
-
-    air_compressor_dataframe = dashboard_data["air_compressor"]
-
-    if air_compressor_dataframe is None:
-        ui.render_info_banner(
-            "No Air Compressor worksheet was found in the workbook."
-        )
-        return None
-
-    return air_compressor_dataframe
+AIR_COMPRESSOR_KEY: str = "air_compressor"
+"""Dashboard data key used to locate the Air Compressor worksheet."""
 
 
 def count_meters(dataframe: pd.DataFrame) -> int:
@@ -150,7 +112,7 @@ def render() -> None:
         "Air compressor load, output, and efficiency tracking.",
     )
 
-    dataframe = load_air_compressor_dataframe()
+    dataframe, _section = load_dedicated_sheet(AIR_COMPRESSOR_KEY)
     if dataframe is None:
         return
 
