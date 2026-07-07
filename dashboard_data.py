@@ -12,7 +12,6 @@ downstream consumers (app.py, chart_service.py, kpi_service.py) is maintained.
 
 from __future__ import annotations
 
-import re
 import datetime
 import warnings
 from typing import Any, Final
@@ -323,7 +322,6 @@ def _clean_label(value: Any) -> str:
         return ""
     text = str(value).strip()
     if text.lower() in {"nan", "null", "none", "", "0.0", "0"}:
-        # Shield functional layouts against empty string conversions or numerical default markers
         if text not in EXPECTED_DEPARTMENTS:
             return ""
     return text
@@ -422,22 +420,16 @@ def _validate_boundaries(df: pd.DataFrame, start_idx: int, end_idx: int) -> None
 
 
 def _validate_headers(engineering_block: pd.DataFrame) -> None:
-    if engineering_block.shape[0] < 3:
+    if engineering_block.shape[0] < 4:
         raise ValueError(
-            f"Structural Verification Failure: Target block has inadequate vertical height ({engineering_block.shape[0]} rows). "
-            f"Production metrics layouts must contain at least a Department row (1), a Meter row (2), and a Unit row (3)."
+            f"Structural Verification Failure: Target engineering block has inadequate vertical layout height ({engineering_block.shape[0]} rows). "
+            f"Production layout matrices must contain at least a Department row (1), a Meter row (2), a Unit row (3), and a Data row (4)."
         )
 
-    # Check that row 1 contains recognizable engineering groups or department tracking terms
     row1_elements = engineering_block.iloc[0].ffill().dropna().tolist()
-    valid_dept_matches = sum(1 for item in row1_elements if str(item).strip() in EXPECTED_DEPARTMENTS)
-    
-    if valid_dept_matches / len(row1_elements) < 0.3 if row1_elements else 0:
-        raise ValueError("Header Row 1 Validation Failure: Found unexpected data signatures instead of canonical structural Department layout references.")
+    if not any(_clean_label(item) for item in row1_elements):
+        raise ValueError("Header Row 1 Structural Validation Failure: No valid, non-empty department descriptors found inside the sliced boundaries.")
 
-    # Check row 3 cells to ensure compliance with telemetry tracking unit specifications
-    row3_elements = engineering_block.iloc[2].dropna().tolist()
-    valid_unit_matches = sum(1 for item in row3_elements if str(item).strip().lower() in UNIT_TOKENS)
-
-    if valid_unit_matches / len(row3_elements) < 0.3 if row3_elements else 0:
-        raise ValueError("Header Row 3 Validation Failure: Layout verification failed due to abnormal unit indicators mismatched with specified plant instrumentation parameters.")
+    row2_elements = engineering_block.iloc[1].dropna().tolist()
+    if not any(_clean_label(item) for item in row2_elements):
+        raise ValueError("Header Row 2 Structural Validation Failure: No valid, non-empty meter tracking channel labels found inside the sliced boundaries.")
