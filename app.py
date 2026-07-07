@@ -29,16 +29,15 @@ import services.chart_service as chart_service
 import services.kpi_service as kpi_service
 from services.dashboard_loader import load_dashboard_safe
 
-    st.set_page_config(
+st.set_page_config(
     page_title=PAGE_CONFIG.get("page_title", APP_NAME),
     page_icon=PAGE_CONFIG.get("page_icon", "⚙️"),
     layout="wide",
-    initial_sidebar_state="collapsed"
-  )
+    initial_sidebar_state="collapsed",
+)
 
 # Layout constants
 GRID_COLUMNS: Final[int] = 4
-
 
 def get_dashboard() -> tuple[dict[str, Any] | None, str | None]:
     """Retrieve the cached dashboard session payload framework context safely.
