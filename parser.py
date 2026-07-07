@@ -34,7 +34,6 @@ def read_sheet(excel_file: pd.ExcelFile, sheet_name: str) -> pd.DataFrame:
             f"Worksheet '{sheet_name}' was not found in the workbook. "
             f"Available sheets: {list(excel_file.sheet_names)}."
         )
-
     try:
         raw_dataframe = excel_file.parse(sheet_name=sheet_name, header=None)
     except Exception as exc:
@@ -42,7 +41,6 @@ def read_sheet(excel_file: pd.ExcelFile, sheet_name: str) -> pd.DataFrame:
             f"Failed to read worksheet '{sheet_name}' from the workbook: "
             f"{exc}"
         ) from exc
-
     return clean_dataframe(raw_dataframe)
 
 
@@ -83,11 +81,9 @@ def clean_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(
             f"Expected a pandas.DataFrame, got {type(dataframe).__name__}."
         )
-
     cleaned = dataframe.dropna(axis=0, how="all")
     cleaned = cleaned.dropna(axis=1, how="all")
     cleaned = cleaned.reset_index(drop=True)
-
     return cleaned
 
 
@@ -107,6 +103,5 @@ def get_sheet_dimensions(dataframe: pd.DataFrame) -> tuple[int, int]:
         raise ValueError(
             f"Expected a pandas.DataFrame, got {type(dataframe).__name__}."
         )
-
     rows, columns = dataframe.shape
     return rows, columns
