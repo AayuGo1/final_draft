@@ -27,7 +27,7 @@ from config import (
 )
 import services.chart_service as chart_service
 import services.kpi_service as kpi_service
-from dashboard_loader import load_dashboard_safe
+from services.dashboard_loader import load_dashboard_safe
 
 # Layout constants
 GRID_COLUMNS: Final[int] = 4
@@ -228,8 +228,9 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
     now = dt.datetime.now()
     summary = (dashboard or {}).get("summary", {})
     filters_data = (dashboard or {}).get("filters", {})
+    departments = (dashboard or {}).get("departments", {})
     
-    plant_ok = bool(summary.get("available_sections", []))
+    plant_ok = bool(departments)
     plant_color = THEME_SUCCESS_COLOR if plant_ok else THEME_DANGER_COLOR
     plant_text = "ONLINE" if plant_ok else "OFFLINE"
     
@@ -251,7 +252,7 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
                             <div class="status-pill"><span class="status-dot" style="background:{wb_color};"></span>WORKBOOK: {wb_text}</div>
                             <div class="status-pill">📅 {now.strftime("%d %b %Y")}</div>
                             <div class="status-pill">🕒 {now.strftime("%H:%M:%S")}</div>
-                            <div class="status-pill">🔁 SYNC STAMP: {last_refresh.strftime("%H:%M:%S")}</div>
+                            <div class="status-pill">🔁 LAST REFRESH: {last_refresh.strftime("%H:%M:%S")}</div>
                             <div class="status-pill">🐙 GITHUB: {GITHUB_OWNER}/{GITHUB_REPO}@{GITHUB_BRANCH}</div>
                         </div>
                     </div>
@@ -264,18 +265,22 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
 
     h_col1, h_col2, h_col3 = st.columns([2.5, 2.5, 5])
     with h_col1:
-        selected_month = st.selectbox(
+        st.selectbox(
             "Month Sync Context",
             options=filters_data.get("months", ["N/A"]),
             index=0,
-            key="header_month_select"
+            key="header_month_select",
+            disabled=True,
+            help="Filtering by date is managed at downstream visualization layer levels."
         )
     with h_col2:
-        selected_date = st.selectbox(
+        st.selectbox(
             "Date Sync Context",
             options=filters_data.get("dates", ["N/A"]),
             index=0,
-            key="header_date_select"
+            key="header_date_select",
+            disabled=True,
+            help="Filtering by date is managed at downstream visualization layer levels."
         )
     with h_col3:
         st.markdown("<div style='padding-top: 24px;'></div>", unsafe_allow_html=True)
@@ -283,11 +288,11 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
             refresh_dashboard()
             st.rerun()
 
-    return str(selected_month), str(selected_date)
+    return "N/A", "N/A"
 
 
 def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
-    """Compile and render industrial business KPIs cleanly across node telemetry states."""
+    """Compile and render industrial engineering KPIs cleanly across node telemetry states."""
     summary = dashboard.get("summary", {})
     departments = dashboard.get("departments", {})
 
@@ -349,7 +354,7 @@ def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
     with k_col4:
         st.markdown(
             f"""<div class="metric-card-container">
-                <p class="metric-card-title">Depts Reporting</p>
+                <p class="metric-card-title">Departments Reporting</p>
                 <p class="metric-card-value">{active_depts_count}</p>
                 <div class="metric-card-footer">Functional Systems Feed</div>
             </div>""", unsafe_allow_html=True
@@ -379,7 +384,7 @@ def _get_representative_meter(dept_obj: dict[str, Any]) -> str:
     for m in meters:
         if isinstance(latest_values.get(m), (int, float)):
             return m
-    return meters[0] if meters else ""
+    return ""
 
 
 def render_department_grid(dashboard: dict[str, Any]) -> str:
@@ -396,10 +401,11 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
         st.session_state["selected_department"] = dept_names[0]
 
     current_selection = st.session_state["selected_department"]
+    total_depts = len(dept_names)
 
-    for i in range(0, len(dept_names), GRID_COLUMNS):
+    for i in range(0, total_depts, GRID_COLUMNS):
         row_slice = dept_names[i : i + GRID_COLUMNS]
-        cols = st.columns(GRID_COLUMNS)
+        cols = st.columns(len(row_slice)) if len(row_slice) < GRID_COLUMNS else st.columns(GRID_COLUMNS)
 
         for col, d_name in zip(cols, row_slice):
             dept_obj = departments[d_name]
@@ -413,16 +419,15 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
             is_active = (d_name == current_selection)
             active_class = "tile-active" if is_active else "tile-inactive"
 
-            health_indicator = "🟢" if l_v is not None else "⚪"
-            val_display = f"{l_v:,.1f} {u_lbl}" if isinstance(l_v, (int, float)) else "Offline"
+            val_display = f"{l_v:,.1f} {u_lbl}" if isinstance(l_v, (int, float)) else "N/A"
             avg_display = f"{avg_m:,.1f}" if isinstance(avg_m, (int, float)) else "N/A"
 
             with col:
                 st.markdown(f'<div class="{active_class}">', unsafe_allow_html=True)
                 btn_txt = (
-                    f"{health_indicator} {d_name}\n"
-                    f"Meters: {len(meters)} | Value: {val_display}\n"
-                    f"Average: {avg_display}"
+                    f"🔷 {d_name}\n"
+                    f"Data Available | Nodes: {len(meters)}\n"
+                    f"Latest: {val_display} | Avg: {avg_display}"
                 )
                 if st.button(btn_txt, key=f"nav_tile_{d_name}"):
                     st.session_state["selected_department"] = d_name
@@ -448,23 +453,32 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
     df_block = dept_obj.get("dataframe", pd.DataFrame())
     rep_m = _get_representative_meter(dept_obj)
 
-    # Contextual Layout Optimization: Core Visualizations Grid Panel
     chart_col1, chart_col2 = st.columns([6, 4])
     
     with chart_col1:
-        st.markdown("##### 📉 Chronological Primary Parameter Trend Channel")
+        st.markdown("##### 📉 Continuous Timeline Telemetry Profile")
         fig_primary = chart_service.build_section_trend_chart(overview_df, dept_obj)
         if fig_primary:
             st.plotly_chart(fig_primary, use_container_width=True)
         else:
-            st.caption("Primary timeline track vector unpopulated or matching string scalars.")
+            st.caption("Primary chronological metric profile logs absent or structurally misaligned.")
 
-        # Secondary Cross-Channel Comparative Trajectory Layout Plotting
         if len(meters) > 1:
             st.markdown("<br/>##### 📊 Multi-Variable Process Cross-Channel Analysis", unsafe_allow_html=True)
+            # Fetch date index explicitly from the dataframe coordinates if present
+            date_cols = get_date_columns(overview_df)
+            if date_cols and overview_df.shape[0] > 3:
+                dates_axis = overview_df.iloc[3:, date_cols[0]].reset_index(drop=True)
+                plot_df = df_block.copy().reset_index(drop=True)
+                plot_df["DateAxis"] = dates_axis[:len(plot_df)]
+                x_col_name = "DateAxis"
+            else:
+                plot_df = df_block.reset_index()
+                x_col_name = "index"
+
             fig_compare = chart_service.create_multi_line_chart(
-                dataframe=df_block.reset_index(),
-                x_column="index",
+                dataframe=plot_df,
+                x_column=x_col_name,
                 y_columns=meters[:min(len(meters), 4)],
                 title="Parallel Operations Diagnostic Load Profiles"
             )
@@ -472,16 +486,24 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
                 st.plotly_chart(fig_compare, use_container_width=True)
 
     with chart_col2:
-        st.markdown("##### 🧭 Node Dynamic Scale instrumentation Gauge")
+        st.markdown("##### 🧭 Node Dynamic Scale Instrumentation Gauge")
         if rep_m:
             latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0)
             avg_val = dept_obj.get("average_values", {}).get(rep_m, 100.0)
+            total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0)
             unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
             
+            # Select max ceiling parameters accurately across statistics array frames
+            max_ceiling = 100.0
+            for potential_max in (total_val, avg_val, latest_val):
+                if isinstance(potential_max, (int, float)) and potential_max > 0:
+                    max_ceiling = float(potential_max)
+                    break
+
             fig_gauge = chart_service.create_gauge_chart(
                 value=float(latest_val) if isinstance(latest_val, (int, float)) else 0.0,
                 title=f"Gauge: {rep_m[:18]}",
-                maximum=float(avg_val * 2.0) if isinstance(avg_val, (int, float)) and avg_val > 0 else 100.0,
+                maximum=max_ceiling if max_ceiling > float(latest_val or 0) else float((latest_val or 0) * 1.5),
                 unit=str(unit_lbl)
             )
             if fig_gauge:
@@ -489,7 +511,6 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
             else:
                 st.caption("Gauge visualization failed.")
         
-        # Display localized subsystem summary table inside secondary visualization column
         st.markdown("<br/>##### 📑 Node Current Process Vector Snapshots", unsafe_allow_html=True)
         mini_records = []
         for m in meters[:min(len(meters), 6)]:
@@ -498,12 +519,11 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
             mini_records.append({
                 "Channel ID": m[:20],
                 "Log Readout": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline",
-                "Unit": u if u else "N/A"
+                "Unit": u if (u and str(u).strip()) else "N/A"
             })
         if mini_records:
             st.dataframe(pd.DataFrame(mini_records), use_container_width=True, hide_index=True)
 
-    # Full Matrix Data Logging Specifications Ledger Table
     st.markdown("<br/>##### 📋 Instrumentation Node Channel Registry Detailed Log Ledger", unsafe_allow_html=True)
     
     units_map = dept_obj.get("units", {})
@@ -547,8 +567,8 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
     st.markdown(
         f"""
         <div class="scada-footer">
-            Workbook Context: <code>{active_workbook}</code> · 
-            Ingestion Sync Clock: <code>{refresh_text}</code> · 
+            Workbook Context: {active_workbook} · 
+            Last Refresh: {refresh_text} · 
             Dashboard Baseline Engine Suite v{APP_VERSION}
         </div>
         """,
@@ -557,20 +577,18 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
 
 
 def main() -> None:
-    """Orchestrate layout render workflows safely utilizing session cache resources."""
+    """Orchestrate presentation layouts and handle context loading loops safely."""
     inject_global_styles()
 
     dashboard, error_msg = get_dashboard()
 
-    # Render low-latency application framework
-    render_header_return = render_header(dashboard)
+    render_top_header(dashboard)
 
     if error_msg is not None or dashboard is None:
         st.error(error_msg or "Critical Infrastructure Alert: Analytical context dictionary failed initialization.")
         render_footer(dashboard)
         return
 
-    # Trigger components sequence matching structural definitions
     render_executive_kpi_strip(dashboard)
     selected_dept = render_department_grid(dashboard)
     
@@ -581,5 +599,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    st.set_page_config(**PAGE_CONFIG)
+    st.set_page_config(
+        page_title=PAGE_CONFIG.get("page_title", APP_NAME),
+        page_icon=PAGE_CONFIG.get("page_icon", "⚙️"),
+        layout="wide",
+        initial_sidebar_state="collapsed"
+    )
     main()
