@@ -32,12 +32,12 @@ from config import (
 )
 from services.dashboard_loader import load_dashboard_safe
 from pages import (
-    air_compressor,
-    ammonia_refrigeration,
-    engineering,
-    freon_refrigeration,
     home,
+    engineering,
     utility,
+    air_compressor,
+    freon_refrigeration,
+    ammonia_refrigeration,
 )
 
 DEPARTMENT_ICONS: tuple[str, ...] = (
