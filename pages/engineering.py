@@ -16,7 +16,7 @@ import streamlit as st
 import ui
 from dashboard_data import build_overview_dashboard
 from services import chart_service, kpi_service
-from services.dashboard_loader import load_dashboard
+from services.dashboard_loader import load_dashboard_safe
 
 AVAILABILITY_HEALTHY_THRESHOLD: float = 0.9
 """Availability ratio at/above which data is considered healthy."""
@@ -26,42 +26,17 @@ AVAILABILITY_PARTIAL_THRESHOLD: float = 0.5
 
 
 def load_overview_dataframe() -> pd.DataFrame | None:
-    """Load the dashboard workbook and return the engineering overview sheet.
+    """Load the dashboard workbook and return the engineering overview sheet."""
 
-    Wraps ``services.dashboard_loader.load_dashboard`` with a loading
-    spinner and local error handling so this page can render a friendly
-    message instead of crashing when the workbook cannot be downloaded
-    or parsed.
+    with st.spinner("Loading engineering data..."):
+        dashboard, error = load_dashboard_safe()
 
-    Returns:
-        The overview worksheet DataFrame, or ``None`` if the workbook
-        could not be loaded or contains no usable overview data.
-    """
-    try:
-        with st.spinner("Loading engineering data..."):
-            dashboard = load_dashboard()
-    except ConnectionError:
-        ui.render_error_banner(
-            "Could not connect to the data source. Please check your "
-            "network connection and try again."
-        )
-        return None
-    except TimeoutError:
-        ui.render_error_banner(
-            "The request to load the workbook timed out. Please try "
-            "again."
-        )
-        return None
-    except FileNotFoundError:
-        ui.render_error_banner(
-            "The workbook could not be found at the configured source."
-        )
-        return None
-    except (ValueError, RuntimeError) as error:
-        ui.render_error_banner(f"Failed to load engineering data: {error}")
+    if error:
+        ui.render_error_banner(error)
         return None
 
     overview_dataframe = dashboard.get("overview")
+
     if overview_dataframe is None or overview_dataframe.empty:
         ui.render_info_banner(
             "No engineering overview data is available in the workbook."
