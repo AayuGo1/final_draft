@@ -284,91 +284,17 @@ def inject_global_styles() -> None:
                 background: rgba(22, 26, 37, 0.45);
                 border: 1px solid rgba(255, 255, 255, 0.04);
                 border-radius: 12px;
-                padding: 24px;
+                padding: 18px;
                 margin-top: 14px;
             }}
 
-            /* ========================================================= */
-            /* POLISHED WORKSPACE STYLES                                 */
-            /* ========================================================= */
-            
-            .workspace-header {{
-                background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 41, 59, 0.5) 100%);
-                border-left: 5px solid {THEME_PRIMARY_COLOR};
-                border-top: 1px solid rgba(255, 255, 255, 0.06);
-                border-right: 1px solid rgba(255, 255, 255, 0.06);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-                border-radius: 12px;
-                padding: 24px 28px;
-                margin-bottom: 28px;
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-                backdrop-filter: blur(8px);
-            }}
-
-            .workspace-title {{
-                font-size: 1.6rem;
-                font-weight: 700;
-                color: #FFFFFF;
-                margin: 0 0 16px 0;
-                letter-spacing: 0.02em;
-            }}
-
-            .workspace-kpi-card {{
-                background: linear-gradient(145deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.8));
-                border: 1px solid rgba(255, 255, 255, 0.05);
-                border-radius: 12px;
-                padding: 22px;
-                text-align: left;
-                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-                transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                height: 100%;
-            }}
-
-            .workspace-kpi-card:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 8px 24px rgba(108, 99, 255, 0.12);
-                border-color: rgba(108, 99, 255, 0.3);
-            }}
-            
-            .workspace-kpi-label {{
-                font-size: 0.8rem;
-                color: #94A3B8;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                margin-bottom: 8px;
-            }}
-            
-            .workspace-kpi-value {{
-                font-size: 1.8rem;
-                font-weight: 700;
-                color: #F8FAFC;
-                line-height: 1.1;
-            }}
-
-            .workspace-section-header {{
-                font-size: 1.05rem;
-                font-weight: 600;
-                color: #E2E8F0;
-                margin: 32px 0 16px 0;
-                padding-bottom: 10px;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                letter-spacing: 0.03em;
-            }}
-
             .scada-footer {{
-                margin-top: 36px;
-                padding: 16px;
-                border-radius: 10px;
-                background: rgba(255, 255, 255, 0.015);
+                margin-top: 28px;
+                padding: 12px;
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.01);
                 border: 1px solid rgba(255, 255, 255, 0.03);
-                font-size: 0.75rem;
+                font-size: 0.7rem;
                 color: #475569;
                 text-align: center;
             }}
@@ -640,94 +566,44 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
     if not dept_obj:
         return
 
-    # =========================================================
-    # PRESERVED ENGINEERING LOGIC
-    # These remain untouched and map to original codebase
-    # =========================================================
+    st.markdown(f'<div class="panel-container">', unsafe_allow_html=True)
+    st.markdown(f"<h3>🛡️ Engineering Supervisory System Diagnostics &mdash; {active_dept}</h3>", unsafe_allow_html=True)
+    st.markdown('<hr style="margin: 4px 0 16px 0; border-color: rgba(255,255,255,0.05);"/>', unsafe_allow_html=True)
+
     meters = dept_obj.get("meters", [])
     df_block = dept_obj.get("dataframe", pd.DataFrame())
-    
-    # Preserved Representative Meter Logic
     rep_m = _get_representative_meter(dept_obj)
 
-    latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0)
-    avg_val = dept_obj.get("average_values", {}).get(rep_m, 100.0)
-    total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0)
-    unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
-    latest_ts = str(dashboard.get("summary", {}).get("latest_timestamp", "N/A"))
-    
-    is_reporting = len(meters) > 0
-    status_color = THEME_SUCCESS_COLOR if is_reporting else THEME_DANGER_COLOR
-    status_text = "ACTIVE" if is_reporting else "OFFLINE"
-
-    st.markdown('<div class="panel-container">', unsafe_allow_html=True)
-
-    # =========================================================
-    # TARGET LAYOUT: PRESENTATION & UI POLISH
-    # =========================================================
-
-    # Department Header
-    st.markdown(
-        f"""
-        <div class="workspace-header">
-            <h2 class="workspace-title">🛡️ {active_dept} Workspace</h2>
-            <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px;">
-                <div class="status-pill">📡 Rep Meter: {rep_m if rep_m else 'N/A'}</div>
-                <div class="status-pill">📏 Unit: {unit_lbl if unit_lbl else 'N/A'}</div>
-                <div class="status-pill">⏱️ Timestamp: {latest_ts}</div>
-                <div class="status-pill"><span class="status-dot" style="background:{status_color};"></span>Status: {status_text}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # KPI Strip
-    k_col1, k_col2, k_col3, k_col4 = st.columns(4)
-    with k_col1:
-        st.markdown(
-            f"""<div class="workspace-kpi-card">
-                <div class="workspace-kpi-label">Latest Reading</div>
-                <div class="workspace-kpi-value">{latest_val:,.2f}</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col2:
-        st.markdown(
-            f"""<div class="workspace-kpi-card">
-                <div class="workspace-kpi-label">Average Load</div>
-                <div class="workspace-kpi-value">{avg_val:,.2f}</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col3:
-        st.markdown(
-            f"""<div class="workspace-kpi-card">
-                <div class="workspace-kpi-label">Total Accumulated</div>
-                <div class="workspace-kpi-value">{total_val:,.2f}</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col4:
-        st.markdown(
-            f"""<div class="workspace-kpi-card">
-                <div class="workspace-kpi-label">Active Meters</div>
-                <div class="workspace-kpi-value">{len(meters)}</div>
-            </div>""", unsafe_allow_html=True
-        )
-
-    # Trend Chart & Gauge
-    chart_col1, chart_col2 = st.columns([7, 3])
+    chart_col1, chart_col2 = st.columns([6, 4])
     
     with chart_col1:
-        st.markdown("<div class='workspace-section-header'>📉 Continuous Timeline Telemetry Profile</div>", unsafe_allow_html=True)
+        st.markdown("##### 📉 Continuous Timeline Telemetry Profile")
         fig_primary = chart_service.build_section_trend_chart(overview_df, dept_obj)
         if fig_primary:
             st.plotly_chart(fig_primary, use_container_width=True)
         else:
             st.caption("Primary chronological metric profile logs absent or structurally misaligned.")
 
+        if len(meters) > 1:
+            st.markdown("<br/>##### 📊 Multi-Variable Process Cross-Channel Analysis", unsafe_allow_html=True)
+            
+            fig_compare = chart_service.create_department_multi_line_chart(
+                overview_dataframe=overview_df,
+                section=dept_obj,
+                title="Parallel Operations Diagnostic Load Profiles",
+            )
+            
+            if fig_compare:
+                st.plotly_chart(fig_compare, use_container_width=True)
+
     with chart_col2:
-        st.markdown("<div class='workspace-section-header'>🧭 Node Dynamic Scale</div>", unsafe_allow_html=True)
+        st.markdown("##### 🧭 Node Dynamic Scale Instrumentation Gauge")
         if rep_m:
-            # Preserved engineering-aware gauge scaling logic
+            latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0)
+            avg_val = dept_obj.get("average_values", {}).get(rep_m, 100.0)
+            total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0)
+            unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
+            
             max_ceiling = 100.0
             for potential_max in (total_val, avg_val, latest_val):
                 if isinstance(potential_max, (int, float)) and potential_max > 0:
@@ -744,34 +620,22 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
                 st.plotly_chart(fig_gauge, use_container_width=True)
             else:
                 st.caption("Gauge visualization failed.")
+        
+        st.markdown("<br/>##### 📑 Node Current Process Vector Snapshots", unsafe_allow_html=True)
+        mini_records = []
+        for m in meters[:min(len(meters), 6)]:
+            v = dept_obj.get("latest_values", {}).get(m)
+            u = dept_obj.get("units", {}).get(m, "N/A")
+            mini_records.append({
+                "Channel ID": m[:20],
+                "Log Readout": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline",
+                "Unit": u if (u and str(u).strip()) else "N/A"
+            })
+        if mini_records:
+            st.dataframe(pd.DataFrame(mini_records), use_container_width=True, hide_index=True)
 
-    # Comparison Chart
-    if len(meters) > 1:
-        st.markdown("<div class='workspace-section-header'>📊 Multi-Variable Process Cross-Channel Analysis</div>", unsafe_allow_html=True)
-        fig_compare = chart_service.create_department_multi_line_chart(
-            overview_dataframe=overview_df,
-            section=dept_obj,
-            title="Parallel Operations Diagnostic Load Profiles",
-        )
-        if fig_compare:
-            st.plotly_chart(fig_compare, use_container_width=True)
-
-    # Meter Summary Table
-    st.markdown("<div class='workspace-section-header'>📑 Node Current Process Vector Snapshots</div>", unsafe_allow_html=True)
-    mini_records = []
-    for m in meters[:min(len(meters), 6)]:
-        v = dept_obj.get("latest_values", {}).get(m)
-        u = dept_obj.get("units", {}).get(m, "N/A")
-        mini_records.append({
-            "Channel ID": m[:20],
-            "Log Readout": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline",
-            "Unit": u if (u and str(u).strip()) else "N/A"
-        })
-    if mini_records:
-        st.dataframe(pd.DataFrame(mini_records), use_container_width=True, hide_index=True)
-
-    # Historical Data Table
-    st.markdown("<div class='workspace-section-header'>📋 Instrumentation Node Channel Registry Detailed Log Ledger</div>", unsafe_allow_html=True)
+    st.markdown("<br/>##### 📋 Instrumentation Node Channel Registry Detailed Log Ledger", unsafe_allow_html=True)
+    
     units_map = dept_obj.get("units", {})
     latest_vals = dept_obj.get("latest_values", {})
     avg_vals = dept_obj.get("average_values", {})
