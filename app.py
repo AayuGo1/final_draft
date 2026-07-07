@@ -1,15 +1,15 @@
 """Main Streamlit entry point for the Engineering Monitoring Dashboard.
 
-This module renders a premium, industrial SCADA / Power BI style single
-page application: a horizontal header, a filter bar, a global KPI strip,
-a responsive department tile grid, and the active department's content
-rendered directly below the grid (no sidebar-driven routing). The
-sidebar is kept minimal (settings / about / cache controls only).
+Single-page industrial SCADA / Power BI style application: a horizontal
+header, a global filter bar, a global KPI strip, a department tile grid
+(primary navigation), the active department's content rendered directly
+below the grid, and a minimal footer. The sidebar is limited to cache /
+settings / about / debug controls.
 
-Nothing here performs data discovery, parsing, or KPI calculation.
-Everything is sourced from ``dashboard_loader.load_dashboard_safe`` and
-the resulting dashboard data dictionary built by ``dashboard_data.py``.
-No departments, meters, or worksheet names are ever hardcoded.
+No data discovery, parsing, or KPI calculation happens here. Everything
+is sourced from ``dashboard_loader.load_dashboard_safe`` and the
+dashboard dictionary built by ``dashboard_data.py``. No departments,
+meters, or worksheet names are ever hardcoded.
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ from config import (
     THEME_DANGER_COLOR,
     THEME_PRIMARY_COLOR,
     THEME_SUCCESS_COLOR,
-    THEME_WARNING_COLOR,
 )
 from dashboard_loader import load_dashboard_safe
 from pages import (
@@ -41,23 +40,13 @@ from pages import (
     utility,
 )
 
-# ==================================================
-# DEPARTMENT / SECTION ROUTING
-# ==================================================
-
-DEPARTMENT_ICONS: tuple[str, ...] = ("🏭", "⚙️", "🧊", "❄️", "⚡", "🛠", "🔥", "💧", "🌞", "📦")
+DEPARTMENT_ICONS: tuple[str, ...] = (
+    "🏭", "⚙️", "🧊", "❄️", "⚡", "🛠", "🔥", "💧", "🌞", "📦",
+)
 """Cycled, generic icon set applied to discovered department tiles.
 
 Purely decorative — never used to identify or hardcode a department.
 """
-
-SECTION_KEY_TO_PAGE: dict[str, object] = {
-    "overview": engineering,
-    "air_compressor": air_compressor,
-    "freon": freon_refrigeration,
-    "ammonia": ammonia_refrigeration,
-}
-"""Maps a discovered ``dashboard_data`` section key to its page module."""
 
 DEPARTMENT_NAME_TO_PAGE: dict[str, object] = {
     "utility": utility,
@@ -69,25 +58,17 @@ DEPARTMENT_NAME_TO_PAGE: dict[str, object] = {
     "ammonia": ammonia_refrigeration,
     "ammonia refrigeration": ammonia_refrigeration,
 }
-"""Best-effort mapping from a discovered department label to a page module.
-
-Matching is keyword-based and case-insensitive; any department that does
-not match a known keyword simply routes to the generic Engineering page,
-which can filter itself down by the selected department.
-"""
-
-
-# ==================================================
-# DATA LOADING
-# ==================================================
+"""Best-effort keyword mapping from a discovered department label to its
+page module. Anything unmatched falls back to the generic Engineering
+page, which can filter itself by the selected department."""
 
 
 def get_dashboard() -> tuple[dict | None, str | None]:
-    """Load (and cache for the session) the dashboard data model.
+    """Load (once per session) and return the cached dashboard data.
 
     Returns:
-        A tuple of ``(dashboard, error_message)``. Exactly one of the
-        two will be ``None``.
+        A tuple of ``(dashboard, error_message)``; exactly one is
+        ``None``.
     """
     if "dashboard_data" not in st.session_state:
         dashboard, error = load_dashboard_safe()
@@ -99,24 +80,21 @@ def get_dashboard() -> tuple[dict | None, str | None]:
 
 
 def refresh_dashboard() -> None:
-    """Clear cached dashboard data so it is re-fetched on next access."""
+    """Clear cached dashboard data so it is reloaded on next access."""
     for key in ("dashboard_data", "dashboard_error", "last_refresh"):
         st.session_state.pop(key, None)
 
 
-def resolve_page_for_department(department_name: str, dashboard: dict) -> object:
-    """Best-effort resolution of a page module for a selected department.
-
-    Falls back to the generic Engineering page (which can filter by
-    ``st.session_state["selected_department"]``) when the department
-    name does not match a known keyword.
+def resolve_page_for_department(department_name: str) -> object:
+    """Resolve the page module to render for a selected department.
 
     Args:
         department_name: The department label the user selected.
-        dashboard: The dashboard data dictionary.
 
     Returns:
-        The page module that should render the active content area.
+        The page module whose ``render()`` should populate the content
+        area. Falls back to the generic Engineering page when no
+        keyword matches.
     """
     normalized = department_name.strip().lower()
 
@@ -127,13 +105,8 @@ def resolve_page_for_department(department_name: str, dashboard: dict) -> object
     return engineering
 
 
-# ==================================================
-# STYLING
-# ==================================================
-
-
 def inject_global_styles() -> None:
-    """Inject the dark industrial / glassmorphism CSS theme."""
+    """Inject the dark industrial glassmorphism CSS theme."""
     st.markdown(
         f"""
         <style>
@@ -142,8 +115,8 @@ def inject_global_styles() -> None:
             header[data-testid="stHeader"] {{background: transparent;}}
 
             .block-container {{
-                padding-top: 1.2rem;
-                padding-bottom: 2rem;
+                padding-top: 1.1rem;
+                padding-bottom: 1.5rem;
                 max-width: 1400px;
             }}
 
@@ -157,7 +130,7 @@ def inject_global_styles() -> None:
                 padding: 16px 24px;
                 backdrop-filter: blur(10px);
                 box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-                margin-bottom: 14px;
+                margin-bottom: 12px;
                 flex-wrap: wrap;
                 gap: 12px;
             }}
@@ -225,14 +198,14 @@ def inject_global_styles() -> None:
                 border-radius: 14px;
                 padding: 14px 18px;
                 backdrop-filter: blur(6px);
-                margin-bottom: 14px;
+                margin-bottom: 12px;
             }}
 
             .kpi-strip {{
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
                 gap: 14px;
-                margin-bottom: 16px;
+                margin-bottom: 14px;
             }}
 
             .kpi-card {{
@@ -258,7 +231,7 @@ def inject_global_styles() -> None:
             }}
 
             .kpi-value {{
-                font-size: 1.6rem;
+                font-size: 1.55rem;
                 font-weight: 700;
                 margin: 0;
                 line-height: 1.1;
@@ -296,10 +269,6 @@ def inject_global_styles() -> None:
                 box-shadow: 0 8px 20px rgba(108,99,255,0.25) !important;
             }}
 
-            div[data-testid="stButton"] > button:focus:not(:active) {{
-                border-color: {THEME_PRIMARY_COLOR} !important;
-            }}
-
             .dept-tile-active > button {{
                 border-color: {THEME_PRIMARY_COLOR} !important;
                 background: linear-gradient(145deg, rgba(108,99,255,0.25), rgba(22,26,37,0.9)) !important;
@@ -310,11 +279,11 @@ def inject_global_styles() -> None:
                 border: 1px solid rgba(255,255,255,0.06);
                 border-radius: 16px;
                 padding: 18px 20px;
-                margin-top: 6px;
+                margin-top: 4px;
             }}
 
             .scada-footer {{
-                margin-top: 22px;
+                margin-top: 20px;
                 padding: 12px 18px;
                 border-radius: 12px;
                 background: rgba(255,255,255,0.02);
@@ -327,11 +296,6 @@ def inject_global_styles() -> None:
         """,
         unsafe_allow_html=True,
     )
-
-
-# ==================================================
-# HEADER
-# ==================================================
 
 
 def render_header(dashboard: dict | None) -> None:
@@ -382,7 +346,7 @@ def render_header(dashboard: dict | None) -> None:
         unsafe_allow_html=True,
     )
 
-    control_col1, control_col2, control_col3 = st.columns([1.2, 1, 6])
+    control_col1, control_col2, _ = st.columns([1.2, 1, 6])
     with control_col1:
         st.toggle("Auto Refresh", key="auto_refresh_enabled", value=False)
     with control_col2:
@@ -391,18 +355,11 @@ def render_header(dashboard: dict | None) -> None:
             st.rerun()
 
 
-# ==================================================
-# FILTER BAR
-# ==================================================
-
-
 def render_filter_bar(dashboard: dict) -> None:
     """Render the month / date / department search / department filter bar."""
-    metadata = dashboard.get("metadata", {})
     filters = dashboard.get("filters", {})
-
-    months = metadata.get("months") or metadata.get("available_months") or []
-    dates = metadata.get("available_dates", [])
+    months = filters.get("months", [])
+    dates = filters.get("dates", [])
     departments = filters.get("departments", [])
 
     st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
@@ -421,7 +378,9 @@ def render_filter_bar(dashboard: dict) -> None:
             st.selectbox("Date", options=["N/A"], disabled=True)
 
     with col_search:
-        st.text_input("Search Department", key="department_search", placeholder="Type to filter…")
+        st.text_input(
+            "Search Department", key="department_search", placeholder="Type to filter…"
+        )
 
     with col_dept:
         if departments:
@@ -436,32 +395,42 @@ def render_filter_bar(dashboard: dict) -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ==================================================
-# GLOBAL KPI STRIP
-# ==================================================
-
-
 def render_kpi_strip(dashboard: dict) -> None:
     """Render premium global KPI cards sourced from the dashboard summary.
 
-    Deliberately omits developer-facing counters (row/column counts,
-    sheet counts, internal section availability lists).
+    Only real, backend-supplied operational metrics are shown. Developer
+    metrics (rows, columns, sheet counts, available-section lists) are
+    never displayed. A card is omitted entirely if its underlying value
+    is not available rather than showing a fabricated placeholder.
     """
     summary = dashboard.get("summary", {})
-    department_count = summary.get("department_count", 0)
-    meter_count = summary.get("meter_count", 0)
 
-    latest_values_by_department = summary.get("latest_values_by_department", {})
-    total_active_meters = sum(
+    department_count = summary.get("department_count")
+    meter_count = summary.get("meter_count")
+    latest_timestamp = summary.get("latest_timestamp")
+    data_availability = summary.get("data_availability")
+
+    department_latest_values = summary.get("department_latest_values", {})
+    meters_reporting = sum(
         sum(1 for value in meters.values() if value is not None)
-        for meters in latest_values_by_department.values()
+        for meters in department_latest_values.values()
     )
 
-    cards = [
-        ("🏢", department_count, "Departments Monitored"),
-        ("📟", meter_count, "Meters Tracked"),
-        ("📈", total_active_meters, "Meters Reporting"),
-    ]
+    cards: list[tuple[str, str, str]] = []
+
+    if department_count is not None:
+        cards.append(("🏢", str(department_count), "Departments Monitored"))
+    if meter_count is not None:
+        cards.append(("📟", str(meter_count), "Meters Tracked"))
+    if department_latest_values:
+        cards.append(("📈", str(meters_reporting), "Meters Reporting"))
+    if data_availability is not None:
+        cards.append(("📊", f"{data_availability * 100:.0f}%", "Data Availability"))
+    if latest_timestamp and latest_timestamp != "N/A":
+        cards.append(("🕒", str(latest_timestamp), "Latest Reading"))
+
+    if not cards:
+        return
 
     cards_html = "".join(
         f"""
@@ -477,25 +446,21 @@ def render_kpi_strip(dashboard: dict) -> None:
     st.markdown(f'<div class="kpi-strip">{cards_html}</div>', unsafe_allow_html=True)
 
 
-# ==================================================
-# DEPARTMENT TILE GRID
-# ==================================================
-
-
 def render_department_grid(dashboard: dict) -> None:
-    """Render the responsive department tile grid replacing sidebar nav.
+    """Render the responsive department tile grid (primary navigation).
 
     Every tile name is sourced from ``dashboard["filters"]["departments"]``.
     Selecting a tile stores ``st.session_state["selected_department"]``
-    without triggering any page-object navigation/rerouting logic.
+    without any page rerouting.
     """
     departments = dashboard.get("filters", {}).get("departments", [])
     search_term = st.session_state.get("department_search", "").strip().lower()
 
-    if search_term:
-        visible_departments = [d for d in departments if search_term in d.lower()]
-    else:
-        visible_departments = departments
+    visible_departments = (
+        [d for d in departments if search_term in d.lower()]
+        if search_term
+        else departments
+    )
 
     st.markdown('<p class="dept-grid-title">Departments</p>', unsafe_allow_html=True)
 
@@ -515,7 +480,9 @@ def render_department_grid(dashboard: dict) -> None:
         columns = st.columns(columns_per_row)
 
         for column, department_name in zip(columns, row_departments):
-            icon = DEPARTMENT_ICONS[departments.index(department_name) % len(DEPARTMENT_ICONS)]
+            icon = DEPARTMENT_ICONS[
+                departments.index(department_name) % len(DEPARTMENT_ICONS)
+            ]
             is_active = department_name == selected_department
 
             with column:
@@ -533,13 +500,8 @@ def render_department_grid(dashboard: dict) -> None:
                     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ==================================================
-# ACTIVE CONTENT AREA
-# ==================================================
-
-
-def render_active_content(dashboard: dict) -> None:
-    """Render the selected department's page directly below the tile grid.
+def render_active_content() -> None:
+    """Render exactly one existing page's content below the tile grid.
 
     Falls back to the Home page when no department has been selected.
     """
@@ -550,23 +512,21 @@ def render_active_content(dashboard: dict) -> None:
     if not selected_department:
         home.render()
     else:
-        page_module = resolve_page_for_department(selected_department, dashboard)
-        page_module.render()
+        resolve_page_for_department(selected_department).render()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ==================================================
-# SIDEBAR (MINIMAL)
-# ==================================================
-
-
 def render_sidebar() -> None:
-    """Render a minimal sidebar: settings, about, cache controls, debug."""
+    """Render a minimal sidebar: cache refresh, settings, about, debug."""
     with st.sidebar:
         st.markdown(f"### {APP_ICON} {APP_NAME}")
         st.caption(f"v{APP_VERSION}")
         st.divider()
+
+        if st.button("🗑 Refresh Cache", use_container_width=True):
+            refresh_dashboard()
+            st.rerun()
 
         with st.expander("⚙ Settings", expanded=False):
             st.toggle("Compact Mode", key="compact_mode", value=False)
@@ -577,10 +537,6 @@ def render_sidebar() -> None:
                 "live workbook. Data is discovered dynamically — no "
                 "departments, meters, or sheets are hardcoded."
             )
-
-        if st.button("🗑 Refresh Cache", use_container_width=True):
-            refresh_dashboard()
-            st.rerun()
 
         with st.expander("🐞 Debug", expanded=False):
             st.write(
@@ -593,26 +549,26 @@ def render_sidebar() -> None:
             )
 
 
-# ==================================================
-# FOOTER
-# ==================================================
+def render_footer(dashboard: dict | None) -> None:
+    """Render the footer: current workbook, last refresh, dashboard version."""
+    last_refresh = st.session_state.get("last_refresh")
+    last_refresh_text = (
+        last_refresh.strftime("%d %b %Y, %H:%M:%S") if last_refresh else "N/A"
+    )
 
+    metadata = (dashboard or {}).get("metadata", {})
+    sheet_names = metadata.get("sheet_names", [])
+    workbook_text = sheet_names[0] if sheet_names else "N/A"
 
-def render_footer() -> None:
-    """Render a minimal footer status line."""
     st.markdown(
         f"""
         <div class="scada-footer">
-            {APP_NAME} · v{APP_VERSION} · Source: {GITHUB_OWNER}/{GITHUB_REPO}@{GITHUB_BRANCH}
+            Workbook: {workbook_text} · Last Refresh: {last_refresh_text} ·
+            {APP_NAME} v{APP_VERSION}
         </div>
         """,
         unsafe_allow_html=True,
     )
-
-
-# ==================================================
-# MAIN
-# ==================================================
 
 
 def main() -> None:
@@ -628,14 +584,14 @@ def main() -> None:
 
     if error is not None or dashboard is None:
         st.error(error or "Dashboard data could not be loaded.")
-        render_footer()
+        render_footer(dashboard)
         return
 
     render_filter_bar(dashboard)
     render_kpi_strip(dashboard)
     render_department_grid(dashboard)
-    render_active_content(dashboard)
-    render_footer()
+    render_active_content()
+    render_footer(dashboard)
 
 
 if __name__ == "__main__":
