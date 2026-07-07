@@ -5,13 +5,11 @@ identity, GitHub source location, caching behavior, theme values, and
 Streamlit page configuration. No business logic, data loading, or parsing
 should live here.
 """
-
 from __future__ import annotations
 
 # ==================================================
 # APPLICATION IDENTITY
 # ==================================================
-
 APP_NAME: str = "Engineering Monitoring Dashboard"
 """Human-readable name of the application, used in page titles and headers."""
 
@@ -21,11 +19,9 @@ APP_ICON: str = "⚙️"
 APP_VERSION: str = "1.0.0"
 """Current version of the dashboard application."""
 
-
 # ==================================================
 # GITHUB SOURCE CONFIGURATION
 # ==================================================
-
 GITHUB_OWNER: str = "aayugo1"
 """GitHub account or organization that owns the data repository."""
 
@@ -67,19 +63,15 @@ def build_raw_github_url(
 WORKBOOK_RAW_URL: str = build_raw_github_url()
 """Precomputed raw GitHub URL for the default workbook configuration."""
 
-
 # ==================================================
 # CACHING
 # ==================================================
-
 CACHE_TTL_SECONDS: int = 3600
 """Time-to-live, in seconds, for cached workbook downloads and parsed data."""
-
 
 # ==================================================
 # THEME CONSTANTS
 # ==================================================
-
 THEME_PRIMARY_COLOR: str = "#6C63FF"
 """Primary accent color used across charts and UI highlights."""
 
@@ -116,11 +108,9 @@ THEME_CHART_PALETTE: list[str] = [
 ]
 """Ordered color palette applied to multi-series charts for consistency."""
 
-
 # ==================================================
 # STREAMLIT PAGE CONFIGURATION
 # ==================================================
-
 PAGE_CONFIG: dict[str, object] = {
     "page_title": APP_NAME,
     "page_icon": APP_ICON,
