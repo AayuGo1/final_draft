@@ -44,3 +44,31 @@ def load_dashboard() -> dict:
     excel_file = load_excel()
     sheets = read_all_sheets(excel_file)
     return get_dashboard_data(sheets)
+
+
+def load_dashboard_safe() -> tuple[dict | None, str | None]:
+    """Load dashboard while converting exceptions into friendly messages."""
+
+    try:
+        return load_dashboard(), None
+
+    except ConnectionError:
+        return (
+            None,
+            "Could not connect to the data source. Please check your network connection and try again.",
+        )
+
+    except TimeoutError:
+        return (
+            None,
+            "The request to load the workbook timed out. Please try again.",
+        )
+
+    except FileNotFoundError:
+        return (
+            None,
+            "The workbook could not be found at the configured source.",
+        )
+
+    except (ValueError, RuntimeError) as error:
+        return None, f"Failed to load engineering data: {error}"
