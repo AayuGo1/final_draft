@@ -466,21 +466,32 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
                 if isinstance(total_value, (int, float))
                 else "N/A"
             )
+    with col:
+    with st.container(border=True):
 
-            with col:
-                st.markdown(f'<div class="{active_class}">', unsafe_allow_html=True)
-                btn_txt = (
-                    f"⚡ {d_name}\n"
-                    f"Latest : {latest_display}\n"
-                    f"Average: {average_display}\n"
-                    f"Total  : {total_display}\n"
-                    f"Meters : {meter_count}"
-                )
-                if st.button(btn_txt, key=f"nav_tile_{d_name}"):
-                    st.session_state["selected_department"] = d_name
-                    st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(f"### ⚡ {d_name}")
 
+        st.metric(
+            label="Latest",
+            value=latest_display,
+        )
+
+        st.metric(
+            label="Average",
+            value=average_display,
+        )
+
+        st.metric(
+            label="Total",
+            value=total_display,
+        )
+
+        st.caption(f"Meters : {meter_count}")
+
+        if st.button("Open Dashboard", key=f"nav_tile_{d_name}"):
+            st.session_state["selected_department"] = d_name
+            st.rerun()
+        
     return st.session_state["selected_department"]
 
 
