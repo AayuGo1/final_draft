@@ -45,6 +45,14 @@ UNIT_TOKENS: Final[set[str]] = {
     "units", "no.", "nos", "m³/hr", "kg/hr", "v", "a", "pf", "kw/tr", "tr"
 }
 
+# Priority keywords for representative meter selection
+REPRESENTATIVE_METER_PRIORITIES: Final[list[list[str]]] = [
+    ["energy", "consumption", "electricity", "power", "kwh", "kw", "load"],
+    ["flow", "png", "water", "steam", "air"],
+    ["pressure", "bar", "psi"],
+    ["voltage", "current", "frequency"],
+]
+
 
 # ==============================================================================
 # TOP-LEVEL APPLICATION ASSEMBLY INTERFACES
@@ -304,6 +312,67 @@ def get_dashboard_overview(overview_dataframe: pd.DataFrame) -> dict[str, Any]:
 # ==============================================================================
 # PRIVATE INTERNAL UTILITY CORE
 # ==============================================================================
+
+
+def select_representative_meter(section: dict[str, Any]) -> str:
+    """Select the most representative meter for a department section using deterministic priority.
+
+    Priority Order:
+    1. Energy/Power (Energy, Consumption, Electricity, Power, kWh, kW, Load)
+    2. Flow/Mass (Flow, PNG, Water, Steam, Air)
+    3. Pressure (Pressure, Bar, PSI)
+    4. Electrical Params (Voltage, Current, Frequency)
+    5. Fallback: First meter with valid numeric latest value.
+
+    Args:
+        section: Department dictionary containing 'meters' and 'latest_values'.
+
+    Returns:
+        The name of the representative meter, or empty string if none found.
+    """
+    if not section:
+        return ""
+    
+    meters = section.get("meters", [])
+    latest_values = section.get("latest_values", {})
+    
+    if not meters:
+        return ""
+
+    # Helper to check if a meter name contains any of the keywords (case-insensitive)
+    def matches_keywords(meter_name: str, keywords: list[str]) -> bool:
+        lower_name = meter_name.lower()
+        return any(kw in lower_name for kw in keywords)
+
+    # 1. Try priority groups
+    for keyword_group in REPRESENTATIVE_METER_PRIORITIES:
+        for meter in meters:
+            if matches_keywords(meter, keyword_group):
+                # Ensure it has a valid numeric value if possible, but prioritize keyword match
+                # If multiple match, take the first one in the list order
+                val = latest_values.get(meter)
+                if isinstance(val, (int, float)):
+                    return meter
+                # If keyword matches but value is missing, we still prefer it over non-keywords? 
+                # Let's stick to: Keyword match + Valid Value is best. 
+                # If Keyword match exists but no value, we continue looking for another keyword match with value.
+        
+        # Second pass for this group: if we found keyword matches but they had no values, 
+        # we might want to return one anyway? No, let's look for valid values first.
+        # Actually, let's refine: Find first meter in this keyword group that has a valid value.
+        for meter in meters:
+            if matches_keywords(meter, keyword_group):
+                val = latest_values.get(meter)
+                if isinstance(val, (int, float)):
+                    return meter
+
+    # 2. Fallback: First meter with valid numeric latest value
+    for meter in meters:
+        val = latest_values.get(meter)
+        if isinstance(val, (int, float)):
+            return meter
+            
+    return ""
 
 
 def _excel_col_to_index(col_str: str) -> int:
