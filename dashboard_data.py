@@ -764,6 +764,22 @@ def _find_sheet_by_keywords(
 
     return None
 
+def find_section_by_keyword(
+    sections: list[dict],
+    keyword: str,
+) -> dict | None:
+    """Find a discovered section whose name contains the given keyword."""
+
+    keyword = keyword.lower()
+
+    return next(
+        (
+            section
+            for section in sections
+            if keyword in section["name"].lower()
+        ),
+        None,
+    )
 
 def _validate_dataframe(dataframe: pd.DataFrame) -> None:
     """Validate that the given object is a ``pandas.DataFrame``.
@@ -808,19 +824,4 @@ def _validate_workbook(workbook: dict[str, pd.DataFrame]) -> None:
                 f"Sheet '{sheet_name}' does not contain a valid "
                 f"pandas.DataFrame (got {type(dataframe).__name__})."
             )
-def find_section_by_keyword(
-    sections: list[dict],
-    keyword: str,
-) -> dict | None:
-    """Find a discovered section whose name contains the given keyword."""
 
-    keyword = keyword.lower()
-
-    return next(
-        (
-            section
-            for section in sections
-            if keyword in section["name"].lower()
-        ),
-        None,
-    )
