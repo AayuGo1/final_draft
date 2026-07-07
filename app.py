@@ -30,7 +30,7 @@ from config import (
     THEME_PRIMARY_COLOR,
     THEME_SUCCESS_COLOR,
 )
-from dashboard_loader import load_dashboard_safe
+from services.dashboard_loader import load_dashboard_safe
 from pages import (
     air_compressor,
     ammonia_refrigeration,
