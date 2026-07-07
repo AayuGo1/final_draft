@@ -396,16 +396,36 @@ def _get_representative_meter(dept_obj: dict[str, Any]) -> str:
 def render_department_grid(dashboard: dict[str, Any]) -> str:
     """Render specialized structural matrix navigation system grids."""
     departments: dict[str, dict[str, Any]] = dashboard.get("departments", {})
-    dept_names = list(departments.keys())
 
-    st.markdown('<p class="section-panel-title">🏭 Infrastructure Component Subsystems Matrix</p>', unsafe_allow_html=True)
+    critical_assets = [
+        "NPCL",
+        "Dough",
+        "Traywasher",
+        "Air compressor",
+        "Freon Refrigeration",
+        "DG",
+        "GG",
+    ]
+
+    dept_names = [
+        name
+        for name in critical_assets
+        if name in departments
+    ]
+
+    st.markdown(
+        '<p class="section-panel-title">🏭 Critical Plant Assets</p>',
+        unsafe_allow_html=True,
+    )
 
     if not dept_names:
         return ""
 
-    if "selected_department" not in st.session_state or st.session_state["selected_department"] not in dept_names:
+    if (
+        "selected_department" not in st.session_state
+        or st.session_state["selected_department"] not in dept_names
+    ):
         st.session_state["selected_department"] = dept_names[0]
-
     current_selection = st.session_state["selected_department"]
     total_depts = len(dept_names)
 
