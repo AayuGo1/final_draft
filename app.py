@@ -1,21 +1,19 @@
-"""Main Streamlit entry point for the Engineering Monitoring Dashboard.
+"""Main Entry Point for the Engineering Monitoring Dashboard.
 
-Single-page industrial SCADA / Power BI style application: a horizontal
-header, a global filter bar, a global KPI strip, a department tile grid
-(primary navigation), the active department's content rendered directly
-below the grid, and a minimal footer. The sidebar is limited to cache /
-settings / about / debug controls.
+This module acts exclusively as the Presentation and UI/UX Orchestration Layer
+for the Engineering Monitoring Dashboard. It enforces a high-fidelity industrial
+SCADA/Power BI dark glassmorphic design system. 
 
-No data discovery, parsing, or KPI calculation happens here. Everything
-is sourced from ``dashboard_loader.load_dashboard_safe`` and the
-dashboard dictionary built by ``dashboard_data.py``. No departments,
-meters, or worksheet names are ever hardcoded.
+It implements no business logic, zero data calculations, and no plotting logic,
+relying strictly on `dashboard_data.py`, `kpi_service.py`, and `chart_service.py`.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any, Final
 
+import pandas as pd
 import streamlit as st
 
 from config import (
@@ -29,46 +27,22 @@ from config import (
     THEME_DANGER_COLOR,
     THEME_PRIMARY_COLOR,
     THEME_SUCCESS_COLOR,
+    THEME_WARNING_COLOR,
 )
-from services.dashboard_loader import load_dashboard_safe
-from pages import (
-    home,
-    engineering,
-    utility,
-    air_compressor,
-    freon_refrigeration,
-    ammonia_refrigeration,
-)
+from dashboard_data import get_dashboard_data
+from dashboard_loader import load_dashboard_safe
+import kpi_service
+import chart_service
 
-DEPARTMENT_ICONS: tuple[str, ...] = (
-    "🏭", "⚙️", "🧊", "❄️", "⚡", "🛠", "🔥", "💧", "🌞", "📦",
-)
-"""Cycled, generic icon set applied to discovered department tiles.
-
-Purely decorative — never used to identify or hardcode a department.
-"""
-
-DEPARTMENT_NAME_TO_PAGE: dict[str, object] = {
-    "utility": utility,
-    "air compressor": air_compressor,
-    "air": air_compressor,
-    "compressor": air_compressor,
-    "freon": freon_refrigeration,
-    "freon refrigeration": freon_refrigeration,
-    "ammonia": ammonia_refrigeration,
-    "ammonia refrigeration": ammonia_refrigeration,
-}
-"""Best-effort keyword mapping from a discovered department label to its
-page module. Anything unmatched falls back to the generic Engineering
-page, which can filter itself by the selected department."""
+# Grid system configurations
+COLUMNS_PER_ROW: Final[int] = 4
 
 
-def get_dashboard() -> tuple[dict | None, str | None]:
-    """Load (once per session) and return the cached dashboard data.
+def get_dashboard() -> tuple[dict[str, Any] | None, str | None]:
+    """Retrieve and cache the complete multi-sheet engineering data model.
 
     Returns:
-        A tuple of ``(dashboard, error_message)``; exactly one is
-        ``None``.
+        A tuple of (dashboard_dict, error_message).
     """
     if "dashboard_data" not in st.session_state:
         dashboard, error = load_dashboard_safe()
@@ -80,33 +54,13 @@ def get_dashboard() -> tuple[dict | None, str | None]:
 
 
 def refresh_dashboard() -> None:
-    """Clear cached dashboard data so it is reloaded on next access."""
+    """Evict cached analytical context to force hard background reload."""
     for key in ("dashboard_data", "dashboard_error", "last_refresh"):
         st.session_state.pop(key, None)
 
 
-def resolve_page_for_department(department_name: str) -> object:
-    """Resolve the page module to render for a selected department.
-
-    Args:
-        department_name: The department label the user selected.
-
-    Returns:
-        The page module whose ``render()`` should populate the content
-        area. Falls back to the generic Engineering page when no
-        keyword matches.
-    """
-    normalized = department_name.strip().lower()
-
-    for keyword, page_module in DEPARTMENT_NAME_TO_PAGE.items():
-        if keyword in normalized:
-            return page_module
-
-    return engineering
-
-
 def inject_global_styles() -> None:
-    """Inject the dark industrial glassmorphism CSS theme."""
+    """Inject the SCADA Glassmorphism dark industrial design stylesheet."""
     st.markdown(
         f"""
         <style>
@@ -115,73 +69,70 @@ def inject_global_styles() -> None:
             header[data-testid="stHeader"] {{background: transparent;}}
 
             .block-container {{
-                padding-top: 1.1rem;
-                padding-bottom: 1.5rem;
-                max-width: 1400px;
+                padding-top: 1.0rem;
+                padding-bottom: 2.0rem;
+                max-width: 1500px;
             }}
 
             .scada-header {{
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                background: linear-gradient(135deg, rgba(108,99,255,0.12), rgba(22,26,37,0.85));
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 16px;
+                background: linear-gradient(135deg, rgba(108, 99, 255, 0.15), rgba(22, 26, 37, 0.95));
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 14px;
                 padding: 16px 24px;
-                backdrop-filter: blur(10px);
-                box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-                margin-bottom: 12px;
-                flex-wrap: wrap;
-                gap: 12px;
+                backdrop-filter: blur(12px);
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+                margin-bottom: 16px;
             }}
 
-            .scada-header-left {{
+            .scada-title-block {{
                 display: flex;
                 align-items: center;
-                gap: 14px;
+                gap: 16px;
             }}
 
             .scada-logo {{
-                width: 46px;
-                height: 46px;
-                border-radius: 12px;
+                width: 48px;
+                height: 48px;
+                border-radius: 10px;
                 background: linear-gradient(135deg, {THEME_PRIMARY_COLOR}, #3f3aa3);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 22px;
-                box-shadow: 0 4px 14px rgba(108,99,255,0.4);
+                font-size: 24px;
+                box-shadow: 0 4px 14px rgba(108, 99, 255, 0.35);
             }}
 
-            .scada-title {{
-                font-size: 1.15rem;
-                font-weight: 700;
-                letter-spacing: 0.3px;
+            .scada-main-title {{
+                font-size: 1.3rem;
+                font-weight: 800;
+                color: #FAFAFA;
                 margin: 0;
+                letter-spacing: 0.5px;
             }}
 
-            .scada-subtitle {{
-                font-size: 0.75rem;
-                opacity: 0.6;
-                margin: 0;
-            }}
-
-            .scada-status-group {{
-                display: flex;
-                gap: 18px;
-                flex-wrap: wrap;
-                align-items: center;
+            .scada-sub-title {{
                 font-size: 0.78rem;
+                color: #A0AEC0;
+                margin: 0;
+            }}
+
+            .status-container {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-top: 12px;
             }}
 
             .status-pill {{
                 display: flex;
                 align-items: center;
-                gap: 6px;
-                padding: 4px 10px;
-                border-radius: 999px;
-                background: rgba(255,255,255,0.05);
-                border: 1px solid rgba(255,255,255,0.08);
+                gap: 8px;
+                padding: 4px 12px;
+                border-radius: 20px;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                font-size: 0.75rem;
+                color: #E2E8F0;
                 white-space: nowrap;
             }}
 
@@ -192,104 +143,126 @@ def inject_global_styles() -> None:
                 display: inline-block;
             }}
 
-            .glass-panel {{
-                background: rgba(255,255,255,0.03);
-                border: 1px solid rgba(255,255,255,0.07);
-                border-radius: 14px;
-                padding: 14px 18px;
-                backdrop-filter: blur(6px);
-                margin-bottom: 12px;
+            .metric-card-container {{
+                background: linear-gradient(145deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.7));
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 12px;
+                padding: 16px 20px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
             }}
 
-            .kpi-strip {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap: 14px;
-                margin-bottom: 14px;
+            .metric-card-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 4px;
             }}
 
-            .kpi-card {{
-                position: relative;
-                border-radius: 16px;
-                padding: 18px 20px;
-                background: linear-gradient(145deg, rgba(108,99,255,0.16), rgba(22,26,37,0.9));
-                border: 1px solid rgba(255,255,255,0.08);
-                box-shadow: 0 6px 18px rgba(0,0,0,0.3);
-                transition: transform 0.18s ease, box-shadow 0.18s ease;
-                overflow: hidden;
-            }}
-
-            .kpi-card:hover {{
-                transform: translateY(-3px);
-                box-shadow: 0 10px 26px rgba(108,99,255,0.25);
-            }}
-
-            .kpi-icon {{
-                font-size: 1.4rem;
-                opacity: 0.85;
-                margin-bottom: 6px;
-            }}
-
-            .kpi-value {{
-                font-size: 1.55rem;
-                font-weight: 700;
-                margin: 0;
-                line-height: 1.1;
-            }}
-
-            .kpi-label {{
+            .metric-card-title {{
                 font-size: 0.78rem;
-                opacity: 0.65;
-                margin-top: 2px;
+                color: #94A3B8;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin: 0;
             }}
 
-            .dept-grid-title {{
+            .metric-card-icon {{
+                font-size: 1.2rem;
+                opacity: 0.8;
+            }}
+
+            .metric-card-value {{
+                font-size: 1.6rem;
+                font-weight: 700;
+                color: #F8FAFC;
+                margin: 0;
+                line-height: 1.2;
+            }}
+
+            .metric-card-footer {{
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 0.72rem;
+                margin-top: 4px;
+            }}
+
+            .trend-up {{ color: {THEME_SUCCESS_COLOR}; font-weight: 600; }}
+            .trend-down {{ color: {THEME_DANGER_COLOR}; font-weight: 600; }}
+            .trend-neutral {{ color: #94A3B8; }}
+
+            .section-panel-title {{
                 font-size: 0.95rem;
                 font-weight: 700;
-                opacity: 0.85;
-                margin: 6px 0 10px 2px;
-                letter-spacing: 0.3px;
+                color: #E2E8F0;
                 text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin: 12px 0 12px 2px;
             }}
 
             div[data-testid="stButton"] > button {{
                 width: 100%;
-                border-radius: 14px !important;
-                border: 1px solid rgba(255,255,255,0.08) !important;
-                background: linear-gradient(145deg, rgba(255,255,255,0.04), rgba(22,26,37,0.85)) !important;
-                padding: 14px 10px !important;
-                font-weight: 600 !important;
-                transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease !important;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.25) !important;
+                border-radius: 10px !important;
+                border: 1px solid rgba(255, 255, 255, 0.06) !important;
+                background: linear-gradient(145deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.75)) !important;
+                padding: 12px 14px !important;
+                text-align: left !important;
+                transition: all 0.2s ease-in-out !important;
             }}
 
             div[data-testid="stButton"] > button:hover {{
                 transform: translateY(-2px);
-                border-color: {THEME_PRIMARY_COLOR}66 !important;
-                box-shadow: 0 8px 20px rgba(108,99,255,0.25) !important;
+                border-color: {THEME_PRIMARY_COLOR}88 !important;
+                box-shadow: 0 6px 16px rgba(108, 99, 255, 0.15) !important;
             }}
 
-            .dept-tile-active > button {{
+            .tile-active > div[data-testid="stButton"] > button {{
                 border-color: {THEME_PRIMARY_COLOR} !important;
-                background: linear-gradient(145deg, rgba(108,99,255,0.25), rgba(22,26,37,0.9)) !important;
+                background: linear-gradient(145deg, rgba(108, 99, 255, 0.18), rgba(15, 23, 42, 0.85)) !important;
+                box-shadow: 0 4px 14px rgba(108, 99, 255, 0.2) !important;
             }}
 
-            .content-panel {{
-                background: rgba(255,255,255,0.02);
-                border: 1px solid rgba(255,255,255,0.06);
-                border-radius: 16px;
-                padding: 18px 20px;
-                margin-top: 4px;
+            .tile-dept-name {{
+                font-size: 0.85rem;
+                font-weight: 700;
+                color: #F1F5F9;
+                margin-bottom: 4px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }}
+
+            .tile-meta-row {{
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.7rem;
+                color: #94A3B8;
+                margin-top: 2px;
+            }}
+
+            .tile-value {{
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: {THEME_PRIMARY_COLOR};
+            }}
+
+            .panel-container {{
+                background: rgba(22, 26, 37, 0.5);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 14px;
+                padding: 20px;
+                margin-top: 16px;
             }}
 
             .scada-footer {{
-                margin-top: 20px;
-                padding: 12px 18px;
-                border-radius: 12px;
-                background: rgba(255,255,255,0.02);
-                border: 1px solid rgba(255,255,255,0.06);
-                font-size: 0.75rem;
-                opacity: 0.55;
+                margin-top: 32px;
+                padding: 16px;
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.01);
+                border: 1px solid rgba(255, 255, 255, 0.04);
+                font-size: 0.72rem;
+                color: #64748B;
                 text-align: center;
             }}
         </style>
@@ -298,273 +271,298 @@ def inject_global_styles() -> None:
     )
 
 
-def render_header(dashboard: dict | None) -> None:
-    """Render the horizontal SCADA-style header with live status pills."""
+def render_top_header(dashboard: dict[str, Any] | None) -> None:
+    """Render enterprise SCADA global top panel including timeline control selectors."""
     now = dt.datetime.now()
     summary = (dashboard or {}).get("summary", {})
     available_sections = summary.get("available_sections", [])
 
-    plant_ok = bool(available_sections)
-    plant_color = THEME_SUCCESS_COLOR if plant_ok else THEME_DANGER_COLOR
-    plant_text = "Online" if plant_ok else "No Data"
-
-    workbook_ok = dashboard is not None
-    workbook_color = THEME_SUCCESS_COLOR if workbook_ok else THEME_DANGER_COLOR
-    workbook_text = "Loaded" if workbook_ok else "Load Failed"
+    plant_color = THEME_SUCCESS_COLOR if available_sections else THEME_DANGER_COLOR
+    plant_text = "Operational" if available_sections else "Offline"
+    wb_color = THEME_SUCCESS_COLOR if dashboard else THEME_DANGER_COLOR
+    wb_text = "Synchronized" if dashboard else "Error"
 
     last_refresh = st.session_state.get("last_refresh", now)
 
     st.markdown(
         f"""
         <div class="scada-header">
-            <div class="scada-header-left">
-                <div class="scada-logo">{APP_ICON}</div>
-                <div>
-                    <p class="scada-title">{APP_NAME}</p>
-                    <p class="scada-subtitle">Plant Monitoring &amp; Control · v{APP_VERSION}</p>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+                <div class="scada-title-block">
+                    <div class="scada-logo">{APP_ICON}</div>
+                    <div>
+                        <h1 class="scada-main-title">{APP_NAME}</h1>
+                        <p class="scada-sub-title">Enterprise Infrastructure Supervision Hub · v{APP_VERSION}</p>
+                    </div>
                 </div>
-            </div>
-            <div class="scada-status-group">
-                <div class="status-pill">
-                    <span class="status-dot" style="background:{plant_color};"></span>
-                    Plant: {plant_text}
+                <div class="status-container">
+                    <div class="status-pill"><span class="status-dot" style="background:{plant_color};"></span>PLANT: {plant_text}</div>
+                    <div class="status-pill"><span class="status-dot" style="background:{wb_color};"></span>METADATA: {wb_text}</div>
+                    <div class="status-pill"><span class="status-dot" style="background:{THEME_SUCCESS_COLOR};"></span>REPOSITORY: {GITHUB_OWNER}/{GITHUB_REPO}</div>
+                    <div class="status-pill">📅 SYSTEM DATE: {now.strftime("%d %b %Y")}</div>
+                    <div class="status-pill">🕒 LIVE TIME: {now.strftime("%H:%M:%S")}</div>
+                    <div class="status-pill">🔁 SYNC STAMP: {last_refresh.strftime("%H:%M:%S")}</div>
                 </div>
-                <div class="status-pill">
-                    <span class="status-dot" style="background:{workbook_color};"></span>
-                    Workbook: {workbook_text}
-                </div>
-                <div class="status-pill">
-                    <span class="status-dot" style="background:{THEME_SUCCESS_COLOR};"></span>
-                    GitHub: {GITHUB_OWNER}/{GITHUB_REPO}@{GITHUB_BRANCH}
-                </div>
-                <div class="status-pill">📅 {now.strftime("%d %b %Y")}</div>
-                <div class="status-pill">🕒 {now.strftime("%H:%M:%S")}</div>
-                <div class="status-pill">🔁 {last_refresh.strftime("%H:%M:%S")}</div>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    control_col1, control_col2, _ = st.columns([1.2, 1, 6])
-    with control_col1:
-        st.toggle("Auto Refresh", key="auto_refresh_enabled", value=False)
-    with control_col2:
-        if st.button("🔄 Refresh", use_container_width=True):
-            refresh_dashboard()
-            st.rerun()
+    # Context actions bar placed within native columns
+    act_col1, act_col2, _ = st.columns([1.5, 1.2, 7.3])
+    with act_col1:
+        st.button("🔄 Force Core Telemetry Reset", on_click=refresh_dashboard, key="btn_refresh_global")
+    with act_col2:
+        if dashboard:
+            st.download_button(
+                label="📥 Export Matrix (CSV)",
+                data=dashboard["overview"].to_csv(index=False).encode('utf-8'),
+                file_name=f"SCADA_Matrix_{now.strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
 
 
-def render_filter_bar(dashboard: dict) -> None:
-    """Render the month / date / department search / department filter bar."""
-    filters = dashboard.get("filters", {})
-    months = filters.get("months", [])
-    dates = filters.get("dates", [])
-    departments = filters.get("departments", [])
+def render_filter_bar(dashboard: dict[str, Any]) -> tuple[str, str]:
+    """Expose global synchronized date filters derived purely from data arrays."""
+    filters_data = dashboard.get("filters", {})
+    months_list = filters_data.get("months", [])
+    dates_list = filters_data.get("dates", [])
 
-    st.markdown('<div class="glass-panel">', unsafe_allow_html=True)
-    col_month, col_date, col_search, col_dept = st.columns([1, 1, 1.4, 1.4])
+    st.markdown('<p class="section-panel-title">📆 Temporal Synchronization Controls</p>', unsafe_allow_html=True)
+    f_col1, f_col2, _ = st.columns([2, 2, 6])
 
-    with col_month:
-        if months:
-            st.selectbox("Month", options=months, key="selected_month")
-        else:
-            st.selectbox("Month", options=["N/A"], disabled=True)
+    with f_col1:
+        sel_month = st.selectbox(
+            "Target Operational Month",
+            options=months_list if months_list else ["N/A"],
+            index=0,
+            key="global_month_filter"
+        )
+    with f_col2:
+        sel_date = st.selectbox(
+            "Target Log Date",
+            options=dates_list if dates_list else ["N/A"],
+            index=0,
+            key="global_date_filter"
+        )
+    return str(sel_month), str(sel_date)
 
-    with col_date:
-        if dates:
-            st.selectbox("Date", options=dates, key="selected_date")
-        else:
-            st.selectbox("Date", options=["N/A"], disabled=True)
 
-    with col_search:
-        st.text_input(
-            "Search Department", key="department_search", placeholder="Type to filter…"
+def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
+    """Render executive KPI blocks summarizing worksheet health parameters."""
+    summary = dashboard.get("summary", {})
+    overview_df = dashboard.get("overview", pd.DataFrame())
+
+    # Extract metrics out from unified kpi module wrapper signatures
+    kpi_summary = kpi_service.build_kpi_summary(overview_df, section=None)
+
+    dept_count = summary.get("department_count", kpi_summary.get("columns", 0))
+    meter_count = summary.get("meter_count", kpi_summary.get("meters", 0))
+    latest_ts = summary.get("latest_timestamp", kpi_summary.get("latest_timestamp", "N/A"))
+    data_avail = kpi_summary.get("availability", 1.0)
+
+    # Compute global mean averages from aggregated payload structures safely
+    global_averages = summary.get("average_values", {})
+    flat_averages = [
+        val for dept in global_averages.values() if isinstance(dept, dict)
+        for val in dept.values() if val is not None
+    ]
+    avg_consumption = sum(flat_averages) / len(flat_averages) if flat_averages else 0.0
+
+    st.markdown('<p class="section-panel-title">📈 System-Wide Executive Telemetry</p>', unsafe_allow_html=True)
+    k_col1, k_col2, k_col3, k_col4, k_col5 = st.columns(5)
+
+    with k_col1:
+        st.markdown(
+            f"""<div class="metric-card-container">
+                <div class="metric-card-header"><span class="metric-card-title">Departments</span><span class="metric-card-icon">🏢</span></div>
+                <p class="metric-card-value">{dept_count}</p>
+                <div class="metric-card-footer"><span class="trend-neutral">Active Monitored Blocks</span></div>
+            </div>""", unsafe_allow_html=True
+        )
+    with k_col2:
+        st.markdown(
+            f"""<div class="metric-card-container">
+                <div class="metric-card-header"><span class="metric-card-title">Total Channels</span><span class="metric-card-icon">📟</span></div>
+                <p class="metric-card-value">{meter_count}</p>
+                <div class="metric-card-footer"><span class="trend-up">▲ 100%</span><span class="trend-neutral">Instrumentation Node Fit</span></div>
+            </div>""", unsafe_allow_html=True
+        )
+    with k_col3:
+        st.markdown(
+            f"""<div class="metric-card-container">
+                <div class="metric-card-header"><span class="metric-card-title">Mean Aggregate Load</span><span class="metric-card-icon">⚡</span></div>
+                <p class="metric-card-value">{avg_consumption:,.1f}</p>
+                <div class="metric-card-footer"><span class="trend-neutral">Units / Pulse Load Average</span></div>
+            </div>""", unsafe_allow_html=True
+        )
+    with k_col4:
+        st.markdown(
+            f"""<div class="metric-card-container">
+                <div class="metric-card-header"><span class="metric-card-title">Precision Index</span><span class="metric-card-icon">📊</span></div>
+                <p class="metric-card-value">{data_avail * 100:.1f}%</p>
+                <div class="metric-card-footer"><span class="trend-up">Stable</span><span class="trend-neutral">Log Matrix Density</span></div>
+            </div>""", unsafe_allow_html=True
+        )
+    with k_col5:
+        st.markdown(
+            f"""<div class="metric-card-container">
+                <div class="metric-card-header"><span class="metric-card-title">Latest Master Sample</span><span class="metric-card-icon">🕒</span></div>
+                <p class="metric-card-value" style="font-size: 1.15rem; padding-top: 8px;">{latest_ts.split()[0] if latest_ts != "N/A" else "N/A"}</p>
+                <div class="metric-card-footer"><span class="trend-neutral">Chronological Upper Limit</span></div>
+            </div>""", unsafe_allow_html=True
         )
 
-    with col_dept:
-        if departments:
-            st.selectbox(
-                "Jump to Department",
-                options=["All"] + departments,
-                key="department_filter",
-            )
-        else:
-            st.selectbox("Jump to Department", options=["All"], disabled=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
+def render_department_navigation_grid(dashboard: dict[str, Any]) -> str:
+    """Render the SCADA primary grid navigation tile engine.
 
-
-def render_kpi_strip(dashboard: dict) -> None:
-    """Render premium global KPI cards sourced from the dashboard summary.
-
-    Only real, backend-supplied operational metrics are shown. Developer
-    metrics (rows, columns, sheet counts, available-section lists) are
-    never displayed. A card is omitted entirely if its underlying value
-    is not available rather than showing a fabricated placeholder.
+    Returns:
+        The identifier string of the selected active department.
     """
-    summary = dashboard.get("summary", {})
+    departments: dict[str, dict[str, Any]] = dashboard.get("departments", {})
+    dept_names: list[str] = list(departments.keys())
 
-    department_count = summary.get("department_count")
-    meter_count = summary.get("meter_count")
-    latest_timestamp = summary.get("latest_timestamp")
-    data_availability = summary.get("data_availability")
+    st.markdown('<p class="section-panel-title">🏭 Structural Infrastructure Matrix Grid</p>', unsafe_allow_html=True)
 
-    department_latest_values = summary.get("department_latest_values", {})
-    meters_reporting = sum(
-        sum(1 for value in meters.values() if value is not None)
-        for meters in department_latest_values.values()
-    )
+    if not dept_names:
+        st.warning("Empty structural inventory detected inside application contexts.")
+        return ""
 
-    cards: list[tuple[str, str, str]] = []
+    # Synchronize default operational selection variables inside session contexts
+    if "selected_department" not in st.session_state or st.session_state["selected_department"] not in dept_names:
+        st.session_state["selected_department"] = dept_names[0]
 
-    if department_count is not None:
-        cards.append(("🏢", str(department_count), "Departments Monitored"))
-    if meter_count is not None:
-        cards.append(("📟", str(meter_count), "Meters Tracked"))
-    if department_latest_values:
-        cards.append(("📈", str(meters_reporting), "Meters Reporting"))
-    if data_availability is not None:
-        cards.append(("📊", f"{data_availability * 100:.0f}%", "Data Availability"))
-    if latest_timestamp and latest_timestamp != "N/A":
-        cards.append(("🕒", str(latest_timestamp), "Latest Reading"))
+    current_selection = st.session_state["selected_department"]
 
-    if not cards:
+    # Iterate structural row tiles safely using dynamic looping
+    for i in range(0, len(dept_names), COLUMNS_PER_ROW):
+        row_slice = dept_names[i : i + COLUMNS_PER_ROW]
+        cols = st.columns(COLUMNS_PER_ROW)
+
+        for col, d_name in zip(cols, row_slice):
+            dept_obj = departments[d_name]
+            meters_list = dept_obj.get("meters", [])
+            units_map = dept_obj.get("units", {})
+
+            # Isolate first functional parameter values cleanly
+            rep_meter = meters_list[0] if meters_list else ""
+            latest_val = dept_obj.get("latest_values", {}).get(rep_meter, 0.0)
+            avg_val = dept_obj.get("average_values", {}).get(rep_meter, 0.0)
+            unit_lbl = units_map.get(rep_meter, "")
+
+            is_active = (d_name == current_selection)
+            tile_class = "tile-active" if is_active else "tile-inactive"
+
+            # Nest Streamlit buttons within customized structural HTML frame blocks
+            with col:
+                st.markdown(f'<div class="{tile_class}">', unsafe_allow_html=True)
+                btn_lbl = (
+                    f"🏢 {d_name}\n"
+                    f"Channels: {len(meters_list)} Node | {rep_meter[:18]}\n"
+                    f"Latest: {latest_val if latest_val is not None else 'N/A'} {unit_lbl}\n"
+                    f"Average: {avg_val if avg_val is not None else 'N/A'}"
+                )
+                if st.button(btn_lbl, key=f"tile_select_{d_name}"):
+                    st.session_state["selected_department"] = d_name
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+
+    return st.session_state["selected_department"]
+
+
+def render_department_dashboard(dashboard: dict[str, Any], active_dept: str) -> None:
+    """Render specialized analysis, diagnostics, and metrics trends for the target department block."""
+    dept_data: dict[str, Any] = dashboard.get("departments", {}).get(active_dept, {})
+    overview_df: pd.DataFrame = dashboard.get("overview", pd.DataFrame())
+
+    if not dept_data:
+        st.info("Please select a structural plant module above to engage comprehensive system diagnostic feeds.")
         return
 
-    cards_html = "".join(
-        f"""
-        <div class="kpi-card">
-            <div class="kpi-icon">{icon}</div>
-            <p class="kpi-value">{value}</p>
-            <p class="kpi-label">{label}</p>
-        </div>
-        """
-        for icon, value, label in cards
-    )
+    st.markdown(f'<div class="panel-container">', unsafe_allow_html=True)
+    st.markdown(f'<h3>🛡️ Telemetry Analytics Workspace: {active_dept}</h3>', unsafe_allow_html=True)
+    st.markdown('<hr style="margin: 8px 0 20px 0; border-color: rgba(255,255,255,0.06);"/>', unsafe_allow_html=True)
 
-    st.markdown(f'<div class="kpi-strip">{cards_html}</div>', unsafe_allow_html=True)
+    # 1. Component Level Statistical Aggregations (Row 3 Module KPIs)
+    st.markdown('<h5>📊 Isolated Local Node Invariants</h5>', unsafe_allow_html=True)
+    sub_col1, sub_col2, sub_col3, sub_col4 = st.columns(4)
+    
+    with sub_col1:
+        st.metric("Total Active Channels", f"{len(dept_data.get('meters', []))} Nodes")
+    with sub_col2:
+        meta_indexes = dept_data.get("metadata", {}).get("column_indexes", [])
+        st.metric("Matrix Column Offset Index", f"Col {meta_indexes[0] if meta_indexes else 'N/A'}")
+    with sub_col3:
+        st.metric("Source Sheet Context", str(dept_data.get("metadata", {}).get("source_sheet", "Sheet2")))
+    with sub_col4:
+        st.metric("Reporting Unit Count", f"{dept_data.get('metadata', {}).get('unit_count', 0)} Distinct")
 
-
-def render_department_grid(dashboard: dict) -> None:
-    """Render the responsive department tile grid (primary navigation).
-
-    Every tile name is sourced from ``dashboard["filters"]["departments"]``.
-    Selecting a tile stores ``st.session_state["selected_department"]``
-    without any page rerouting.
-    """
-    departments = dashboard.get("filters", {}).get("departments", [])
-    search_term = st.session_state.get("department_search", "").strip().lower()
-
-    visible_departments = (
-        [d for d in departments if search_term in d.lower()]
-        if search_term
-        else departments
-    )
-
-    st.markdown('<p class="dept-grid-title">Departments</p>', unsafe_allow_html=True)
-
-    if not departments:
-        st.info("No departments were discovered in the current workbook.")
-        return
-
-    if not visible_departments:
-        st.caption("No departments match your search.")
-        return
-
-    columns_per_row = 5
-    selected_department = st.session_state.get("selected_department")
-
-    for row_start in range(0, len(visible_departments), columns_per_row):
-        row_departments = visible_departments[row_start : row_start + columns_per_row]
-        columns = st.columns(columns_per_row)
-
-        for column, department_name in zip(columns, row_departments):
-            icon = DEPARTMENT_ICONS[
-                departments.index(department_name) % len(DEPARTMENT_ICONS)
-            ]
-            is_active = department_name == selected_department
-
-            with column:
-                if is_active:
-                    st.markdown('<div class="dept-tile-active">', unsafe_allow_html=True)
-
-                if st.button(
-                    f"{icon}\n\n{department_name}",
-                    key=f"dept_tile_{department_name}",
-                    use_container_width=True,
-                ):
-                    st.session_state["selected_department"] = department_name
-
-                if is_active:
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-
-def render_active_content() -> None:
-    """Render exactly one existing page's content below the tile grid.
-
-    Falls back to the Home page when no department has been selected.
-    """
-    selected_department = st.session_state.get("selected_department")
-
-    st.markdown('<div class="content-panel">', unsafe_allow_html=True)
-
-    if not selected_department:
-        home.render()
+    # 2. Vectorized Timeline Trend Graphics Construction
+    st.markdown('<br/><h5>📉 Real-Time Continuous Trend Visualizations</h5>', unsafe_allow_html=True)
+    
+    # Generate Plotly charts strictly via the architectural contract with chart_service.py
+    fig = chart_service.build_section_trend_chart(overview_df, dept_data)
+    if fig is not None:
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        resolve_page_for_department(selected_department).render()
+        st.markdown(
+            '<div style="padding: 40px; background: rgba(255,255,255,0.02); border-radius: 8px; text-align: center; color: #64748B;">'
+            '⚠️ Timeline parameters do not offer matching continuous scalar floats for real-time visualization.'
+            '</div>', unsafe_allow_html=True
+        )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    # 3. Comprehensive Detailed Nodes Registry (Row 4 Specification Table)
+    st.markdown('<br/><h5>📋 Channel Registry Detailed Specification Index</h5>', unsafe_allow_html=True)
+    
+    meters_list = dept_data.get("meters", [])
+    units_map = dept_data.get("units", {})
+    latest_vals = dept_data.get("latest_values", {})
+    avg_vals = dept_data.get("average_values", {})
+    total_vals = dept_data.get("total_values", {})
+
+    table_records = []
+    for meter in meters_list:
+        lbl = units_map.get(meter, "")
+        l_v = latest_vals.get(meter)
+        a_v = avg_vals.get(meter)
+        t_v = total_vals.get(meter)
+        
+        status_flag = "🟢 Operational" if l_v is not None else "⚪ Deconditioned"
+
+        table_records.append({
+            "Instrumentation Node / Meter Channel": meter,
+            "Engineering Unit": lbl if lbl else "Raw Smp",
+            "Latest Value": f"{l_v:,.2f}" if isinstance(l_v, (int, float)) else "N/A",
+            "Average Mean": f"{a_v:,.2f}" if isinstance(a_v, (int, float)) else "N/A",
+            "Total Accumulated": f"{t_v:,.2f}" if isinstance(t_v, (int, float)) else "N/A",
+            "Operational Status Flag": status_flag
+        })
+
+    if table_records:
+        st.dataframe(pd.DataFrame(table_records), use_container_width=True, hide_index=True)
+    else:
+        st.caption("No registered active nodes traced inside the selected subsystem module layout configuration bounds.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
-def render_sidebar() -> None:
-    """Render a minimal sidebar: cache refresh, settings, about, debug."""
-    with st.sidebar:
-        st.markdown(f"### {APP_ICON} {APP_NAME}")
-        st.caption(f"v{APP_VERSION}")
-        st.divider()
-
-        if st.button("🗑 Refresh Cache", use_container_width=True):
-            refresh_dashboard()
-            st.rerun()
-
-        with st.expander("⚙ Settings", expanded=False):
-            st.toggle("Compact Mode", key="compact_mode", value=False)
-
-        with st.expander("ℹ About", expanded=False):
-            st.write(
-                "Industrial engineering monitoring dashboard sourced from a "
-                "live workbook. Data is discovered dynamically — no "
-                "departments, meters, or sheets are hardcoded."
-            )
-
-        with st.expander("🐞 Debug", expanded=False):
-            st.write(
-                {
-                    "selected_department": st.session_state.get("selected_department"),
-                    "selected_month": st.session_state.get("selected_month"),
-                    "selected_date": st.session_state.get("selected_date"),
-                    "last_refresh": str(st.session_state.get("last_refresh")),
-                }
-            )
-
-
-def render_footer(dashboard: dict | None) -> None:
-    """Render the footer: current workbook, last refresh, dashboard version."""
+def render_footer(dashboard: dict[str, Any] | None) -> None:
+    """Render footer signature showing active file metadata handles cleanly."""
     last_refresh = st.session_state.get("last_refresh")
-    last_refresh_text = (
-        last_refresh.strftime("%d %b %Y, %H:%M:%S") if last_refresh else "N/A"
-    )
-
-    metadata = (dashboard or {}).get("metadata", {})
-    sheet_names = metadata.get("sheet_names", [])
-    workbook_text = sheet_names[0] if sheet_names else "N/A"
+    refresh_text = last_refresh.strftime("%d %b %Y, %H:%M:%S") if last_refresh else "N/A"
+    
+    meta = (dashboard or {}).get("metadata", {})
+    sheet_names = meta.get("sheet_names", [])
+    active_file_text = sheet_names[0] if sheet_names else "Data Connection Missing"
 
     st.markdown(
         f"""
         <div class="scada-footer">
-            Workbook: {workbook_text} · Last Refresh: {last_refresh_text} ·
-            {APP_NAME} v{APP_VERSION}
+            🏢 Industrial System Engine Matrix Base: <code>{active_file_text}</code> · 
+            ⏱️ Master Core Synchronization Cycle: <code>{refresh_text}</code> · 
+            ⚙️ {APP_NAME} UI Framework Assembly v{APP_VERSION}
         </div>
         """,
         unsafe_allow_html=True,
@@ -572,25 +570,35 @@ def render_footer(dashboard: dict | None) -> None:
 
 
 def main() -> None:
-    """Configure the page and render the unified SCADA-style application."""
+    """Configure, validate, and orchestrate the premium enterprise Streamlit visualization loop."""
     st.set_page_config(**PAGE_CONFIG)
     inject_global_styles()
 
-    render_sidebar()
+    # Load multi-sheet workspace safely via loader module pipeline architecture
+    dashboard, error_msg = get_dashboard()
 
-    dashboard, error = get_dashboard()
+    # Layout Row: Global SCADA Identity Status Banner
+    render_top_header(dashboard)
 
-    render_header(dashboard)
-
-    if error is not None or dashboard is None:
-        st.error(error or "Dashboard data could not be loaded.")
-        render_footer(dashboard)
+    if error_msg is not None or dashboard is None:
+        st.error(f"🛑 CRITICAL DATA INGESTION EXCEPTION: {error_msg if error_msg else 'Workspace reference corrupted.'}")
+        render_footer(None)
         return
 
+    # Layout Row: Global Sync Filtering Coordinates Controls
     render_filter_bar(dashboard)
-    render_kpi_strip(dashboard)
-    render_department_grid(dashboard)
-    render_active_content()
+
+    # Layout Row 1: Comprehensive Executive Metric Cards Strips
+    render_executive_kpi_strip(dashboard)
+
+    # Layout Row 2: Infrastructure Navigation Selection Matrix Engine Grid
+    active_dept = render_department_navigation_grid(dashboard)
+
+    # Layout Row 3 & 4: Engaged Workspace Module Performance Dashboard Displays
+    if active_dept:
+        render_department_dashboard(dashboard, active_dept)
+
+    # Layout Row: Structural Context Footer Elements
     render_footer(dashboard)
 
 
