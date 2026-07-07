@@ -28,6 +28,7 @@ from config import (
 import services.chart_service as chart_service
 import services.kpi_service as kpi_service
 from services.dashboard_loader import load_dashboard_safe
+from dashboard_data import select_representative_meter
 
 st.set_page_config(
     page_title=PAGE_CONFIG.get("page_title", APP_NAME),
@@ -459,13 +460,8 @@ def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
 
 
 def _get_representative_meter(dept_obj: dict[str, Any]) -> str:
-    """Safely select the first valid numeric column within a department context."""
-    meters = dept_obj.get("meters", [])
-    latest_values = dept_obj.get("latest_values", {})
-    for m in meters:
-        if isinstance(latest_values.get(m), (int, float)):
-            return m
-    return ""
+    """Safely select the representative meter using centralized business logic."""
+    return select_representative_meter(dept_obj)
 
 
 def render_department_grid(dashboard: dict[str, Any]) -> str:
