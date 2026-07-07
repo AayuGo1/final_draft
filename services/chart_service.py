@@ -27,7 +27,7 @@ from config import (
     THEME_TEXT_COLOR,
     THEME_WARNING_COLOR,
 )
-from dashboard_data import get_date_columns
+from dashboard_data import get_date_columns, select_representative_meter
 
 # Dark Theme Visualization Parameters
 DEFAULT_TEMPLATE: str = "plotly_dark"
@@ -159,7 +159,13 @@ def build_section_trend_data(
     if not isinstance(meters_df, pd.DataFrame) or meters_df.empty:
         return None
 
-    meter_col = find_first_numeric_column(meters_df)
+    # Use centralized representative meter selection
+    meter_col = select_representative_meter(section)
+    
+    # Fallback to previous logic if representative meter is empty or not in dataframe
+    if not meter_col or meter_col not in meters_df.columns:
+        meter_col = find_first_numeric_column(meters_df)
+        
     if meter_col is None:
         return None
 
