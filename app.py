@@ -481,12 +481,12 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
                 plot_df = df_block.reset_index()
                 x_col_name = "index"
 
-            fig_compare = chart_service.create_multi_line_chart(
-                dataframe=plot_df,
-                x_column=x_col_name,
-                y_columns=meters[:min(len(meters), 4)],
-                title="Parallel Operations Diagnostic Load Profiles"
+            fig_compare = chart_service.create_department_multi_line_chart(
+                overview_dataframe=overview_df,
+                section=dept_obj,
+                title="Parallel Operations Diagnostic Load Profiles",
             )
+            
             if fig_compare:
                 st.plotly_chart(fig_compare, use_container_width=True)
 
