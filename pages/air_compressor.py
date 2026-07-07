@@ -1,7 +1,7 @@
 """Air compressor monitoring page for the Engineering Monitoring Dashboard.
 
-Renders the real Air Compressor worksheet discovered dynamically from
-the workbook via ``services.page_service``, with KPI cards from
+Renders the real Air Compressor worksheet (``dashboard["air_compressor"]``)
+loaded via ``services.dashboard_loader``, with KPI cards from
 ``services.kpi_service``, a Plotly trend chart from
 ``services.chart_service``, and native Streamlit data tables. No KPI
 calculation or chart-building logic lives in this file.
@@ -15,7 +15,7 @@ import streamlit as st
 import ui
 from dashboard_data import get_date_columns
 from services import chart_service, kpi_service
-from services.page_service import load_dedicated_sheet
+from services.dashboard_loader import load_dashboard_safe
 
 AIR_COMPRESSOR_KEY: str = "air_compressor"
 """Dashboard data key used to locate the Air Compressor worksheet."""
@@ -152,11 +152,21 @@ def render() -> None:
         "Air compressor load, output, and efficiency tracking.",
     )
 
-    dataframe, section = load_dedicated_sheet(AIR_COMPRESSOR_KEY)
-    if dataframe is None:
+    with st.spinner("Loading air compressor data..."):
+        dashboard, error = load_dashboard_safe()
+
+    if error:
+        ui.render_error_banner(error)
         return
 
-    summary = kpi_service.build_kpi_summary(dataframe, section)
+    dataframe = dashboard.get(AIR_COMPRESSOR_KEY)
+    if dataframe is None or dataframe.empty:
+        ui.render_info_banner(
+            "No Air Compressor worksheet was found in the workbook."
+        )
+        return
+
+    summary = kpi_service.build_kpi_summary(dataframe)
 
     render_kpi_row(summary)
     render_status_section(summary)
