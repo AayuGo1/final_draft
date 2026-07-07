@@ -437,14 +437,14 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
             dept_obj = departments[d_name]
             meters = dept_obj.get("meters", [])
             
-           rep_m = _get_representative_meter(dept_obj)
+            rep_m = _get_representative_meter(dept_obj)
         
-           latest_value = dept_obj.get("latest_values", {}).get(rep_m) if rep_m else None
-           average_value = dept_obj.get("average_values", {}).get(rep_m) if rep_m else None
-           total_value = dept_obj.get("total_values", {}).get(rep_m) if rep_m else None
-           unit_label = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
+            latest_value = dept_obj.get("latest_values", {}).get(rep_m) if rep_m else None
+            average_value = dept_obj.get("average_values", {}).get(rep_m) if rep_m else None
+            total_value = dept_obj.get("total_values", {}).get(rep_m) if rep_m else None
+            unit_label = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
 
-           meter_count = len(dept_obj.get("meters", []))
+            meter_count = len(dept_obj.get("meters", []))
             
             is_active = (d_name == current_selection)
             active_class = "tile-active" if is_active else "tile-inactive"
