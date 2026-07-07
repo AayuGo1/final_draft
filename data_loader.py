@@ -68,7 +68,7 @@ def download_workbook(url: str = WORKBOOK_RAW_URL) -> BytesIO:
             f"GitHub returned status code {response.status_code} while "
             f"downloading the workbook from '{url}'."
         )
-        
+
     return BytesIO(response.content)
 
 
