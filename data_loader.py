@@ -68,9 +68,8 @@ def download_workbook(url: str = WORKBOOK_RAW_URL) -> BytesIO:
             f"GitHub returned status code {response.status_code} while "
             f"downloading the workbook from '{url}'."
         )
-
-    return
-    BytesIO(response.content)
+        
+    return BytesIO(response.content)
 
 
 @st.cache_resource(ttl=CACHE_TTL_SECONDS, show_spinner="Loading workbook...")
