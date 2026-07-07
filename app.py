@@ -437,23 +437,44 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
             dept_obj = departments[d_name]
             meters = dept_obj.get("meters", [])
             
-            rep_m = _get_representative_meter(dept_obj)
-            l_v = dept_obj.get("latest_values", {}).get(rep_m) if rep_m else None
-            u_lbl = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
-            avg_m = dept_obj.get("average_values", {}).get(rep_m, 0.0) if rep_m else 0.0
+           rep_m = _get_representative_meter(dept_obj)
+        
+           latest_value = dept_obj.get("latest_values", {}).get(rep_m) if rep_m else None
+           average_value = dept_obj.get("average_values", {}).get(rep_m) if rep_m else None
+           total_value = dept_obj.get("total_values", {}).get(rep_m) if rep_m else None
+           unit_label = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
+
+           meter_count = len(dept_obj.get("meters", []))
             
             is_active = (d_name == current_selection)
             active_class = "tile-active" if is_active else "tile-inactive"
 
-            val_display = f"{l_v:,.1f} {u_lbl}" if isinstance(l_v, (int, float)) else "N/A"
-            avg_display = f"{avg_m:,.1f}" if isinstance(avg_m, (int, float)) else "N/A"
+            latest_display = (
+                f"{latest_value:,.2f} {unit_label}"
+                if isinstance(latest_value, (int, float))
+                else "N/A"
+            )
+
+            average_display = (
+                f"{average_value:,.2f}"
+                if isinstance(average_value, (int, float))
+                else "N/A"
+            )
+
+            total_display = (
+                f"{total_value:,.2f}"
+                if isinstance(total_value, (int, float))
+                else "N/A"
+            )
 
             with col:
                 st.markdown(f'<div class="{active_class}">', unsafe_allow_html=True)
                 btn_txt = (
-                    f"🔷 {d_name}\n"
-                    f"Data Available | Nodes: {len(meters)}\n"
-                    f"Latest: {val_display} | Avg: {avg_display}"
+                    f"⚡ {d_name}\n"
+                    f"Latest : {latest_display}\n"
+                    f"Average: {average_display}\n"
+                    f"Total  : {total_display}\n"
+                    f"Meters : {meter_count}"
                 )
                 if st.button(btn_txt, key=f"nav_tile_{d_name}"):
                     st.session_state["selected_department"] = d_name
