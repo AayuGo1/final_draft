@@ -634,7 +634,6 @@ def main() -> None:
         render_footer(dashboard)
         return
 
-    render_executive_kpi_strip(dashboard)
     selected_dept = render_department_grid(dashboard)
     
     if selected_dept:
