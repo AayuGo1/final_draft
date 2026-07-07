@@ -168,6 +168,67 @@ def inject_global_styles() -> None:
                 margin: 16px 0 10px 2px;
             }}
 
+            .scada-asset-card {{
+                background: linear-gradient(145deg, rgba(30, 41, 59, 0.45), rgba(15, 23, 42, 0.85));
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 12px;
+                padding: 18px;
+                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+                transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+                min-height: 250px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                box-sizing: border-box;
+                margin-bottom: 16px;
+            }}
+
+            .scada-asset-card:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 10px 24px rgba(108, 99, 255, 0.15);
+                border-color: {THEME_PRIMARY_COLOR}55;
+            }}
+
+            .scada-asset-title {{
+                font-size: 1.05rem;
+                font-weight: 700;
+                color: #FAFAFA;
+                margin: 0 0 12px 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }}
+
+            .scada-asset-data-row {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin: 4px 0;
+                font-size: 0.82rem;
+            }}
+
+            .scada-asset-label {{
+                color: #94A3B8;
+                font-weight: 500;
+            }}
+
+            .scada-asset-value {{
+                color: #F8FAFC;
+                font-weight: 700;
+                text-align: right;
+                white-space: nowrap;
+            }}
+
+            .scada-asset-status {{
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 0.75rem;
+                color: #CBD5E1;
+                margin-top: 10px;
+                margin-bottom: 12px;
+            }}
+
             div[data-testid="stButton"] > button {{
                 width: 100%;
                 border-radius: 8px !important;
@@ -188,6 +249,20 @@ def inject_global_styles() -> None:
                 border-color: {THEME_PRIMARY_COLOR} !important;
                 background: linear-gradient(145deg, rgba(108, 99, 255, 0.15), rgba(15, 23, 42, 0.85)) !important;
                 box-shadow: 0 4px 12px rgba(108, 99, 255, 0.18) !important;
+            }}
+
+            .scada-action-btn > div[data-testid="stButton"] > button {{
+                text-align: center !important;
+                background: linear-gradient(145deg, {THEME_PRIMARY_COLOR}22, rgba(15, 23, 42, 0.8)) !important;
+                border: 1px solid rgba(108, 99, 255, 0.2) !important;
+                font-weight: 600 !important;
+                color: #E2E8F0 !important;
+            }}
+
+            .scada-action-btn > div[data-testid="stButton"] > button:hover {{
+                background: linear-gradient(145deg, {THEME_PRIMARY_COLOR}44, rgba(15, 23, 42, 0.9)) !important;
+                border-color: {THEME_PRIMARY_COLOR} !important;
+                color: #FAFAFA !important;
             }}
 
             .tile-dept-name {{
@@ -394,7 +469,7 @@ def _get_representative_meter(dept_obj: dict[str, Any]) -> str:
 
 
 def render_department_grid(dashboard: dict[str, Any]) -> str:
-    """Render specialized structural matrix navigation system grids."""
+    """Render specialized structural matrix navigation system grids with modern SCADA-style cards."""
     departments: dict[str, dict[str, Any]] = dashboard.get("departments", {})
 
     critical_assets = [
@@ -407,91 +482,79 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
         "GG",
     ]
 
-    dept_names = [
-        name
-        for name in critical_assets
-        if name in departments
-    ]
+    dept_names = [name for name in critical_assets if name in departments]
 
-    st.markdown(
-        '<p class="section-panel-title">🏭 Critical Plant Assets</p>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<p class="section-panel-title">🏭 Critical Plant Assets</p>', unsafe_allow_html=True)
 
     if not dept_names:
         return ""
 
-    if (
-        "selected_department" not in st.session_state
-        or st.session_state["selected_department"] not in dept_names
-    ):
+    if "selected_department" not in st.session_state or st.session_state["selected_department"] not in dept_names:
         st.session_state["selected_department"] = dept_names[0]
     current_selection = st.session_state["selected_department"]
-    total_depts = len(dept_names)
 
-    for i in range(0, total_depts, GRID_COLUMNS):
-        row_slice = dept_names[i : i + GRID_COLUMNS]
+    # Desktop Layout Optimization splitting rows exactly 4 then 3 dynamically
+    first_row = dept_names[0:4]
+    second_row = dept_names[4:7]
+
+    for row_slice in (first_row, second_row):
+        if not row_slice:
+            continue
         cols = st.columns(len(row_slice)) if len(row_slice) < GRID_COLUMNS else st.columns(GRID_COLUMNS)
 
         for col, d_name in zip(cols, row_slice):
             dept_obj = departments[d_name]
             meters = dept_obj.get("meters", [])
-            
             rep_m = _get_representative_meter(dept_obj)
-        
+            
             latest_value = dept_obj.get("latest_values", {}).get(rep_m) if rep_m else None
             average_value = dept_obj.get("average_values", {}).get(rep_m) if rep_m else None
             total_value = dept_obj.get("total_values", {}).get(rep_m) if rep_m else None
             unit_label = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
 
-            meter_count = len(dept_obj.get("meters", []))
-            
+            meter_count = len(meters)
             is_active = (d_name == current_selection)
-            active_class = "tile-active" if is_active else "tile-inactive"
 
-            latest_display = (
-                f"{latest_value:,.2f} {unit_label}"
-                if isinstance(latest_value, (int, float))
-                else "N/A"
-            )
+            latest_display = f"{latest_value:,.2f} {unit_label}".strip() if isinstance(latest_value, (int, float)) else "N/A"
+            average_display = f"{average_value:,.2f}" if isinstance(average_value, (int, float)) else "N/A"
+            total_display = f"{total_value:,.2f}" if isinstance(total_value, (int, float)) else "N/A"
 
-            average_display = (
-                f"{average_value:,.2f}"
-                if isinstance(average_value, (int, float))
-                else "N/A"
-            )
+            # Nest the Streamlit button cleanly INSIDE the asset card layout framework
+            with col:
+                st.markdown(
+                    f"""
+                    <div class="scada-asset-card" style="border-color: {THEME_PRIMARY_COLOR if is_active else 'rgba(255,255,255,0.06)'}; margin-bottom: 0px;">
+                        <div>
+                            <div class="scada-asset-title">⚡ {d_name}</div>
+                            <div class="scada-asset-data-row">
+                                <span class="scada-asset-label">Latest</span>
+                                <span class="scada-asset-value">{latest_display}</span>
+                            </div>
+                            <div class="scada-asset-data-row">
+                                <span class="scada-asset-label">Average</span>
+                                <span class="scada-asset-value">{average_display}</span>
+                            </div>
+                            <div class="scada-asset-data-row">
+                                <span class="scada-asset-label">Total</span>
+                                <span class="scada-asset-value">{total_display}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="scada-asset-status" style="margin-bottom: 0px;">
+                                <span class="status-dot" style="background: {THEME_SUCCESS_COLOR};"></span>
+                                Meters : {meter_count}
+                            </div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                st.markdown('<div class="scada-action-btn" style="margin-top: -12px; margin-bottom: 16px;">', unsafe_allow_html=True)
+                if st.button("Open Dashboard", key=f"nav_tile_{d_name}"):
+                    st.session_state["selected_department"] = d_name
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
 
-            total_display = (
-                f"{total_value:,.2f}"
-                if isinstance(total_value, (int, float))
-                else "N/A"
-            )
-    with col:
-        with st.container(border=True):
-
-            st.markdown(f"### ⚡ {d_name}")
-
-            st.metric(
-                label="Latest",
-                value=latest_display,
-            )
- 
-            st.metric(
-                label="Average",
-                value=average_display,
-            )
-
-            st.metric(
-                label="Total",
-                value=total_display,
-            )
-
-            st.caption(f"Meters : {meter_count}")
-
-            if st.button("Open Dashboard", key=f"nav_tile_{d_name}"):
-                st.session_state["selected_department"] = d_name
-                st.rerun()
-        
     return st.session_state["selected_department"]
 
 
@@ -523,16 +586,7 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
 
         if len(meters) > 1:
             st.markdown("<br/>##### 📊 Multi-Variable Process Cross-Channel Analysis", unsafe_allow_html=True)
-            date_cols = get_date_columns(overview_df)
-            if date_cols and overview_df.shape[0] > 3:
-                dates_axis = overview_df.iloc[3:, date_cols[0]].reset_index(drop=True)
-                plot_df = df_block.copy().reset_index(drop=True)
-                plot_df["DateAxis"] = dates_axis[:len(plot_df)]
-                x_col_name = "DateAxis"
-            else:
-                plot_df = df_block.reset_index()
-                x_col_name = "index"
-
+            
             fig_compare = chart_service.create_department_multi_line_chart(
                 overview_dataframe=overview_df,
                 section=dept_obj,
