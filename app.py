@@ -467,30 +467,30 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
                 else "N/A"
             )
     with col:
-    with st.container(border=True):
+        with st.container(border=True):
 
-        st.markdown(f"### ⚡ {d_name}")
+            st.markdown(f"### ⚡ {d_name}")
 
-        st.metric(
-            label="Latest",
-            value=latest_display,
-        )
+            st.metric(
+                label="Latest",
+                value=latest_display,
+            )
+ 
+            st.metric(
+                label="Average",
+                value=average_display,
+            )
 
-        st.metric(
-            label="Average",
-            value=average_display,
-        )
+            st.metric(
+                label="Total",
+                value=total_display,
+            )
 
-        st.metric(
-            label="Total",
-            value=total_display,
-        )
+            st.caption(f"Meters : {meter_count}")
 
-        st.caption(f"Meters : {meter_count}")
-
-        if st.button("Open Dashboard", key=f"nav_tile_{d_name}"):
-            st.session_state["selected_department"] = d_name
-            st.rerun()
+            if st.button("Open Dashboard", key=f"nav_tile_{d_name}"):
+                st.session_state["selected_department"] = d_name
+                st.rerun()
         
     return st.session_state["selected_department"]
 
