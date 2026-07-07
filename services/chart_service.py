@@ -348,7 +348,7 @@ def create_line_chart(
     return apply_default_layout(
         figure,
         title=title,
-        x_label=x_label or x_column,
+        x_label=str(x_label) if x_label is not None else str(x_column),
         y_label=y_label or y_column,
     )
 
@@ -433,7 +433,7 @@ def create_bar_chart(
     return apply_default_layout(
         figure,
         title=title,
-        x_label=x_label or x_column,
+        x_label=str(x_label) if x_label is not None else str(x_column),
         y_label=y_label or default_y_label,
     )
 
@@ -478,7 +478,7 @@ def create_area_chart(
     return apply_default_layout(
         figure,
         title=title,
-        x_label=x_label or x_column,
+        x_label=str(x_label) if x_label is not None else str(x_column),
         y_label=y_label or default_y_label,
     )
 
@@ -516,7 +516,7 @@ def create_scatter_chart(
     return apply_default_layout(
         figure,
         title=title,
-        x_label=x_label or x_column,
+        x_label=str(x_label) if x_label is not None else str(x_column),
         y_label=y_label or y_column,
     )
 
@@ -552,6 +552,6 @@ def create_histogram(
     return apply_default_layout(
         figure,
         title=title,
-        x_label=x_label or x_column,
+        x_label=str(x_label) if x_label is not None else str(x_column),
         y_label=y_label or "Count",
     )
