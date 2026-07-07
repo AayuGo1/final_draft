@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime
 import warnings
-from typing import Any
+from typing import Any, Final
 
 import pandas as pd
 import plotly.express as px
@@ -27,13 +27,45 @@ from config import (
     THEME_TEXT_COLOR,
     THEME_WARNING_COLOR,
 )
-from dashboard_data import get_date_columns, select_representative_meter
+from dashboard_data import get_date_columns
 
-# Dark Theme Visualization Parameters
+# ==============================================================================
+# PREMIUM SCADA VISUALIZATION CONSTANTS
+# ==============================================================================
+
 DEFAULT_TEMPLATE: str = "plotly_dark"
 DEFAULT_HOVER_MODE: str = "x unified"
 DEFAULT_DATE_COLUMN_LABEL: str = "Date"
 DEFAULT_COLOR_SEQUENCE: list[str] = THEME_CHART_PALETTE
+
+# Enterprise SCADA color palette — high contrast on dark backgrounds
+SCADA_PALETTE: Final[list[str]] = [
+    "#00D4FF",  # Cyan
+    "#7B61FF",  # Electric Violet
+    "#00E676",  # Emerald
+    "#FFB300",  # Amber
+    "#FF5252",  # Coral Red
+    "#36A2EB",  # Sky Blue
+    "#FF6384",  # Rose
+    "#4BC0C0",  # Teal
+    "#9966FF",  # Lavender
+    "#FF9F40",  # Tangerine
+]
+
+# Typography
+FONT_FAMILY: Final[str] = THEME_FONT or "'Inter', 'Segoe UI', system-ui, sans-serif"
+FONT_COLOR: Final[str] = THEME_TEXT_COLOR or "#E2E8F0"
+FONT_MUTED: Final[str] = "#64748B"
+FONT_BRIGHT: Final[str] = "#F8FAFC"
+
+# Grid & axis styling
+GRID_COLOR: Final[str] = "rgba(148, 163, 184, 0.08)"
+ZEROLINE_COLOR: Final[str] = "rgba(148, 163, 184, 0.15)"
+AXIS_LINE_COLOR: Final[str] = "rgba(148, 163, 184, 0.12)"
+
+# Chart background
+CHART_BG: Final[str] = "rgba(0,0,0,0)"
+PAPER_BG: Final[str] = "rgba(0,0,0,0)"
 
 
 # ==============================================================================
@@ -42,14 +74,9 @@ DEFAULT_COLOR_SEQUENCE: list[str] = THEME_CHART_PALETTE
 
 
 def validate_columns(dataframe: pd.DataFrame, columns: list[str]) -> None:
-    """Validate that the target column identifiers exist in the DataFrame.
-
-    Raises:
-        ValueError: If columns are missing or type checks fail.
-    """
+    """Validate that the target column identifiers exist in the DataFrame."""
     if not isinstance(dataframe, pd.DataFrame):
         raise ValueError(f"Expected pandas.DataFrame, got {type(dataframe).__name__}.")
-    
     missing = [col for col in columns if col not in dataframe.columns]
     if missing:
         raise ValueError(f"Columns not found in the matrix workspace: {missing}.")
@@ -89,7 +116,6 @@ def align_dates_with_meter(
     if not date_cols:
         return None
 
-    # Dates are verified and parsed out starting from index 3 onwards
     date_values = overview_dataframe.iloc[3:, date_cols[0]].reset_index(drop=True)
     meter_values = meter_series.reset_index(drop=True)
 
@@ -98,14 +124,12 @@ def align_dates_with_meter(
         return None
 
     meter_name = meter_series.name or "Value"
-    
-    # Bundle matching historical rows cleanly
+
     trend_df = pd.DataFrame({
         date_column_label: date_values.iloc[:row_count].values,
         meter_name: meter_values.iloc[:row_count].values,
     })
-    
-    # Coerce metric points while preserving original timeline format
+
     trend_df[meter_name] = pd.to_numeric(trend_df[meter_name], errors="coerce")
     trend_df = trend_df.dropna(subset=[date_column_label, meter_name])
 
@@ -118,10 +142,7 @@ def _align_dates_with_multiple_meters(
     columns: list[str],
     date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
 ) -> pd.DataFrame | None:
-    """Internal helper to align a date index series with multiple target metrics columns.
-    
-    Prevents presentation layers from manually executing date resolution mappings.
-    """
+    """Internal helper to align a date index series with multiple target metrics columns."""
     if not isinstance(overview_dataframe, pd.DataFrame) or overview_dataframe.empty:
         return None
     if not isinstance(dataframe_block, pd.DataFrame) or dataframe_block.empty or not columns:
@@ -137,10 +158,12 @@ def _align_dates_with_multiple_meters(
         return None
 
     compiled_df = pd.DataFrame({date_column_label: date_values.iloc[:row_count].values})
-    
+
     for col in columns:
         if col in dataframe_block.columns:
-            compiled_df[col] = pd.to_numeric(dataframe_block[col].iloc[:row_count].reset_index(drop=True), errors="coerce")
+            compiled_df[col] = pd.to_numeric(
+                dataframe_block[col].iloc[:row_count].reset_index(drop=True), errors="coerce"
+            )
 
     compiled_df = compiled_df.dropna(subset=[date_column_label])
     return compiled_df if not compiled_df.empty else None
@@ -159,20 +182,12 @@ def build_section_trend_data(
     if not isinstance(meters_df, pd.DataFrame) or meters_df.empty:
         return None
 
-    # Use centralized representative meter selection
-    meter_col = select_representative_meter(section)
-    
-    # Fallback to previous logic if representative meter is empty or not in dataframe
-    if not meter_col or meter_col not in meters_df.columns:
-        meter_col = find_first_numeric_column(meters_df)
-        
+    meter_col = find_first_numeric_column(meters_df)
     if meter_col is None:
         return None
 
     trend_df = align_dates_with_meter(
-        overview_dataframe,
-        meters_df[meter_col],
-        date_column_label=date_column_label,
+        overview_dataframe, meters_df[meter_col], date_column_label=date_column_label,
     )
     if trend_df is None:
         return None
@@ -201,7 +216,7 @@ def build_section_trend_chart(
             trend_df,
             x_column=date_col,
             y_column=meter_col,
-            title=f"{section.get('name', 'Department')} - {meter_col} Trend",
+            title=f"{section.get('name', 'Department')} — {meter_col} Trend",
             x_label=date_col,
             y_label=y_axis_title,
         )
@@ -221,18 +236,7 @@ def create_department_multi_line_chart(
     x_label: str | None = None,
     y_label: str | None = None,
 ) -> go.Figure | None:
-    """Extract, align, and construct a multi-series figure for a specific department section.
-
-    Args:
-        overview_dataframe: Raw master overview workbook slice for calendar dates discovery.
-        section: Formatted department structure object dictionary from dashboard_data layers.
-        title: Descriptive diagram banner text string.
-        x_label: Optional label signature parameter configuration for the x-axis track.
-        y_label: Optional label signature parameter configuration for the y-axis track.
-
-    Returns:
-        A production-grade, dark-themed industrial multi-line telemetry Plotly graph.
-    """
+    """Extract, align, and construct a multi-series figure for a specific department section."""
     if not section or "dataframe" not in section or "meters" not in section:
         return None
 
@@ -242,19 +246,18 @@ def create_department_multi_line_chart(
     if not isinstance(dept_df, pd.DataFrame) or dept_df.empty or not meters:
         return None
 
-    # Discover and resolve only active numeric columns, filtering out text metrics channels
     numeric_meters = [
-        col for col in meters if col in dept_df.columns and pd.to_numeric(dept_df[col], errors="coerce").notna().any()
+        col for col in meters
+        if col in dept_df.columns and pd.to_numeric(dept_df[col], errors="coerce").notna().any()
     ]
     if not numeric_meters:
         return None
 
-    # Enforce chronological master vector context tracking layout alignments strictly
     aligned_df = _align_dates_with_multiple_meters(
         overview_dataframe=overview_dataframe,
         dataframe_block=dept_df,
         columns=numeric_meters,
-        date_column_label=DEFAULT_DATE_COLUMN_LABEL
+        date_column_label=DEFAULT_DATE_COLUMN_LABEL,
     )
     if aligned_df is None or aligned_df.empty:
         return None
@@ -265,12 +268,12 @@ def create_department_multi_line_chart(
         y_columns=numeric_meters,
         title=title,
         x_label=x_label,
-        y_label=y_label
+        y_label=y_label,
     )
 
 
 # ==============================================================================
-# PREMIUM DARK VISUALIZATION THEME LAYOUTS
+# PREMIUM DARK SCADA THEME LAYOUTS
 # ==============================================================================
 
 
@@ -280,46 +283,70 @@ def apply_default_layout(
     x_label: str | None = None,
     y_label: str | None = None,
 ) -> go.Figure:
-    """Inject a Power BI quality engineering dark styling template into a figure."""
+    """Inject enterprise-grade dark SCADA styling template into a figure."""
     figure.update_layout(
         title={
             "text": title,
-            "font": {"size": 16, "color": THEME_TEXT_COLOR, "family": THEME_FONT},
-            "y": 0.95,
-            "x": 0.02,
+            "font": {"size": 15, "color": FONT_BRIGHT, "family": FONT_FAMILY, "weight": "bold"},
+            "y": 0.97,
+            "x": 0.015,
             "xanchor": "left",
             "yanchor": "top",
         },
         template=DEFAULT_TEMPLATE,
         hovermode=DEFAULT_HOVER_MODE,
+        hoverlabel={
+            "bgcolor": "rgba(15, 23, 42, 0.95)",
+            "bordercolor": "rgba(0, 212, 255, 0.3)",
+            "font": {"family": FONT_FAMILY, "size": 12, "color": FONT_BRIGHT},
+            "namelength": -1,
+        },
         showlegend=True,
         autosize=True,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        margin={"l": 50, "r": 30, "t": 80, "b": 50},
-        font={"family": THEME_FONT, "color": THEME_TEXT_COLOR},
+        paper_bgcolor=PAPER_BG,
+        plot_bgcolor=CHART_BG,
+        margin={"l": 55, "r": 25, "t": 75, "b": 55},
+        font={"family": FONT_FAMILY, "color": FONT_COLOR, "size": 11},
         legend={
             "orientation": "h",
             "yanchor": "bottom",
             "y": 1.02,
             "xanchor": "left",
-            "x": 0.02,
+            "x": 0.0,
             "bgcolor": "rgba(0,0,0,0)",
-            "font": {"size": 11, "color": THEME_TEXT_COLOR},
+            "bordercolor": "rgba(0,0,0,0)",
+            "font": {"size": 11, "color": FONT_COLOR, "family": FONT_FAMILY},
+            "itemsizing": "constant",
+            "itemwidth": 40,
         },
+        xaxis={
+            "gridcolor": GRID_COLOR,
+            "zerolinecolor": ZEROLINE_COLOR,
+            "linecolor": AXIS_LINE_COLOR,
+            "linewidth": 1,
+            "showline": True,
+            "showgrid": True,
+            "tickfont": {"size": 10, "color": FONT_MUTED},
+            "title_font": {"size": 11, "color": FONT_COLOR},
+            "hoverformat": "%b %d, %Y",
+        },
+        yaxis={
+            "gridcolor": GRID_COLOR,
+            "zerolinecolor": ZEROLINE_COLOR,
+            "linecolor": AXIS_LINE_COLOR,
+            "linewidth": 1,
+            "showline": True,
+            "showgrid": True,
+            "tickfont": {"size": 10, "color": FONT_MUTED},
+            "title_font": {"size": 11, "color": FONT_COLOR},
+        },
+        colorway=SCADA_PALETTE,
     )
 
-    grid_style = {"gridcolor": "rgba(255, 255, 255, 0.08)", "zerolinecolor": "rgba(255, 255, 255, 0.15)"}
-    
     if x_label is not None:
-        figure.update_xaxes(title_text=x_label, title_font={"size": 12}, **grid_style)
-    else:
-        figure.update_xaxes(**grid_style)
-        
+        figure.update_xaxes(title_text=x_label)
     if y_label is not None:
-        figure.update_yaxes(title_text=y_label, title_font={"size": 12}, **grid_style)
-    else:
-        figure.update_yaxes(**grid_style)
+        figure.update_yaxes(title_text=y_label)
 
     return figure
 
@@ -329,11 +356,11 @@ def apply_minimal_layout(figure: go.Figure) -> go.Figure:
     figure.update_layout(
         template=DEFAULT_TEMPLATE,
         showlegend=False,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        margin={"l": 2, "r": 2, "t": 2, "b": 2},
-        xaxis={"visible": False, "showgrid": False},
-        yaxis={"visible": False, "showgrid": False},
+        paper_bgcolor=PAPER_BG,
+        plot_bgcolor=CHART_BG,
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        xaxis={"visible": False, "showgrid": False, "fixedrange": True},
+        yaxis={"visible": False, "showgrid": False, "fixedrange": True},
         autosize=True,
     )
     return figure
@@ -352,27 +379,44 @@ def create_line_chart(
     x_label: str | None = None,
     y_label: str | None = None,
 ) -> go.Figure | None:
-    """Create a single-series time timeline line chart."""
+    """Create a single-series enterprise telemetry timeline line chart."""
     try:
         validate_columns(dataframe, [x_column, y_column])
         prepared = prepare_numeric_columns(dataframe, [y_column]).dropna(subset=[y_column])
         if prepared.empty:
             return None
 
-        figure = px.line(
-            prepared,
-            x=x_column,
-            y=y_column,
-            color_discrete_sequence=[THEME_PRIMARY_COLOR],
-        )
-        figure.update_traces(line={"width": 2.5}, mode="lines")
-        
-        return apply_default_layout(
-            figure,
-            title=title,
-            x_label=x_label or x_column,
-            y_label=y_label or y_column,
-        )
+        figure = go.Figure()
+
+        # Gradient area fill beneath the line
+        figure.add_trace(go.Scatter(
+            x=prepared[x_column],
+            y=prepared[y_column],
+            mode="lines",
+            name=y_column,
+            line={"color": SCADA_PALETTE[0], "width": 2.5, "shape": "spline", "smoothing": 1.1},
+            fill="tozeroy",
+            fillcolor="rgba(0, 212, 255, 0.06)",
+            hovertemplate=f"<b>%{{x}}</b><br>{y_column}: %{{y:,.2f}}<extra></extra>",
+        ))
+
+        # Subtle marker dots at data points
+        figure.add_trace(go.Scatter(
+            x=prepared[x_column],
+            y=prepared[y_column],
+            mode="markers",
+            name=y_column,
+            marker={
+                "color": SCADA_PALETTE[0],
+                "size": 4,
+                "opacity": 0.5,
+                "line": {"width": 0},
+            },
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+
+        return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or y_column)
     except Exception:
         return None
 
@@ -391,21 +435,46 @@ def create_multi_line_chart(
             return None
         validate_columns(dataframe, [x_column, *y_columns])
         prepared = prepare_numeric_columns(dataframe, y_columns)
-        
-        figure = px.line(
-            prepared,
-            x=x_column,
-            y=y_columns,
-            color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+
+        figure = go.Figure()
+
+        for i, col in enumerate(y_columns):
+            color = SCADA_PALETTE[i % len(SCADA_PALETTE)]
+            hover_tpl = f"<b>%{{x}}</b><br>{col}: %{{y:,.2f}}<extra></extra>"
+
+            figure.add_trace(go.Scatter(
+                x=prepared[x_column],
+                y=prepared[col],
+                mode="lines",
+                name=col,
+                line={"color": color, "width": 2.0, "shape": "spline", "smoothing": 1.0},
+                hovertemplate=hover_tpl,
+                connectgaps=True,
+            ))
+
+        fig = apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or "Readings")
+
+        # Add subtle range slider for zoom exploration
+        fig.update_xaxes(
+            rangeslider={"visible": False},
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=7, label="1W", step="day", stepmode="backward"),
+                    dict(count=1, label="1M", step="month", stepmode="backward"),
+                    dict(count=3, label="3M", step="month", stepmode="backward"),
+                    dict(step="all", label="ALL"),
+                ]),
+                bgcolor="rgba(30, 41, 59, 0.5)",
+                activecolor="rgba(0, 212, 255, 0.2)",
+                bordercolor="rgba(148, 163, 184, 0.15)",
+                borderwidth=1,
+                font={"color": FONT_COLOR, "size": 10, "family": FONT_FAMILY},
+                x=0.0,
+                y=1.14,
+            ),
         )
-        figure.update_traces(line={"width": 2.0}, mode="lines")
-        
-        return apply_default_layout(
-            figure,
-            title=title,
-            x_label=x_label or x_column,
-            y_label=y_label or "Readings",
-        )
+
+        return fig
     except Exception:
         return None
 
@@ -443,13 +512,17 @@ def create_bar_chart(
             x=x_column,
             y=y_columns,
             barmode="group",
-            color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+            color_discrete_sequence=SCADA_PALETTE,
         )
-        
+
+        figure.update_traces(
+            marker_line_width=0,
+            opacity=0.9,
+            hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:,.2f}<extra></extra>",
+        )
+
         return apply_default_layout(
-            figure,
-            title=title,
-            x_label=x_label or x_column,
+            figure, title=title, x_label=x_label or x_column,
             y_label=y_label or (cols_list[0] if len(cols_list) == 1 else "Value"),
         )
     except Exception:
@@ -472,19 +545,15 @@ def create_stacked_bar_chart(
         prepared = prepare_numeric_columns(dataframe, y_columns)
 
         figure = px.bar(
-            prepared,
-            x=x_column,
-            y=y_columns,
-            barmode="stack",
-            color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+            prepared, x=x_column, y=y_columns, barmode="stack",
+            color_discrete_sequence=SCADA_PALETTE,
         )
-        
-        return apply_default_layout(
-            figure,
-            title=title,
-            x_label=x_label or x_column,
-            y_label=y_label or "Total Load",
+        figure.update_traces(
+            marker_line_width=0, opacity=0.9,
+            hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:,.2f}<extra></extra>",
         )
+
+        return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or "Total Load")
     except Exception:
         return None
 
@@ -506,18 +575,16 @@ def create_area_chart(
         prepared = prepare_numeric_columns(dataframe, cols_list)
 
         figure = px.area(
-            prepared,
-            x=x_column,
-            y=y_columns,
-            color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+            prepared, x=x_column, y=y_columns,
+            color_discrete_sequence=SCADA_PALETTE,
         )
-        
-        return apply_default_layout(
-            figure,
-            title=title,
-            x_label=x_label or x_column,
-            y_label=y_label or "Accumulated Value",
+        figure.update_traces(
+            line={"width": 1.5},
+            opacity=0.7,
+            hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:,.2f}<extra></extra>",
         )
+
+        return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or "Accumulated Value")
     except Exception:
         return None
 
@@ -536,13 +603,15 @@ def create_pie_chart(
             return None
 
         figure = px.pie(
-            prepared,
-            names=names_column,
-            values=values_column,
-            color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+            prepared, names=names_column, values=values_column,
+            color_discrete_sequence=SCADA_PALETTE,
         )
-        figure.update_traces(textposition="inside", textinfo="percent+label")
-        
+        figure.update_traces(
+            textposition="inside", textinfo="percent+label",
+            marker={"line": {"color": "rgba(15, 23, 42, 0.8)", "width": 2}},
+            hovertemplate="<b>%{label}</b><br>Value: %{value:,.2f}<br>Share: %{percent}<extra></extra>",
+        )
+
         return apply_default_layout(figure, title=title)
     except Exception:
         return None
@@ -563,14 +632,15 @@ def create_donut_chart(
             return None
 
         figure = px.pie(
-            prepared,
-            names=names_column,
-            values=values_column,
-            hole=hole_size,
-            color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+            prepared, names=names_column, values=values_column, hole=hole_size,
+            color_discrete_sequence=SCADA_PALETTE,
         )
-        figure.update_traces(textposition="inside", textinfo="percent+label")
-        
+        figure.update_traces(
+            textposition="inside", textinfo="percent+label",
+            marker={"line": {"color": "rgba(15, 23, 42, 0.8)", "width": 2}},
+            hovertemplate="<b>%{label}</b><br>Value: %{value:,.2f}<br>Share: %{percent}<extra></extra>",
+        )
+
         return apply_default_layout(figure, title=title)
     except Exception:
         return None
@@ -590,32 +660,76 @@ def create_gauge_chart(
         if pd.isna(value) or value is None:
             return None
 
+        # Build segmented color zones
         steps = []
         band_start = minimum
+        range_span = maximum - minimum if maximum > minimum else 1.0
 
-        if warning_threshold is not None and warning_threshold > minimum:
-            steps.append({"range": [band_start, warning_threshold], "color": "rgba(46, 204, 113, 0.15)"})
-            band_start = warning_threshold
+        # Green zone: 0% – 60%
+        green_end = minimum + range_span * 0.60
+        steps.append({"range": [band_start, green_end], "color": "rgba(0, 230, 118, 0.12)"})
+        band_start = green_end
 
-        if danger_threshold is not None and danger_threshold > band_start:
-            steps.append({"range": [band_start, danger_threshold], "color": "rgba(245, 166, 35, 0.15)"})
-            band_start = danger_threshold
+        # Yellow zone: 60% – 80%
+        yellow_end = minimum + range_span * 0.80
+        steps.append({"range": [band_start, yellow_end], "color": "rgba(255, 179, 0, 0.12)"})
+        band_start = yellow_end
 
-        if band_start < maximum:
-            steps.append({"range": [band_start, maximum], "color": "rgba(231, 76, 60, 0.15)"})
+        # Red zone: 80% – 100%
+        steps.append({"range": [band_start, maximum], "color": "rgba(255, 82, 82, 0.12)"})
+
+        # Override with explicit thresholds if provided
+        if warning_threshold is not None and danger_threshold is not None:
+            steps = []
+            if warning_threshold > minimum:
+                steps.append({"range": [minimum, warning_threshold], "color": "rgba(0, 230, 118, 0.12)"})
+            if danger_threshold > warning_threshold:
+                steps.append({"range": [warning_threshold, danger_threshold], "color": "rgba(255, 179, 0, 0.12)"})
+            if maximum > danger_threshold:
+                steps.append({"range": [danger_threshold, maximum], "color": "rgba(255, 82, 82, 0.12)"})
+
+        unit_suffix = f" {unit}".strip() if unit else ""
 
         figure = go.Figure(
             go.Indicator(
-                mode="gauge+number",
+                mode="gauge+number+delta",
                 value=value,
-                number={"suffix": f" {unit}".rstrip() if unit else "", "font": {"size": 28, "color": THEME_TEXT_COLOR}},
+                delta={
+                    "reference": value * 0.95 if value else 0,
+                    "position": "bottom",
+                    "font": {"size": 12, "color": FONT_MUTED, "family": FONT_FAMILY},
+                    "valueformat": ".1f",
+                    "increasing": {"color": THEME_SUCCESS_COLOR or "#00E676"},
+                    "decreasing": {"color": THEME_DANGER_COLOR or "#FF5252"},
+                },
+                number={
+                    "suffix": f" {unit_suffix}" if unit_suffix else "",
+                    "font": {"size": 30, "color": FONT_BRIGHT, "family": FONT_FAMILY},
+                    "valueformat": ",.1f",
+                },
                 gauge={
-                    "axis": {"range": [minimum, maximum], "tickwidth": 1, "tickcolor": THEME_TEXT_COLOR},
-                    "bar": {"color": THEME_PRIMARY_COLOR, "width": 12},
-                    "bgcolor": "rgba(255,255,255,0.03)",
+                    "axis": {
+                        "range": [minimum, maximum],
+                        "tickwidth": 1,
+                        "tickcolor": FONT_MUTED,
+                        "tickfont": {"size": 9, "color": FONT_MUTED, "family": FONT_FAMILY},
+                        "ticklen": 6,
+                        "nticks": 8,
+                    },
+                    "bar": {
+                        "color": SCADA_PALETTE[0],
+                        "thickness": 0.18,
+                        "line": {"color": "rgba(0, 212, 255, 0.4)", "width": 1},
+                    },
+                    "bgcolor": "rgba(255,255,255,0.02)",
                     "borderwidth": 1,
-                    "bordercolor": "rgba(255,255,255,0.1)",
-                    "steps": steps if steps else None,
+                    "bordercolor": "rgba(148, 163, 184, 0.1)",
+                    "steps": steps,
+                    "threshold": {
+                        "line": {"color": SCADA_PALETTE[0], "width": 3},
+                        "thickness": 0.8,
+                        "value": value,
+                    },
                 },
             )
         )
@@ -623,17 +737,18 @@ def create_gauge_chart(
         figure.update_layout(
             title={
                 "text": title,
-                "font": {"size": 14, "color": THEME_TEXT_COLOR, "family": THEME_FONT},
-                "y": 0.9,
+                "font": {"size": 13, "color": FONT_COLOR, "family": FONT_FAMILY},
+                "y": 0.92,
                 "x": 0.5,
                 "xanchor": "center",
                 "yanchor": "top",
             },
             template=DEFAULT_TEMPLATE,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            margin={"l": 30, "r": 30, "t": 50, "b": 30},
+            paper_bgcolor=PAPER_BG,
+            plot_bgcolor=CHART_BG,
+            margin={"l": 25, "r": 25, "t": 55, "b": 20},
             autosize=True,
+            font={"family": FONT_FAMILY},
         )
 
         return figure
@@ -656,19 +771,20 @@ def create_scatter_chart(
         if prepared.empty:
             return None
 
-        figure = px.scatter(
-            prepared,
-            x=x_column,
-            y=y_column,
-            color_discrete_sequence=[THEME_PRIMARY_COLOR],
-        )
-        
-        return apply_default_layout(
-            figure,
-            title=title,
-            x_label=x_label or x_column,
-            y_label=y_label or y_column,
-        )
+        figure = go.Figure(go.Scatter(
+            x=prepared[x_column],
+            y=prepared[y_column],
+            mode="markers",
+            marker={
+                "color": SCADA_PALETTE[0],
+                "size": 7,
+                "opacity": 0.7,
+                "line": {"width": 1, "color": "rgba(0, 212, 255, 0.3)"},
+            },
+            hovertemplate=f"{x_column}: %{{x:,.2f}}<br>{y_column}: %{{y:,.2f}}<extra></extra>",
+        ))
+
+        return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or y_column)
     except Exception:
         return None
 
@@ -687,19 +803,15 @@ def create_histogram(
         if prepared.empty:
             return None
 
-        figure = px.histogram(
-            prepared,
-            x=x_column,
-            color_discrete_sequence=[THEME_PRIMARY_COLOR],
+        figure = px.histogram(prepared, x=x_column, color_discrete_sequence=[SCADA_PALETTE[0]])
+        figure.update_layout(bargap=0.04)
+        figure.update_traces(
+            marker_line_width=0,
+            opacity=0.85,
+            hovertemplate="Range: %{x}<br>Count: %{y}<extra></extra>",
         )
-        figure.update_layout(bargap=0.05)
-        
-        return apply_default_layout(
-            figure,
-            title=title,
-            x_label=x_label or x_column,
-            y_label=y_label or "Count",
-        )
+
+        return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or "Count")
     except Exception:
         return None
 
@@ -718,31 +830,39 @@ def create_heatmap(
 
         if columns is None:
             columns = [
-                col
-                for col in dataframe.columns
+                col for col in dataframe.columns
                 if pd.to_numeric(dataframe[col], errors="coerce").notna().any()
             ]
-
         if not columns:
             return None
 
         prepared = prepare_numeric_columns(dataframe, columns)
-        
+
         figure = go.Figure(
             data=go.Heatmap(
                 z=prepared[columns].to_numpy().T,
                 x=list(range(len(prepared))),
                 y=columns,
-                colorscale="Viridis",
+                colorscale=[
+                    [0.0, "rgba(15, 23, 42, 0.9)"],
+                    [0.25, "rgba(0, 100, 180, 0.6)"],
+                    [0.5, "rgba(0, 212, 255, 0.7)"],
+                    [0.75, "rgba(255, 179, 0, 0.7)"],
+                    [1.0, "rgba(255, 82, 82, 0.8)"],
+                ],
                 showscale=True,
+                colorbar={
+                    "tickfont": {"size": 9, "color": FONT_MUTED},
+                    "outlinewidth": 0,
+                    "thickness": 12,
+                    "len": 0.8,
+                },
+                hovertemplate="Index: %{x}<br>Channel: %{y}<br>Value: %{z:,.2f}<extra></extra>",
             )
         )
 
         return apply_default_layout(
-            figure,
-            title=title,
-            x_label=x_label or "Observation Index",
-            y_label=y_label or "Meter Channel",
+            figure, title=title, x_label=x_label or "Observation Index", y_label=y_label or "Meter Channel",
         )
     except Exception:
         return None
@@ -752,23 +872,34 @@ def create_sparkline(
     values: pd.Series,
     line_color: str = THEME_PRIMARY_COLOR,
 ) -> go.Figure | None:
-    """Render a clean micro-sparkline block missing margins for embedded layouts."""
+    """Render a clean micro-sparkline block for embedded layouts."""
     try:
         if values is None or values.empty:
             return None
-            
+
         numeric_values = pd.to_numeric(values, errors="coerce").dropna()
         if numeric_values.empty:
             return None
+
+        resolved_color = line_color or SCADA_PALETTE[0]
+
+        # Parse hex color to rgba for fill
+        try:
+            r = int(resolved_color.lstrip("#")[0:2], 16)
+            g = int(resolved_color.lstrip("#")[2:4], 16)
+            b = int(resolved_color.lstrip("#")[4:6], 16)
+            fill_rgba = f"rgba({r}, {g}, {b}, 0.10)"
+        except Exception:
+            fill_rgba = "rgba(0, 212, 255, 0.10)"
 
         figure = go.Figure(
             data=go.Scatter(
                 x=list(range(len(numeric_values))),
                 y=numeric_values,
                 mode="lines",
-                line={"color": line_color, "width": 1.5},
+                line={"color": resolved_color, "width": 1.8, "shape": "spline", "smoothing": 1.2},
                 fill="tozeroy",
-                fillcolor=f"rgba{tuple(list(int(line_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.08])}",
+                fillcolor=fill_rgba,
             )
         )
 
