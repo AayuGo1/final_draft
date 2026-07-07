@@ -288,6 +288,51 @@ def inject_global_styles() -> None:
                 margin-top: 14px;
             }}
 
+            .workspace-header {{
+                background: linear-gradient(90deg, rgba(30, 41, 59, 0.5), rgba(15, 23, 42, 0.2));
+                border-left: 4px solid {THEME_PRIMARY_COLOR};
+                border-radius: 0 8px 8px 0;
+                padding: 16px 20px;
+                margin-bottom: 24px;
+            }}
+
+            .workspace-title {{
+                font-size: 1.4rem;
+                font-weight: 700;
+                color: #FAFAFA;
+                margin: 0 0 8px 0;
+                letter-spacing: 0.5px;
+            }}
+
+            .workspace-meta {{
+                display: flex;
+                gap: 16px;
+                flex-wrap: wrap;
+                font-size: 0.8rem;
+                color: #94A3B8;
+            }}
+
+            .workspace-meta-item {{
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }}
+
+            .chart-container {{
+                background: rgba(15, 23, 42, 0.4);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 12px;
+                padding: 16px;
+                margin-bottom: 16px;
+            }}
+            
+            .chart-title {{
+                font-size: 0.95rem;
+                font-weight: 600;
+                color: #E2E8F0;
+                margin: 0 0 12px 0;
+            }}
+
             .scada-footer {{
                 margin-top: 28px;
                 padding: 12px;
@@ -372,92 +417,6 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
     return "N/A", "N/A"
 
 
-def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
-    """Compile and render industrial engineering KPIs cleanly across node telemetry states."""
-    summary = dashboard.get("summary", {})
-    departments = dashboard.get("departments", {})
-
-    total_consumption = 0.0
-    active_depts_count = 0
-    total_reporting_meters = 0
-
-    for dept_obj in departments.values():
-        latest_map = dept_obj.get("latest_values", {})
-        valid_dept_vals = [v for v in latest_map.values() if isinstance(v, (int, float))]
-        if valid_dept_vals:
-            total_consumption += sum(valid_dept_vals)
-            active_depts_count += 1
-        total_reporting_meters += len(valid_dept_vals)
-
-    flat_averages = [
-        v for dept in summary.get("average_values", {}).values() if isinstance(dept, dict)
-        for v in dept.values() if isinstance(v, (int, float))
-    ]
-    global_average = sum(flat_averages) / len(flat_averages) if flat_averages else 0.0
-    
-    latest_ts_raw = summary.get("latest_timestamp", "N/A")
-    if isinstance(latest_ts_raw, str):
-        latest_ts_display = latest_ts_raw.split()[0] if " " in latest_ts_raw else latest_ts_raw
-    elif hasattr(latest_ts_raw, "strftime"):
-        latest_ts_display = latest_ts_raw.strftime("%Y-%m-%d")
-    else:
-        latest_ts_display = "N/A"
-
-    meter_count = summary.get("meter_count", 0)
-
-    st.markdown('<p class="section-panel-title">📈 Corporate Operations KPI Infrastructure</p>', unsafe_allow_html=True)
-    k_col1, k_col2, k_col3, k_col4, k_col5, k_col6 = st.columns(6)
-
-    with k_col1:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Total Consumption</p>
-                <p class="metric-card-value">{total_consumption:,.1f}</p>
-                <div class="metric-card-footer">Sum Active Channels</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col2:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Average Consumption</p>
-                <p class="metric-card-value">{global_average:,.1f}</p>
-                <div class="metric-card-footer">Channel Array Average</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col3:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Latest Reading</p>
-                <p class="metric-card-value">{total_consumption / max(total_reporting_meters, 1):,.1f}</p>
-                <div class="metric-card-footer">Mean Vector Output</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col4:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Depts Reporting</p>
-                <p class="metric-card-value">{active_depts_count}</p>
-                <div class="metric-card-footer">Functional Systems Feed</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col5:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Meters Reporting</p>
-                <p class="metric-card-value">{total_reporting_meters} / {meter_count}</p>
-                <div class="metric-card-footer">Active Subnodes Trace</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col6:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Last Updated</p>
-                <p class="metric-card-value" style="font-size: 1.3rem; font-weight: 700; padding-top: 3px;">{latest_ts_display}</p>
-                <div class="metric-card-footer">Chronological Base Target</div>
-            </div>""", unsafe_allow_html=True
-        )
-
-
 def _get_representative_meter(dept_obj: dict[str, Any]) -> str:
     """Safely select the first valid numeric column within a department context."""
     meters = dept_obj.get("meters", [])
@@ -519,36 +478,34 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
             average_display = f"{average_value:,.2f}" if isinstance(average_value, (int, float)) else "N/A"
             total_display = f"{total_value:,.2f}" if isinstance(total_value, (int, float)) else "N/A"
 
-            # Nest the Streamlit button cleanly INSIDE the asset card layout framework
-            with col:
-                st.markdown(
-                    f"""
-                    <div class="scada-asset-card" style="border-color: {THEME_PRIMARY_COLOR if is_active else 'rgba(255,255,255,0.06)'}; margin-bottom: 0px;">
-                        <div>
-                            <div class="scada-asset-title">⚡ {d_name}</div>
-                            <div class="scada-asset-data-row">
-                                <span class="scada-asset-label">Latest</span>
-                                <span class="scada-asset-value">{latest_display}</span>
-                            </div>
-                            <div class="scada-asset-data-row">
-                                <span class="scada-asset-label">Average</span>
-                                <span class="scada-asset-value">{average_display}</span>
-                            </div>
-                            <div class="scada-asset-data-row">
-                                <span class="scada-asset-label">Total</span>
-                                <span class="scada-asset-value">{total_display}</span>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="scada-asset-status" style="margin-bottom: 0px;">
-                                <span class="status-dot" style="background: {THEME_SUCCESS_COLOR};"></span>
-                                Meters : {meter_count}
-                            </div>
-                        </div>
+            # Construct clean non-wrapping Power BI layout blocks
+            card_html = f"""
+            <div class="scada-asset-card" style="border-color: {THEME_PRIMARY_COLOR if is_active else 'rgba(255,255,255,0.06)'}; margin-bottom: 0px;">
+                <div>
+                    <div class="scada-asset-title">⚡ {d_name}</div>
+                    <div class="scada-asset-data-row">
+                        <span class="scada-asset-label">Latest</span>
+                        <span class="scada-asset-value">{latest_display}</span>
                     </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                    <div class="scada-asset-data-row">
+                        <span class="scada-asset-label">Average</span>
+                        <span class="scada-asset-value">{average_display}</span>
+                    </div>
+                    <div class="scada-asset-data-row">
+                        <span class="scada-asset-label">Total</span>
+                        <span class="scada-asset-value">{total_display}</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="scada-asset-status" style="margin-bottom: 0px;">
+                        <span class="status-dot" style="background: {THEME_SUCCESS_COLOR};"></span>
+                        Meters : {meter_count}
+                    </div>
+                </div>
+            </div>
+            """
+            with col:
+                st.markdown(card_html, unsafe_allow_html=True)
                 st.markdown('<div class="scada-action-btn" style="margin-top: -12px; margin-bottom: 16px;">', unsafe_allow_html=True)
                 if st.button("Open Dashboard", key=f"nav_tile_{d_name}"):
                     st.session_state["selected_department"] = d_name
@@ -562,31 +519,113 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
     """Render comprehensive diagnostic analysis charts and comparative tables for selected block."""
     dept_obj: dict[str, Any] = dashboard.get("departments", {}).get(active_dept, {})
     overview_df: pd.DataFrame = dashboard.get("overview", pd.DataFrame())
+    summary: dict[str, Any] = dashboard.get("summary", {})
 
     if not dept_obj:
         return
-
-    st.markdown(f'<div class="panel-container">', unsafe_allow_html=True)
-    st.markdown(f"<h3>🛡️ Engineering Supervisory System Diagnostics &mdash; {active_dept}</h3>", unsafe_allow_html=True)
-    st.markdown('<hr style="margin: 4px 0 16px 0; border-color: rgba(255,255,255,0.05);"/>', unsafe_allow_html=True)
 
     meters = dept_obj.get("meters", [])
     df_block = dept_obj.get("dataframe", pd.DataFrame())
     rep_m = _get_representative_meter(dept_obj)
 
+    # 1. Department Header
+    latest_vals = dept_obj.get("latest_values", {})
+    active_meters = sum(1 for v in latest_vals.values() if v is not None)
+    
+    latest_ts_raw = summary.get("latest_timestamp", "N/A")
+    if isinstance(latest_ts_raw, str):
+        latest_ts_display = latest_ts_raw.split()[0] if " " in latest_ts_raw else latest_ts_raw
+    elif hasattr(latest_ts_raw, "strftime"):
+        latest_ts_display = latest_ts_raw.strftime("%Y-%m-%d")
+    else:
+        latest_ts_display = "N/A"
+
+    unique_units = list(set(u for u in dept_obj.get("units", {}).values() if u))
+    units_str = ", ".join(unique_units[:3]) + ("..." if len(unique_units) > 3 else "") or "N/A"
+    
+    status_color = THEME_SUCCESS_COLOR if active_meters > 0 else THEME_DANGER_COLOR
+    status_text = "OPERATIONAL" if active_meters > 0 else "OFFLINE"
+
+    st.markdown('<div class="panel-container">', unsafe_allow_html=True)
+    
+    st.markdown(
+        f"""
+        <div class="workspace-header">
+            <h2 class="workspace-title">🛡️ {active_dept} Diagnostics</h2>
+            <div class="workspace-meta">
+                <div class="workspace-meta-item">
+                    <span class="status-dot" style="background: {status_color};"></span>
+                    <strong>{status_text}</strong>
+                </div>
+                <div class="workspace-meta-item"><strong>Meters:</strong> {len(meters)}</div>
+                <div class="workspace-meta-item"><strong>Active:</strong> {active_meters}</div>
+                <div class="workspace-meta-item"><strong>Latest Data:</strong> {latest_ts_display}</div>
+                <div class="workspace-meta-item"><strong>Units:</strong> {units_str}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # 2. Department KPI Strip
+    latest_value = latest_vals.get(rep_m) if rep_m else None
+    average_value = dept_obj.get("average_values", {}).get(rep_m) if rep_m else None
+    total_value = dept_obj.get("total_values", {}).get(rep_m) if rep_m else None
+    unit_label = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
+
+    k_col1, k_col2, k_col3, k_col4 = st.columns(4)
+
+    with k_col1:
+        st.markdown(
+            f"""<div class="metric-card-container">
+                <p class="metric-card-title">Latest Reading</p>
+                <p class="metric-card-value">{f"{latest_value:,.2f}" if isinstance(latest_value, (int, float)) else "N/A"}</p>
+                <div class="metric-card-footer">{unit_label or "Unit"}</div>
+            </div>""", unsafe_allow_html=True
+        )
+    with k_col2:
+        st.markdown(
+            f"""<div class="metric-card-container">
+                <p class="metric-card-title">Average Load</p>
+                <p class="metric-card-value">{f"{average_value:,.2f}" if isinstance(average_value, (int, float)) else "N/A"}</p>
+                <div class="metric-card-footer">{unit_label or "Unit"}</div>
+            </div>""", unsafe_allow_html=True
+        )
+    with k_col3:
+        st.markdown(
+            f"""<div class="metric-card-container">
+                <p class="metric-card-title">Total Output</p>
+                <p class="metric-card-value">{f"{total_value:,.2f}" if isinstance(total_value, (int, float)) else "N/A"}</p>
+                <div class="metric-card-footer">{unit_label or "Unit"}</div>
+            </div>""", unsafe_allow_html=True
+        )
+    with k_col4:
+        st.markdown(
+            f"""<div class="metric-card-container">
+                <p class="metric-card-title">Active Channels</p>
+                <p class="metric-card-value">{active_meters} / {len(meters)}</p>
+                <div class="metric-card-footer">Nodes Responding</div>
+            </div>""", unsafe_allow_html=True
+        )
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+
+    # 3. Charts
+    st.markdown('<p class="section-panel-title">📉 Telemetry Analytics</p>', unsafe_allow_html=True)
+    
     chart_col1, chart_col2 = st.columns([6, 4])
     
     with chart_col1:
-        st.markdown("##### 📉 Continuous Timeline Telemetry Profile")
+        st.markdown('<div class="chart-container"><p class="chart-title">Continuous Timeline Profile</p>', unsafe_allow_html=True)
         fig_primary = chart_service.build_section_trend_chart(overview_df, dept_obj)
         if fig_primary:
             st.plotly_chart(fig_primary, use_container_width=True)
         else:
-            st.caption("Primary chronological metric profile logs absent or structurally misaligned.")
+            st.caption("Primary chronological metric profile logs absent.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
         if len(meters) > 1:
-            st.markdown("<br/>##### 📊 Multi-Variable Process Cross-Channel Analysis", unsafe_allow_html=True)
-            
+            st.markdown('<div class="chart-container"><p class="chart-title">Multi-Variable Diagnostics</p>', unsafe_allow_html=True)
             fig_compare = chart_service.create_department_multi_line_chart(
                 overview_dataframe=overview_df,
                 section=dept_obj,
@@ -595,49 +634,37 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
             
             if fig_compare:
                 st.plotly_chart(fig_compare, use_container_width=True)
+            else:
+                st.caption("Comparison chart unavailable.")
+            st.markdown('</div>', unsafe_allow_html=True)
 
     with chart_col2:
-        st.markdown("##### 🧭 Node Dynamic Scale Instrumentation Gauge")
+        st.markdown('<div class="chart-container"><p class="chart-title">Dynamic Scale Indicator</p>', unsafe_allow_html=True)
         if rep_m:
-            latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0)
-            avg_val = dept_obj.get("average_values", {}).get(rep_m, 100.0)
-            total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0)
-            unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
-            
             max_ceiling = 100.0
-            for potential_max in (total_val, avg_val, latest_val):
+            for potential_max in (total_value, average_value, latest_value):
                 if isinstance(potential_max, (int, float)) and potential_max > 0:
                     max_ceiling = float(potential_max)
                     break
 
             fig_gauge = chart_service.create_gauge_chart(
-                value=float(latest_val) if isinstance(latest_val, (int, float)) else 0.0,
-                title=f"Gauge: {rep_m[:18]}",
-                maximum=max_ceiling if max_ceiling > float(latest_val or 0) else float((latest_val or 0) * 1.5),
-                unit=str(unit_lbl)
+                value=float(latest_value) if isinstance(latest_value, (int, float)) else 0.0,
+                title=f"{rep_m[:18]}",
+                maximum=max_ceiling if max_ceiling > float(latest_value or 0) else float((latest_value or 0) * 1.5),
+                unit=str(unit_label)
             )
             if fig_gauge:
                 st.plotly_chart(fig_gauge, use_container_width=True)
             else:
                 st.caption("Gauge visualization failed.")
-        
-        st.markdown("<br/>##### 📑 Node Current Process Vector Snapshots", unsafe_allow_html=True)
-        mini_records = []
-        for m in meters[:min(len(meters), 6)]:
-            v = dept_obj.get("latest_values", {}).get(m)
-            u = dept_obj.get("units", {}).get(m, "N/A")
-            mini_records.append({
-                "Channel ID": m[:20],
-                "Log Readout": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline",
-                "Unit": u if (u and str(u).strip()) else "N/A"
-            })
-        if mini_records:
-            st.dataframe(pd.DataFrame(mini_records), use_container_width=True, hide_index=True)
+        else:
+            st.caption("No valid numeric meter for gauge.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("<br/>##### 📋 Instrumentation Node Channel Registry Detailed Log Ledger", unsafe_allow_html=True)
+    # 4. Meter Summary Table
+    st.markdown('<p class="section-panel-title">📑 Node Process Vector Snapshots</p>', unsafe_allow_html=True)
     
     units_map = dept_obj.get("units", {})
-    latest_vals = dept_obj.get("latest_values", {})
     avg_vals = dept_obj.get("average_values", {})
     total_vals = dept_obj.get("total_values", {})
 
@@ -648,19 +675,29 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
         a_v = avg_vals.get(m)
         t_v = total_vals.get(m)
         
-        status_string = "🟢 Active" if l_v is not None else "⚪ Idle"
+        status_string = "🟢 Active" if l_v is not None else "⚪ No Data"
 
         ledger_records.append({
-            "Instrumentation Node / Meter Channel": m,
-            "Engineering Unit": lbl if (lbl and str(lbl).strip()) else "N/A",
-            "Latest Value Check": round(l_v, 2) if isinstance(l_v, (int, float)) else "N/A",
-            "Mean Running Load": round(a_v, 2) if isinstance(a_v, (int, float)) else "N/A",
-            "Accumulated Quantity Sum": round(t_v, 2) if isinstance(t_v, (int, float)) else "N/A",
-            "Operational Status Flag": status_string
+            "Meter": m,
+            "Latest": f"{l_v:,.2f}" if isinstance(l_v, (int, float)) else "N/A",
+            "Average": f"{a_v:,.2f}" if isinstance(a_v, (int, float)) else "N/A",
+            "Total": f"{t_v:,.2f}" if isinstance(t_v, (int, float)) else "N/A",
+            "Unit": lbl if (lbl and str(lbl).strip()) else "N/A",
+            "Status": status_string
         })
 
     if ledger_records:
         st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
+    else:
+        st.caption("No diagnostic records available.")
+
+    # 5. Historical Table
+    st.markdown('<p class="section-panel-title">📋 Historical Data Matrix</p>', unsafe_allow_html=True)
+    
+    if not df_block.empty:
+        st.dataframe(df_block, use_container_width=True, hide_index=True)
+    else:
+        st.caption("No historical data available for this sector.")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
