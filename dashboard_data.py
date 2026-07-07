@@ -21,6 +21,9 @@ AIR_COMPRESSOR_KEYWORDS: tuple[str, ...] = ("air", "compressor")
 FREON_KEYWORD: str = "freon"
 """Keyword used to locate the freon worksheet, case-insensitive."""
 
+AMMONIA_KEYWORD: str = "ammonia"
+"""Keyword used to locate the ammonia worksheet, case-insensitive."""
+
 UNIT_TOKENS: tuple[str, ...] = (
     "kwh",
     "kw",
@@ -60,17 +63,34 @@ MIN_DATE_PARSE_RATIO: float = 0.6
 dates for that column to be considered a date column."""
 
 
+# ==================================================
+# TOP-LEVEL ASSEMBLY
+# ==================================================
+
+
 def get_dashboard_data(workbook: dict[str, pd.DataFrame]) -> dict:
-    """Assemble all dashboard-ready data from the parsed workbook.
+    """Assemble a complete dashboard data model from the parsed workbook.
+
+    This is the single entry point pages should use. It builds every
+    section worksheet lookup, the discovered overview structure, a
+    dynamically generated navigation list, a KPI-service-ready summary,
+    filter options for the UI, and workbook-wide metadata. Nothing here
+    is hardcoded: worksheet, department, and meter names are all
+    discovered from the workbook contents.
 
     Args:
         workbook: A dictionary mapping sheet names to cleaned DataFrames,
             as returned by ``parser.read_all_sheets``.
 
     Returns:
-        A dictionary with keys ``overview``, ``departments``,
-        ``air_compressor``, ``freon``, and ``sheet_names``, containing
-        the corresponding worksheet data (or ``None`` where not found).
+        A dictionary with (at least) the keys ``overview``,
+        ``departments``, ``navigation``, ``summary``, ``filters``,
+        ``air_compressor``, ``freon``, ``ammonia``, ``metadata``, and
+        ``sheet_names``. Existing keys used by prior versions of this
+        module (``overview``, ``departments``, ``air_compressor``,
+        ``freon``, ``sheet_names``) are preserved for compatibility with
+        ``dashboard_loader.py``, ``kpi_service.py``, and
+        ``chart_service.py``.
 
     Raises:
         ValueError: If ``workbook`` is not a valid, non-empty dictionary
@@ -78,12 +98,53 @@ def get_dashboard_data(workbook: dict[str, pd.DataFrame]) -> dict:
     """
     _validate_workbook(workbook)
 
+    overview_dataframe = get_overview_dataframe(workbook)
+    air_compressor_dataframe = get_air_compressor_data(workbook)
+    freon_dataframe = get_freon_data(workbook)
+    ammonia_dataframe = get_ammonia_data(workbook)
+
+    overview_structure = get_dashboard_overview(overview_dataframe)
+    overview_dashboard = build_overview_dashboard(overview_dataframe)
+
+    air_compressor_dashboard = (
+        build_air_compressor_dashboard(air_compressor_dataframe)
+        if air_compressor_dataframe is not None
+        else None
+    )
+    freon_dashboard = (
+        build_air_compressor_dashboard(freon_dataframe)
+        if freon_dataframe is not None
+        else None
+    )
+    ammonia_dashboard = (
+        build_air_compressor_dashboard(ammonia_dataframe)
+        if ammonia_dataframe is not None
+        else None
+    )
+
+    sections = {
+        "overview": overview_dashboard,
+        "air_compressor": air_compressor_dashboard,
+        "freon": freon_dashboard,
+        "ammonia": ammonia_dashboard,
+    }
+
+    navigation = build_navigation(workbook, sections)
+    summary = build_summary(overview_structure, overview_dashboard, sections)
+    filters = build_filters(overview_structure, overview_dashboard)
+    metadata = build_metadata(workbook, overview_structure, sections)
+
     return {
-        "overview": get_overview_dataframe(workbook),
+        "overview": overview_dataframe,
         "departments": get_department_data(workbook),
-        "air_compressor": get_air_compressor_data(workbook),
-        "freon": get_freon_data(workbook),
+        "navigation": navigation,
+        "summary": summary,
+        "filters": filters,
+        "air_compressor": air_compressor_dataframe,
+        "freon": freon_dataframe,
+        "ammonia": ammonia_dataframe,
         "sheet_names": get_sheet_names(workbook),
+        "metadata": metadata,
     }
 
 
@@ -185,6 +246,25 @@ def get_freon_data(workbook: dict[str, pd.DataFrame]) -> pd.DataFrame | None:
     """
     _validate_workbook(workbook)
     return _find_sheet_by_keywords(workbook, (FREON_KEYWORD,))
+
+
+def get_ammonia_data(workbook: dict[str, pd.DataFrame]) -> pd.DataFrame | None:
+    """Find the worksheet related to ammonia monitoring.
+
+    Searches all sheet names, case-insensitively, for "ammonia".
+
+    Args:
+        workbook: A dictionary mapping sheet names to cleaned DataFrames.
+
+    Returns:
+        The matching DataFrame, or ``None`` if no worksheet matches.
+
+    Raises:
+        ValueError: If ``workbook`` is not a valid, non-empty dictionary
+            of DataFrames.
+    """
+    _validate_workbook(workbook)
+    return _find_sheet_by_keywords(workbook, (AMMONIA_KEYWORD,))
 
 
 def get_available_departments(overview_dataframe: pd.DataFrame) -> list[str]:
@@ -529,19 +609,22 @@ def get_air_compressor_meter_structure(
 
 
 def build_air_compressor_dashboard(air_compressor_dataframe: pd.DataFrame) -> dict:
-    """Build dashboard-ready data for the Air Compressor page.
+    """Build dashboard-ready data for a flat, single-section worksheet.
 
-    Discovers every available metric on the air compressor worksheet via
-    ``get_air_compressor_meter_structure`` and assembles, for each metric,
-    its unit, its latest available reading (for KPI cards), and its full
-    reading history (for charts), plus a single combined DataFrame with
-    one column per metric. No engineering KPI values are calculated here
-    beyond surfacing the latest raw reading already present in the
-    workbook.
+    Despite the name, this builder is generic and is reused for any
+    flat (non department-grouped) worksheet, such as air compressor,
+    freon, or ammonia monitoring sheets. Discovers every available metric
+    via ``get_air_compressor_meter_structure`` and assembles, for each
+    metric, its unit, its latest available reading (for KPI cards), and
+    its full reading history (for charts), plus a single combined
+    DataFrame with one column per metric. No engineering KPI values are
+    calculated here beyond surfacing the latest raw reading already
+    present in the workbook.
 
     Args:
-        air_compressor_dataframe: The air compressor worksheet DataFrame,
-            as returned by ``get_air_compressor_data``.
+        air_compressor_dataframe: The flat worksheet DataFrame, as
+            returned by ``get_air_compressor_data``, ``get_freon_data``,
+            or ``get_ammonia_data``.
 
     Returns:
         A dictionary of the form::
@@ -627,6 +710,162 @@ def get_air_compressor_dashboard(workbook: dict[str, pd.DataFrame]) -> dict | No
         return None
 
     return build_air_compressor_dashboard(air_compressor_dataframe)
+
+
+# ==================================================
+# NAVIGATION / SUMMARY / FILTERS / METADATA
+# ==================================================
+
+
+def build_navigation(
+    workbook: dict[str, pd.DataFrame], sections: dict[str, dict | None]
+) -> list[dict]:
+    """Dynamically generate the dashboard's navigation list.
+
+    One navigation entry is produced per discovered, non-empty section
+    (``overview`` plus any flat worksheet section such as air compressor,
+    freon, or ammonia that was actually found in the workbook). No page
+    names or worksheet names are hardcoded beyond the label used to
+    describe well-known section keys; entries are only ever included if
+    the corresponding worksheet was discovered in this workbook.
+
+    Args:
+        workbook: A dictionary mapping sheet names to cleaned DataFrames.
+        sections: A mapping of section key to its built dashboard data
+            (or ``None`` if that section's worksheet was not found).
+
+    Returns:
+        A list of dictionaries, each with keys ``key``, ``label``, and
+        ``available``, in a stable, discovery-driven order.
+
+    Raises:
+        ValueError: If ``workbook`` is not a valid, non-empty dictionary
+            of DataFrames.
+    """
+    _validate_workbook(workbook)
+
+    navigation: list[dict] = []
+    for section_key, section_data in sections.items():
+        navigation.append(
+            {
+                "key": section_key,
+                "label": section_key.replace("_", " ").title(),
+                "available": section_data is not None,
+            }
+        )
+
+    return navigation
+
+
+def build_summary(
+    overview_structure: dict,
+    overview_dashboard: dict,
+    sections: dict[str, dict | None],
+) -> dict:
+    """Assemble reusable summary information for KPI services.
+
+    No engineering KPI calculation happens here; this only surfaces raw,
+    already-discovered counts and values that ``kpi_service.py`` can
+    combine into actual KPIs.
+
+    Args:
+        overview_structure: The dictionary returned by
+            ``get_dashboard_overview``.
+        overview_dashboard: The dictionary returned by
+            ``build_overview_dashboard``.
+        sections: A mapping of section key to its built dashboard data
+            (or ``None`` if not found).
+
+    Returns:
+        A dictionary with keys ``department_count``, ``meter_count``,
+        ``available_sections``, and ``latest_values_by_department``.
+    """
+    department_sections = overview_dashboard.get("sections", [])
+
+    meter_count = sum(len(section["meters"]) for section in department_sections)
+    latest_values_by_department = {
+        section["name"]: section["latest_values"] for section in department_sections
+    }
+
+    available_sections = [
+        section_key for section_key, section_data in sections.items()
+        if section_data is not None
+    ]
+
+    return {
+        "department_count": len(overview_structure.get("departments", [])),
+        "meter_count": meter_count,
+        "available_sections": available_sections,
+        "latest_values_by_department": latest_values_by_department,
+    }
+
+
+def build_filters(overview_structure: dict, overview_dashboard: dict) -> dict:
+    """Assemble discovered filter options for the UI layer.
+
+    Args:
+        overview_structure: The dictionary returned by
+            ``get_dashboard_overview``.
+        overview_dashboard: The dictionary returned by
+            ``build_overview_dashboard``.
+
+    Returns:
+        A dictionary with keys ``departments`` (discovered department
+        names), ``meters`` (all discovered meter names across
+        departments, in discovery order, without duplicates), and
+        ``date_columns`` (positional indexes of discovered date columns).
+    """
+    departments = overview_structure.get("departments", [])
+
+    meters: list[str] = []
+    for section in overview_dashboard.get("sections", []):
+        for meter_name in section["meters"]:
+            if meter_name not in meters:
+                meters.append(meter_name)
+
+    return {
+        "departments": departments,
+        "meters": meters,
+        "date_columns": overview_structure.get("date_columns", []),
+    }
+
+
+def build_metadata(
+    workbook: dict[str, pd.DataFrame],
+    overview_structure: dict,
+    sections: dict[str, dict | None],
+) -> dict:
+    """Assemble workbook-wide metadata describing what was discovered.
+
+    Args:
+        workbook: A dictionary mapping sheet names to cleaned DataFrames.
+        overview_structure: The dictionary returned by
+            ``get_dashboard_overview``.
+        sections: A mapping of section key to its built dashboard data
+            (or ``None`` if not found).
+
+    Returns:
+        A dictionary with keys ``sheet_names``, ``departments``,
+        ``meters``, ``date_columns``, and ``available_sections``.
+    """
+    meters: list[str] = []
+    for section in sections.get("overview", {}).get("sections", []) if sections.get("overview") else []:
+        for meter_name in section["meters"]:
+            if meter_name not in meters:
+                meters.append(meter_name)
+
+    available_sections = [
+        section_key for section_key, section_data in sections.items()
+        if section_data is not None
+    ]
+
+    return {
+        "sheet_names": get_sheet_names(workbook),
+        "departments": overview_structure.get("departments", []),
+        "meters": meters,
+        "date_columns": overview_structure.get("date_columns", []),
+        "available_sections": available_sections,
+    }
 
 
 def _get_latest_values(meters: dict[str, pd.Series]) -> dict[str, object]:
@@ -764,6 +1003,7 @@ def _find_sheet_by_keywords(
 
     return None
 
+
 def find_section_by_keyword(
     sections: list[dict],
     keyword: str,
@@ -780,6 +1020,7 @@ def find_section_by_keyword(
         ),
         None,
     )
+
 
 def _validate_dataframe(dataframe: pd.DataFrame) -> None:
     """Validate that the given object is a ``pandas.DataFrame``.
@@ -824,4 +1065,3 @@ def _validate_workbook(workbook: dict[str, pd.DataFrame]) -> None:
                 f"Sheet '{sheet_name}' does not contain a valid "
                 f"pandas.DataFrame (got {type(dataframe).__name__})."
             )
-
