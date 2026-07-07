@@ -1,8 +1,8 @@
 """Utility monitoring page for the Engineering Monitoring Dashboard.
 
 Renders the real Utility section discovered dynamically from the
-workbook via ``services.page_service``, with KPI cards from
-``services.kpi_service``, a Plotly trend chart from
+workbook via ``dashboard_data.build_overview_dashboard``, with KPI cards
+from ``services.kpi_service``, a Plotly trend chart from
 ``services.chart_service``, and native Streamlit data tables. No KPI
 calculation or chart-building logic lives in this file.
 """
@@ -13,8 +13,9 @@ import pandas as pd
 import streamlit as st
 
 import ui
+from dashboard_data import build_overview_dashboard, find_section_by_keyword
 from services import chart_service, kpi_service
-from services.page_service import load_section
+from services.dashboard_loader import load_dashboard_safe
 
 UTILITY_KEYWORD: str = "utility"
 """Keyword used to identify the Utility section among discovered sections."""
@@ -132,8 +133,29 @@ def render() -> None:
         "General utility consumption and performance tracking.",
     )
 
-    section = load_section(UTILITY_KEYWORD)
+    with st.spinner("Loading utility data..."):
+        dashboard, error = load_dashboard_safe()
+
+    if error:
+        ui.render_error_banner(error)
+        return
+
+    overview_dataframe = dashboard.get("overview")
+    if overview_dataframe is None or overview_dataframe.empty:
+        ui.render_info_banner("No overview data is available in the workbook.")
+        return
+
+    try:
+        sections = build_overview_dashboard(overview_dataframe)["sections"]
+    except ValueError as build_error:
+        ui.render_error_banner(f"Failed to process utility data: {build_error}")
+        return
+
+    section = find_section_by_keyword(sections, UTILITY_KEYWORD)
     if section is None:
+        ui.render_info_banner(
+            "No Utility section was discovered in the workbook."
+        )
         return
 
     summary = kpi_service.build_kpi_summary(section["dataframe"], section)
@@ -142,7 +164,7 @@ def render() -> None:
     render_status_section(summary)
     ui.render_divider()
 
-    render_trend_section(section["overview_dataframe"], section)
+    render_trend_section(overview_dataframe, section)
     ui.render_divider()
 
     render_latest_readings_table(section)
