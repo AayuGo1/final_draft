@@ -2,10 +2,11 @@
 Dashboard.
 
 Renders the real Freon Refrigeration data, preferring a dedicated Freon
-worksheet and falling back to a discovered overview section, via
-``services.page_service``. KPI cards come from ``services.kpi_service``
-and the trend chart comes from ``services.chart_service``. No KPI
-calculation or chart-building logic lives in this file.
+worksheet (``dashboard["freon"]``) and falling back to a discovered
+overview section, via ``dashboard_data.build_overview_dashboard``. KPI
+cards come from ``services.kpi_service`` and the trend chart comes from
+``services.chart_service``. No KPI calculation or chart-building logic
+lives in this file.
 """
 
 from __future__ import annotations
@@ -14,9 +15,13 @@ import pandas as pd
 import streamlit as st
 
 import ui
-from dashboard_data import get_date_columns
+from dashboard_data import (
+    build_overview_dashboard,
+    find_section_by_keyword,
+    get_date_columns,
+)
 from services import chart_service, kpi_service
-from services.page_service import load_dedicated_sheet
+from services.dashboard_loader import load_dashboard_safe
 
 FREON_KEY: str = "freon"
 """Dashboard data key used to locate the dedicated Freon worksheet."""
@@ -179,11 +184,39 @@ def render() -> None:
         "Freon-based refrigeration monitoring and performance.",
     )
 
-    freon_dataframe, section = load_dedicated_sheet(
-        FREON_KEY, fallback_keyword=FREON_KEYWORD
-    )
-    if freon_dataframe is None:
+    with st.spinner("Loading freon data..."):
+        dashboard, error = load_dashboard_safe()
+
+    if error:
+        ui.render_error_banner(error)
         return
+
+    freon_dataframe = dashboard.get(FREON_KEY)
+    section: dict | None = None
+
+    if freon_dataframe is None or freon_dataframe.empty:
+        overview_dataframe = dashboard.get("overview")
+        if overview_dataframe is None or overview_dataframe.empty:
+            ui.render_info_banner(
+                "No Freon Refrigeration data was found in the workbook."
+            )
+            return
+
+        try:
+            sections = build_overview_dashboard(overview_dataframe)["sections"]
+        except ValueError as build_error:
+            ui.render_error_banner(f"Failed to process freon data: {build_error}")
+            return
+
+        section = find_section_by_keyword(sections, FREON_KEYWORD)
+        if section is None:
+            ui.render_info_banner(
+                "No Freon Refrigeration data was found in the workbook."
+            )
+            return
+
+        section = {**section, "overview_dataframe": overview_dataframe}
+        freon_dataframe = section["dataframe"]
 
     summary = kpi_service.build_kpi_summary(freon_dataframe, section)
 
