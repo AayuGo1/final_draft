@@ -1,12 +1,20 @@
 """Business layer for the Engineering Monitoring Dashboard.
 
-This module converts the raw DataFrames returned by ``parser.py`` into
-dashboard-ready data. It organizes and locates relevant worksheets by
-generic name matching, and dynamically discovers generic workbook
-structure such as department labels, date columns, and the unit row. It
-performs no engineering KPI calculation, no rendering, and creates no UI
-or chart elements. No row numbers, column letters, merged cells, or
-department/header locations are ever hardcoded.
+This module is the single source of truth for interpreting the parsed
+workbook produced by ``parser.py``. It discovers, dynamically and
+without any hardcoded worksheet/department/meter names or cell
+locations, every piece of structural and derived information a
+dashboard page needs: departments, flat sections, meters, date columns,
+months, dates, latest/average/total values, and workbook-wide metadata.
+
+It performs no rendering, no chart construction, and no workbook
+downloading. Those responsibilities belong to ``app.py``/``pages/*``,
+``chart_service.py``, and ``dashboard_loader.py`` respectively.
+
+Backward compatibility: every function and dictionary key that existed
+in the previous version of this module is preserved with identical
+behavior. New keys and helper functions have been added alongside them;
+nothing has been renamed or removed.
 """
 
 from __future__ import annotations
@@ -78,6 +86,9 @@ def get_dashboard_data(workbook: dict[str, pd.DataFrame]) -> dict:
     is hardcoded: worksheet, department, and meter names are all
     discovered from the workbook contents.
 
+    This is an alias-compatible wrapper around ``build_dashboard`` kept
+    for backward compatibility; both return the identical dictionary.
+
     Args:
         workbook: A dictionary mapping sheet names to cleaned DataFrames,
             as returned by ``parser.read_all_sheets``.
@@ -85,12 +96,30 @@ def get_dashboard_data(workbook: dict[str, pd.DataFrame]) -> dict:
     Returns:
         A dictionary with (at least) the keys ``overview``,
         ``departments``, ``navigation``, ``summary``, ``filters``,
-        ``air_compressor``, ``freon``, ``ammonia``, ``metadata``, and
-        ``sheet_names``. Existing keys used by prior versions of this
-        module (``overview``, ``departments``, ``air_compressor``,
-        ``freon``, ``sheet_names``) are preserved for compatibility with
-        ``dashboard_loader.py``, ``kpi_service.py``, and
-        ``chart_service.py``.
+        ``air_compressor``, ``freon``, ``ammonia``, ``metadata``,
+        ``sheet_names``, ``sections``, ``months``, ``dates``,
+        ``latest_values``, ``totals``, and ``averages``. Existing keys
+        used by prior versions of this module are preserved for
+        compatibility with ``dashboard_loader.py``, ``kpi_service.py``,
+        and ``chart_service.py``.
+
+    Raises:
+        ValueError: If ``workbook`` is not a valid, non-empty dictionary
+            of DataFrames.
+    """
+    return build_dashboard(workbook)
+
+
+def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict:
+    """Assemble the complete, richly-described dashboard data model.
+
+    Args:
+        workbook: A dictionary mapping sheet names to cleaned DataFrames,
+            as returned by ``parser.read_all_sheets``.
+
+    Returns:
+        The full dashboard dictionary. See ``get_dashboard_data`` for the
+        documented key set.
 
     Raises:
         ValueError: If ``workbook`` is not a valid, non-empty dictionary
@@ -131,10 +160,19 @@ def get_dashboard_data(workbook: dict[str, pd.DataFrame]) -> dict:
 
     navigation = build_navigation(workbook, sections)
     summary = build_summary(overview_structure, overview_dashboard, sections)
-    filters = build_filters(overview_structure, overview_dashboard)
+    filters = build_filters(overview_structure, overview_dashboard, workbook)
     metadata = build_metadata(workbook, overview_structure, sections)
 
+    department_names = get_department_names(overview_structure)
+    section_list = build_section_list(sections)
+    months = get_available_months(overview_dataframe)
+    dates = get_available_dates(overview_dataframe)
+    latest_values = get_latest_values(overview_dashboard)
+    totals = get_total_values(overview_dashboard)
+    averages = get_average_values(overview_dashboard)
+
     return {
+        # -------- existing keys (backward compatible) --------
         "overview": overview_dataframe,
         "departments": get_department_data(workbook),
         "navigation": navigation,
@@ -145,6 +183,13 @@ def get_dashboard_data(workbook: dict[str, pd.DataFrame]) -> dict:
         "ammonia": ammonia_dataframe,
         "sheet_names": get_sheet_names(workbook),
         "metadata": metadata,
+        # -------- richer additions --------
+        "sections": section_list,
+        "months": months,
+        "dates": dates,
+        "latest_values": latest_values,
+        "totals": totals,
+        "averages": averages,
     }
 
 
@@ -309,6 +354,24 @@ def get_available_departments(overview_dataframe: pd.DataFrame) -> list[str]:
     return departments
 
 
+def get_department_names(overview_structure: dict) -> list[str]:
+    """Return the discovered department names from an overview structure.
+
+    Thin, single-responsibility accessor kept separate from
+    ``get_available_departments`` so callers that already hold a built
+    ``overview_structure`` (from ``get_dashboard_overview``) don't need
+    to re-scan the DataFrame.
+
+    Args:
+        overview_structure: The dictionary returned by
+            ``get_dashboard_overview``.
+
+    Returns:
+        The list of discovered department names, in workbook order.
+    """
+    return list(overview_structure.get("departments", []))
+
+
 def get_date_columns(overview_dataframe: pd.DataFrame) -> list[int]:
     """Discover the positional indexes of columns that contain dates.
 
@@ -349,6 +412,66 @@ def get_date_columns(overview_dataframe: pd.DataFrame) -> list[int]:
             date_column_indexes.append(position)
 
     return date_column_indexes
+
+
+def get_available_dates(overview_dataframe: pd.DataFrame) -> list[str]:
+    """Discover every distinct date value present in date-like columns.
+
+    Args:
+        overview_dataframe: The overview worksheet DataFrame.
+
+    Returns:
+        A sorted, de-duplicated list of date strings (``"YYYY-MM-DD"``)
+        found across all discovered date columns. Returns an empty list
+        if no date columns or values could be discovered.
+
+    Raises:
+        ValueError: If ``overview_dataframe`` is not a valid
+            ``pandas.DataFrame``.
+    """
+    _validate_dataframe(overview_dataframe)
+
+    date_columns = get_date_columns(overview_dataframe)
+    if not date_columns:
+        return []
+
+    discovered_dates: set[str] = set()
+
+    for column_index in date_columns:
+        column_values = overview_dataframe.iloc[:, column_index].dropna()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            parsed = pd.to_datetime(column_values, errors="coerce").dropna()
+
+        for value in parsed:
+            discovered_dates.add(value.strftime("%Y-%m-%d"))
+
+    return sorted(discovered_dates)
+
+
+def get_available_months(overview_dataframe: pd.DataFrame) -> list[str]:
+    """Discover every distinct calendar month present in date-like columns.
+
+    Args:
+        overview_dataframe: The overview worksheet DataFrame.
+
+    Returns:
+        A sorted, de-duplicated list of month strings (``"YYYY-MM"``)
+        found across all discovered date columns. Returns an empty list
+        if no date columns or values could be discovered.
+
+    Raises:
+        ValueError: If ``overview_dataframe`` is not a valid
+            ``pandas.DataFrame``.
+    """
+    _validate_dataframe(overview_dataframe)
+
+    dates = get_available_dates(overview_dataframe)
+    if not dates:
+        return []
+
+    months = sorted({date[:7] for date in dates})
+    return months
 
 
 def get_unit_row(overview_dataframe: pd.DataFrame) -> int | None:
@@ -527,6 +650,8 @@ def build_overview_dashboard(overview_dataframe: pd.DataFrame) -> dict:
             "name": department_name,
             "meters": list(meters.keys()),
             "latest_values": _get_latest_values(meters),
+            "totals": _get_total_values(meters),
+            "averages": _get_average_values(meters),
             "dataframe": _build_meters_dataframe(meters),
         }
         for department_name, meters in department_structure.items()
@@ -713,6 +838,174 @@ def get_air_compressor_dashboard(workbook: dict[str, pd.DataFrame]) -> dict | No
 
 
 # ==================================================
+# SECTION / VALUE DISCOVERY HELPERS (NEW)
+# ==================================================
+
+
+def build_section_list(sections: dict[str, dict | None]) -> list[dict]:
+    """Build a flat, UI-ready list describing every discovered section.
+
+    Args:
+        sections: A mapping of section key to its built dashboard data
+            (or ``None`` if that section's worksheet was not found).
+
+    Returns:
+        A list of dictionaries, each with keys ``key``, ``label``, and
+        ``available``, in the same stable order as ``sections``.
+    """
+    return [
+        {
+            "key": section_key,
+            "label": section_key.replace("_", " ").title(),
+            "available": section_data is not None,
+        }
+        for section_key, section_data in sections.items()
+    ]
+
+
+def find_section_by_keyword(
+    sections: list[dict],
+    keyword: str,
+) -> dict | None:
+    """Find a discovered section whose name contains the given keyword.
+
+    Args:
+        sections: A list of section-like dictionaries, each expected to
+            have a ``"name"`` key (for example, the ``"sections"`` list
+            inside ``build_overview_dashboard``'s return value).
+        keyword: The keyword to search for, matched case-insensitively.
+
+    Returns:
+        The first matching section dictionary, or ``None`` if no section
+        name contains the keyword.
+    """
+    keyword = keyword.lower()
+
+    return next(
+        (
+            section
+            for section in sections
+            if keyword in section["name"].lower()
+        ),
+        None,
+    )
+
+
+def get_latest_values(overview_dashboard: dict) -> dict[str, dict[str, object]]:
+    """Get the latest reading for every meter, grouped by department.
+
+    Args:
+        overview_dashboard: The dictionary returned by
+            ``build_overview_dashboard``.
+
+    Returns:
+        A dictionary mapping each department name to a dictionary of
+        ``{meter_name: latest_value}``.
+    """
+    return {
+        section["name"]: section.get("latest_values", {})
+        for section in overview_dashboard.get("sections", [])
+    }
+
+
+def get_total_values(overview_dashboard: dict) -> dict[str, dict[str, object]]:
+    """Get the sum of all readings for every meter, grouped by department.
+
+    Args:
+        overview_dashboard: The dictionary returned by
+            ``build_overview_dashboard``.
+
+    Returns:
+        A dictionary mapping each department name to a dictionary of
+        ``{meter_name: total_value}``.
+    """
+    return {
+        section["name"]: section.get("totals", {})
+        for section in overview_dashboard.get("sections", [])
+    }
+
+
+def get_average_values(overview_dashboard: dict) -> dict[str, dict[str, object]]:
+    """Get the average of all readings for every meter, grouped by department.
+
+    Args:
+        overview_dashboard: The dictionary returned by
+            ``build_overview_dashboard``.
+
+    Returns:
+        A dictionary mapping each department name to a dictionary of
+        ``{meter_name: average_value}``.
+    """
+    return {
+        section["name"]: section.get("averages", {})
+        for section in overview_dashboard.get("sections", [])
+    }
+
+
+def _get_latest_values(meters: dict[str, pd.Series]) -> dict[str, object]:
+    """Get the most recent non-null reading for every meter.
+
+    Args:
+        meters: A mapping of meter name to its readings ``pandas.Series``.
+
+    Returns:
+        A dictionary mapping each meter name to its latest non-null
+        reading, or ``None`` if the meter has no available readings.
+    """
+    latest_values: dict[str, object] = {}
+
+    for meter_name, series in meters.items():
+        non_null_values = series.dropna()
+        latest_values[meter_name] = (
+            non_null_values.iloc[-1] if not non_null_values.empty else None
+        )
+
+    return latest_values
+
+
+def _get_total_values(meters: dict[str, pd.Series]) -> dict[str, object]:
+    """Get the sum of all numeric, non-null readings for every meter.
+
+    Args:
+        meters: A mapping of meter name to its readings ``pandas.Series``.
+
+    Returns:
+        A dictionary mapping each meter name to the sum of its numeric
+        readings, or ``None`` if the meter has no numeric readings.
+    """
+    total_values: dict[str, object] = {}
+
+    for meter_name, series in meters.items():
+        numeric_values = pd.to_numeric(series.dropna(), errors="coerce").dropna()
+        total_values[meter_name] = (
+            float(numeric_values.sum()) if not numeric_values.empty else None
+        )
+
+    return total_values
+
+
+def _get_average_values(meters: dict[str, pd.Series]) -> dict[str, object]:
+    """Get the mean of all numeric, non-null readings for every meter.
+
+    Args:
+        meters: A mapping of meter name to its readings ``pandas.Series``.
+
+    Returns:
+        A dictionary mapping each meter name to the mean of its numeric
+        readings, or ``None`` if the meter has no numeric readings.
+    """
+    average_values: dict[str, object] = {}
+
+    for meter_name, series in meters.items():
+        numeric_values = pd.to_numeric(series.dropna(), errors="coerce").dropna()
+        average_values[meter_name] = (
+            float(numeric_values.mean()) if not numeric_values.empty else None
+        )
+
+    return average_values
+
+
+# ==================================================
 # NAVIGATION / SUMMARY / FILTERS / METADATA
 # ==================================================
 
@@ -743,18 +1036,7 @@ def build_navigation(
             of DataFrames.
     """
     _validate_workbook(workbook)
-
-    navigation: list[dict] = []
-    for section_key, section_data in sections.items():
-        navigation.append(
-            {
-                "key": section_key,
-                "label": section_key.replace("_", " ").title(),
-                "available": section_data is not None,
-            }
-        )
-
-    return navigation
+    return build_section_list(sections)
 
 
 def build_summary(
@@ -778,13 +1060,26 @@ def build_summary(
 
     Returns:
         A dictionary with keys ``department_count``, ``meter_count``,
-        ``available_sections``, and ``latest_values_by_department``.
+        ``available_sections`` (backward-compatible), plus the richer
+        ``latest_values_by_department`` (backward-compatible alias),
+        ``latest_timestamp``, ``last_updated``,
+        ``department_latest_values``, ``department_totals``,
+        ``department_averages``, ``available_sheets``, and
+        ``data_availability``.
     """
     department_sections = overview_dashboard.get("sections", [])
 
     meter_count = sum(len(section["meters"]) for section in department_sections)
+
     latest_values_by_department = {
         section["name"]: section["latest_values"] for section in department_sections
+    }
+    department_totals = {
+        section["name"]: section.get("totals", {}) for section in department_sections
+    }
+    department_averages = {
+        section["name"]: section.get("averages", {})
+        for section in department_sections
     }
 
     available_sections = [
@@ -792,15 +1087,79 @@ def build_summary(
         if section_data is not None
     ]
 
+    overview_dataframe_shape = overview_structure.get("shape", (0, 0))
+    total_rows, total_columns = overview_dataframe_shape
+    total_cells = total_rows * total_columns
+
+    populated_cells = sum(
+        len(series.dropna())
+        for section in department_sections
+        for series in [section.get("dataframe")]
+        if series is not None
+    )
+    data_availability = (
+        min(populated_cells / total_cells, 1.0) if total_cells else 0.0
+    )
+
+    latest_timestamp = _get_latest_timestamp_from_sections(department_sections)
+
     return {
+        # -------- existing keys (backward compatible) --------
         "department_count": len(overview_structure.get("departments", [])),
         "meter_count": meter_count,
         "available_sections": available_sections,
         "latest_values_by_department": latest_values_by_department,
+        # -------- richer additions --------
+        "latest_timestamp": latest_timestamp,
+        "last_updated": latest_timestamp,
+        "department_latest_values": latest_values_by_department,
+        "department_totals": department_totals,
+        "department_averages": department_averages,
+        "available_sheets": available_sections,
+        "data_availability": data_availability,
     }
 
 
-def build_filters(overview_structure: dict, overview_dashboard: dict) -> dict:
+def _get_latest_timestamp_from_sections(department_sections: list[dict]) -> str:
+    """Find the most recent timestamp across every department's dataframe.
+
+    Args:
+        department_sections: The ``"sections"`` list produced by
+            ``build_overview_dashboard``.
+
+    Returns:
+        The most recent date-like value found across all department
+        dataframes, formatted as a string, or ``"N/A"`` if none was
+        found.
+    """
+    latest_candidates: list[pd.Timestamp] = []
+
+    for section in department_sections:
+        dataframe = section.get("dataframe")
+        if dataframe is None or dataframe.empty:
+            continue
+
+        date_columns = get_date_columns(dataframe)
+        for column_index in date_columns:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                parsed = pd.to_datetime(
+                    dataframe.iloc[:, column_index].dropna(), errors="coerce"
+                ).dropna()
+            if not parsed.empty:
+                latest_candidates.append(parsed.max())
+
+    if not latest_candidates:
+        return "N/A"
+
+    return str(max(latest_candidates))
+
+
+def build_filters(
+    overview_structure: dict,
+    overview_dashboard: dict,
+    workbook: dict[str, pd.DataFrame] | None = None,
+) -> dict:
     """Assemble discovered filter options for the UI layer.
 
     Args:
@@ -808,12 +1167,17 @@ def build_filters(overview_structure: dict, overview_dashboard: dict) -> dict:
             ``get_dashboard_overview``.
         overview_dashboard: The dictionary returned by
             ``build_overview_dashboard``.
+        workbook: An optional workbook mapping, used to discover
+            available flat sections (air compressor / freon / ammonia)
+            for the ``"sections"`` filter. If omitted, ``"sections"`` is
+            returned as an empty list for backward compatibility.
 
     Returns:
         A dictionary with keys ``departments`` (discovered department
         names), ``meters`` (all discovered meter names across
-        departments, in discovery order, without duplicates), and
-        ``date_columns`` (positional indexes of discovered date columns).
+        departments, in discovery order, without duplicates),
+        ``date_columns`` (positional indexes of discovered date
+        columns), ``months``, ``dates``, and ``sections``.
     """
     departments = overview_structure.get("departments", [])
 
@@ -823,10 +1187,34 @@ def build_filters(overview_structure: dict, overview_dashboard: dict) -> dict:
             if meter_name not in meters:
                 meters.append(meter_name)
 
+    section_names: list[str] = []
+    if workbook is not None:
+        overview_dataframe = get_overview_dataframe(workbook)
+        section_names = [
+            entry["label"]
+            for entry in build_section_list(
+                {
+                    "overview": overview_dashboard,
+                    "air_compressor": get_air_compressor_data(workbook),
+                    "freon": get_freon_data(workbook),
+                    "ammonia": get_ammonia_data(workbook),
+                }
+            )
+            if entry["available"]
+        ]
+        months = get_available_months(overview_dataframe)
+        dates = get_available_dates(overview_dataframe)
+    else:
+        months = []
+        dates = []
+
     return {
         "departments": departments,
         "meters": meters,
         "date_columns": overview_structure.get("date_columns", []),
+        "months": months,
+        "dates": dates,
+        "sections": section_names,
     }
 
 
@@ -846,7 +1234,10 @@ def build_metadata(
 
     Returns:
         A dictionary with keys ``sheet_names``, ``departments``,
-        ``meters``, ``date_columns``, and ``available_sections``.
+        ``meters``, ``date_columns``, and ``available_sections``
+        (backward compatible), plus ``sheet_count``, ``months``,
+        ``month_range``, ``dates``, ``date_range``, and
+        ``workbook_version``.
     """
     meters: list[str] = []
     for section in sections.get("overview", {}).get("sections", []) if sections.get("overview") else []:
@@ -859,34 +1250,58 @@ def build_metadata(
         if section_data is not None
     ]
 
+    overview_dataframe = get_overview_dataframe(workbook)
+    months = get_available_months(overview_dataframe)
+    dates = get_available_dates(overview_dataframe)
+
+    month_range = (months[0], months[-1]) if months else (None, None)
+    date_range = (dates[0], dates[-1]) if dates else (None, None)
+
+    sheet_names = get_sheet_names(workbook)
+
     return {
-        "sheet_names": get_sheet_names(workbook),
+        # -------- existing keys (backward compatible) --------
+        "sheet_names": sheet_names,
         "departments": overview_structure.get("departments", []),
         "meters": meters,
         "date_columns": overview_structure.get("date_columns", []),
         "available_sections": available_sections,
+        # -------- richer additions --------
+        "sheet_count": len(sheet_names),
+        "months": months,
+        "month_range": month_range,
+        "dates": dates,
+        "date_range": date_range,
+        "workbook_version": _discover_workbook_version(workbook),
     }
 
 
-def _get_latest_values(meters: dict[str, pd.Series]) -> dict[str, object]:
-    """Get the most recent non-null reading for every meter.
+def _discover_workbook_version(workbook: dict[str, pd.DataFrame]) -> str | None:
+    """Best-effort discovery of a workbook version, without any hardcoding.
+
+    Scans the overview worksheet's non-numeric cells for a value that
+    looks like a version token (for example ``"v1.2"`` or ``"Rev 3"``),
+    since no fixed cell location can be assumed. This is purely
+    best-effort metadata and never raises if nothing is found.
 
     Args:
-        meters: A mapping of meter name to its readings ``pandas.Series``.
+        workbook: A dictionary mapping sheet names to cleaned DataFrames.
 
     Returns:
-        A dictionary mapping each meter name to its latest non-null
-        reading, or ``None`` if the meter has no available readings.
+        The first plausible version-like string found, or ``None`` if
+        no such value is discovered.
     """
-    latest_values: dict[str, object] = {}
+    overview_dataframe = get_overview_dataframe(workbook)
 
-    for meter_name, series in meters.items():
-        non_null_values = series.dropna()
-        latest_values[meter_name] = (
-            non_null_values.iloc[-1] if not non_null_values.empty else None
-        )
+    for _, row_values in overview_dataframe.iterrows():
+        for value in row_values.dropna():
+            text = str(value).strip().lower()
+            if text.startswith("v") and any(character.isdigit() for character in text):
+                return str(value).strip()
+            if text.startswith("rev") and any(character.isdigit() for character in text):
+                return str(value).strip()
 
-    return latest_values
+    return None
 
 
 def _build_meters_dataframe(meters: dict[str, pd.Series]) -> pd.DataFrame:
@@ -1002,24 +1417,6 @@ def _find_sheet_by_keywords(
             return dataframe
 
     return None
-
-
-def find_section_by_keyword(
-    sections: list[dict],
-    keyword: str,
-) -> dict | None:
-    """Find a discovered section whose name contains the given keyword."""
-
-    keyword = keyword.lower()
-
-    return next(
-        (
-            section
-            for section in sections
-            if keyword in section["name"].lower()
-        ),
-        None,
-    )
 
 
 def _validate_dataframe(dataframe: pd.DataFrame) -> None:
