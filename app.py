@@ -354,7 +354,7 @@ def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
     with k_col4:
         st.markdown(
             f"""<div class="metric-card-container">
-                <p class="metric-card-title">Departments Reporting</p>
+                <p class="metric-card-title">Depts Reporting</p>
                 <p class="metric-card-value">{active_depts_count}</p>
                 <div class="metric-card-footer">Functional Systems Feed</div>
             </div>""", unsafe_allow_html=True
@@ -465,7 +465,6 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
 
         if len(meters) > 1:
             st.markdown("<br/>##### 📊 Multi-Variable Process Cross-Channel Analysis", unsafe_allow_html=True)
-            # Fetch date index explicitly from the dataframe coordinates if present
             date_cols = get_date_columns(overview_df)
             if date_cols and overview_df.shape[0] > 3:
                 dates_axis = overview_df.iloc[3:, date_cols[0]].reset_index(drop=True)
@@ -493,7 +492,6 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
             total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0)
             unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
             
-            # Select max ceiling parameters accurately across statistics array frames
             max_ceiling = 100.0
             for potential_max in (total_val, avg_val, latest_val):
                 if isinstance(potential_max, (int, float)) and potential_max > 0:
@@ -569,7 +567,7 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
         <div class="scada-footer">
             Workbook Context: {active_workbook} · 
             Last Refresh: {refresh_text} · 
-            Dashboard Baseline Engine Suite v{APP_VERSION}
+            Dashboard Baseline Version Suite v{APP_VERSION}
         </div>
         """,
         unsafe_allow_html=True,
@@ -577,7 +575,7 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
 
 
 def main() -> None:
-    """Orchestrate presentation layouts and handle context loading loops safely."""
+    """Orchestrate layout render workflows safely utilizing session cache resources."""
     inject_global_styles()
 
     dashboard, error_msg = get_dashboard()
