@@ -69,10 +69,11 @@ def download_workbook(url: str = WORKBOOK_RAW_URL) -> BytesIO:
             f"downloading the workbook from '{url}'."
         )
 
-    return BytesIO(response.content)
+    return
+    BytesIO(response.content)
 
 
-@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner="Loading workbook...")
+@st.cache_resource(ttl=CACHE_TTL_SECONDS, show_spinner="Loading workbook...")
 def load_excel(url: str = WORKBOOK_RAW_URL) -> pd.ExcelFile:
     """Load the downloaded workbook into a ``pandas.ExcelFile``.
 
