@@ -8,6 +8,7 @@ theme optimized for premium Power BI style executive reporting.
 
 from __future__ import annotations
 
+import datetime
 import warnings
 from typing import Any
 
@@ -111,6 +112,40 @@ def align_dates_with_meter(
     return trend_df if not trend_df.empty else None
 
 
+def _align_dates_with_multiple_meters(
+    overview_dataframe: pd.DataFrame,
+    dataframe_block: pd.DataFrame,
+    columns: list[str],
+    date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
+) -> pd.DataFrame | None:
+    """Internal helper to align a date index series with multiple target metrics columns.
+    
+    Prevents presentation layers from manually executing date resolution mappings.
+    """
+    if not isinstance(overview_dataframe, pd.DataFrame) or overview_dataframe.empty:
+        return None
+    if not isinstance(dataframe_block, pd.DataFrame) or dataframe_block.empty or not columns:
+        return None
+
+    date_cols = get_date_columns(overview_dataframe)
+    if not date_cols:
+        return None
+
+    date_values = overview_dataframe.iloc[3:, date_cols[0]].reset_index(drop=True)
+    row_count = min(len(date_values), len(dataframe_block))
+    if row_count == 0:
+        return None
+
+    compiled_df = pd.DataFrame({date_column_label: date_values.iloc[:row_count].values})
+    
+    for col in columns:
+        if col in dataframe_block.columns:
+            compiled_df[col] = pd.to_numeric(dataframe_block[col].iloc[:row_count].reset_index(drop=True), errors="coerce")
+
+    compiled_df = compiled_df.dropna(subset=[date_column_label])
+    return compiled_df if not compiled_df.empty else None
+
+
 def build_section_trend_data(
     overview_dataframe: pd.DataFrame,
     section: dict[str, Any],
@@ -166,6 +201,66 @@ def build_section_trend_chart(
         )
     except Exception:
         return None
+
+
+# ==============================================================================
+# SPECIALIZED BUSINESS COMPONENT HELPERS
+# ==============================================================================
+
+
+def create_department_multi_line_chart(
+    overview_dataframe: pd.DataFrame,
+    section: dict[str, Any],
+    title: str,
+    x_label: str | None = None,
+    y_label: str | None = None,
+) -> go.Figure | None:
+    """Extract, align, and construct a multi-series figure for a specific department section.
+
+    Args:
+        overview_dataframe: Raw master overview workbook slice for calendar dates discovery.
+        section: Formatted department structure object dictionary from dashboard_data layers.
+        title: Descriptive diagram banner text string.
+        x_label: Optional label signature parameter configuration for the x-axis track.
+        y_label: Optional label signature parameter configuration for the y-axis track.
+
+    Returns:
+        A production-grade, dark-themed industrial multi-line telemetry Plotly graph.
+    """
+    if not section or "dataframe" not in section or "meters" not in section:
+        return None
+
+    dept_df = section["dataframe"]
+    meters = section["meters"]
+
+    if not isinstance(dept_df, pd.DataFrame) or dept_df.empty or not meters:
+        return None
+
+    # Discover and resolve only active numeric columns, filtering out text metrics channels
+    numeric_meters = [
+        col for col in meters if col in dept_df.columns and pd.to_numeric(dept_df[col], errors="coerce").notna().any()
+    ]
+    if not numeric_meters:
+        return None
+
+    # Enforce chronological master vector context tracking layout alignments strictly
+    aligned_df = _align_dates_with_multiple_meters(
+        overview_dataframe=overview_dataframe,
+        dataframe_block=dept_df,
+        columns=numeric_meters,
+        date_column_label=DEFAULT_DATE_COLUMN_LABEL
+    )
+    if aligned_df is None or aligned_df.empty:
+        return None
+
+    return create_multi_line_chart(
+        dataframe=aligned_df,
+        x_column=DEFAULT_DATE_COLUMN_LABEL,
+        y_columns=numeric_meters,
+        title=title,
+        x_label=x_label,
+        y_label=y_label
+    )
 
 
 # ==============================================================================
@@ -641,7 +736,7 @@ def create_heatmap(
             figure,
             title=title,
             x_label=x_label or "Observation Index",
-            y_label=y_label or "Metric Channel",
+            y_label=y_label or "Meter Channel",
         )
     except Exception:
         return None
