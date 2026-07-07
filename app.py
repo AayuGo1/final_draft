@@ -13,22 +13,21 @@ from typing import Any, Final
 import pandas as pd
 import streamlit as st
 
-from services.dashboard_loader import load_dashboard_safe
-import services.chart_service as chart_service
-import services.kpi_service as kpi_service
-
 from config import (
     APP_ICON,
     APP_NAME,
     APP_VERSION,
+    GITHUB_BRANCH,
+    GITHUB_OWNER,
+    GITHUB_REPO,
     PAGE_CONFIG,
     THEME_DANGER_COLOR,
     THEME_PRIMARY_COLOR,
     THEME_SUCCESS_COLOR,
-    THEME_WARNING_COLOR,
 )
 import services.chart_service as chart_service
 import services.kpi_service as kpi_service
+from dashboard_loader import load_dashboard_safe
 
 # Layout constants
 GRID_COLUMNS: Final[int] = 4
@@ -40,11 +39,19 @@ def get_dashboard() -> tuple[dict[str, Any] | None, str | None]:
     Returns:
         A tuple of (dashboard_dict, error_message).
     """
+    if "dashboard_data" not in st.session_state:
+        dashboard, error = load_dashboard_safe()
+        st.session_state["dashboard_data"] = dashboard
+        st.session_state["dashboard_error"] = error
+        st.session_state["last_refresh"] = dt.datetime.now()
+
     return st.session_state.get("dashboard_data"), st.session_state.get("dashboard_error")
 
 
 def refresh_dashboard() -> None:
-    """Evict structural context references from active session state layers."""
+    """Evict structural context references from active session state layers and clear caches."""
+    st.cache_data.clear()
+    st.cache_resource.clear()
     for key in ("dashboard_data", "dashboard_error", "last_refresh"):
         st.session_state.pop(key, None)
 
@@ -217,18 +224,17 @@ def inject_global_styles() -> None:
 
 
 def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
-    """Render the simplified global system supervision header and time controls.
-
-    Returns:
-        A tuple of strings representing selected (month, date).
-    """
+    """Render the simplified global system supervision header and time controls."""
     now = dt.datetime.now()
     summary = (dashboard or {}).get("summary", {})
     filters_data = (dashboard or {}).get("filters", {})
     
     plant_ok = bool(summary.get("available_sections", []))
     plant_color = THEME_SUCCESS_COLOR if plant_ok else THEME_DANGER_COLOR
-    plant_text = "ONLINE" if plant_ok else "NO SIGNAL"
+    plant_text = "ONLINE" if plant_ok else "OFFLINE"
+    
+    wb_color = THEME_SUCCESS_COLOR if dashboard else THEME_DANGER_COLOR
+    wb_text = "CONNECTED" if dashboard else "DISCONNECTED"
     
     last_refresh = st.session_state.get("last_refresh", now)
 
@@ -240,16 +246,15 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
                     <div class="scada-logo">{APP_ICON}</div>
                     <div>
                         <h1 class="scada-main-title">{APP_NAME}</h1>
-                        <div style="display: flex; gap: 8px; margin-top: 2px;">
+                        <div style="display: flex; gap: 8px; margin-top: 2px; flex-wrap: wrap;">
                             <div class="status-pill"><span class="status-dot" style="background:{plant_color};"></span>PLANT: {plant_text}</div>
+                            <div class="status-pill"><span class="status-dot" style="background:{wb_color};"></span>WORKBOOK: {wb_text}</div>
                             <div class="status-pill">📅 {now.strftime("%d %b %Y")}</div>
                             <div class="status-pill">🕒 {now.strftime("%H:%M:%S")}</div>
-                            <div class="status-pill">🔁 SYNC: {last_refresh.strftime("%H:%M:%S")}</div>
+                            <div class="status-pill">🔁 SYNC STAMP: {last_refresh.strftime("%H:%M:%S")}</div>
+                            <div class="status-pill">🐙 GITHUB: {GITHUB_OWNER}/{GITHUB_REPO}@{GITHUB_BRANCH}</div>
                         </div>
                     </div>
-                </div>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <div class="status-pill">☁️ SOURCE: OK</div>
                 </div>
             </div>
         </div>
@@ -260,21 +265,21 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
     h_col1, h_col2, h_col3 = st.columns([2.5, 2.5, 5])
     with h_col1:
         selected_month = st.selectbox(
-            "Filter Month",
+            "Month Sync Context",
             options=filters_data.get("months", ["N/A"]),
             index=0,
             key="header_month_select"
         )
     with h_col2:
         selected_date = st.selectbox(
-            "Filter Date",
+            "Date Sync Context",
             options=filters_data.get("dates", ["N/A"]),
             index=0,
             key="header_date_select"
         )
     with h_col3:
         st.markdown("<div style='padding-top: 24px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 Sync Live Ingestion Buffer", key="btn_manual_header_sync"):
+        if st.button("🔄 Sync Live Remote Ingestion Buffer", key="btn_manual_header_sync"):
             refresh_dashboard()
             st.rerun()
 
@@ -282,11 +287,10 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
 
 
 def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
-    """Compile and render industrial engineering KPIs cleanly across nodes."""
+    """Compile and render industrial business KPIs cleanly across node telemetry states."""
     summary = dashboard.get("summary", {})
     departments = dashboard.get("departments", {})
 
-    # Compute explicit analytical aggregates from matching metric channels
     total_consumption = 0.0
     active_depts_count = 0
     total_reporting_meters = 0
@@ -305,16 +309,23 @@ def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
     ]
     global_average = sum(flat_averages) / len(flat_averages) if flat_averages else 0.0
     
-    latest_ts = summary.get("latest_timestamp", "N/A")
+    latest_ts_raw = summary.get("latest_timestamp", "N/A")
+    if isinstance(latest_ts_raw, str):
+        latest_ts_display = latest_ts_raw.split()[0] if " " in latest_ts_raw else latest_ts_raw
+    elif hasattr(latest_ts_raw, "strftime"):
+        latest_ts_display = latest_ts_raw.strftime("%Y-%m-%d")
+    else:
+        latest_ts_display = "N/A"
+
     meter_count = summary.get("meter_count", 0)
 
-    st.markdown('<p class="section-panel-title">📊 Enterprise SCADA Operational Aggregates</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-panel-title">📈 Corporate Operations KPI Infrastructure</p>', unsafe_allow_html=True)
     k_col1, k_col2, k_col3, k_col4, k_col5, k_col6 = st.columns(6)
 
     with k_col1:
         st.markdown(
             f"""<div class="metric-card-container">
-                <p class="metric-card-title">Total Load</p>
+                <p class="metric-card-title">Total Consumption</p>
                 <p class="metric-card-value">{total_consumption:,.1f}</p>
                 <div class="metric-card-footer">Sum Active Channels</div>
             </div>""", unsafe_allow_html=True
@@ -322,7 +333,7 @@ def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
     with k_col2:
         st.markdown(
             f"""<div class="metric-card-container">
-                <p class="metric-card-title">Mean Base Load</p>
+                <p class="metric-card-title">Average Consumption</p>
                 <p class="metric-card-value">{global_average:,.1f}</p>
                 <div class="metric-card-footer">Channel Array Average</div>
             </div>""", unsafe_allow_html=True
@@ -330,51 +341,55 @@ def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
     with k_col3:
         st.markdown(
             f"""<div class="metric-card-container">
-                <p class="metric-card-title">Blocks Online</p>
-                <p class="metric-card-value">{active_depts_count}</p>
-                <div class="metric-card-footer">Depts Reporting Data</div>
+                <p class="metric-card-title">Latest Reading</p>
+                <p class="metric-card-value">{total_consumption / max(total_reporting_meters, 1):,.1f}</p>
+                <div class="metric-card-footer">Mean Vector Output</div>
             </div>""", unsafe_allow_html=True
         )
     with k_col4:
         st.markdown(
             f"""<div class="metric-card-container">
-                <p class="metric-card-title">Nodes Online</p>
-                <p class="metric-card-value">{total_reporting_meters} / {meter_count}</p>
-                <div class="metric-card-footer">Active Feeds Tracking</div>
+                <p class="metric-card-title">Depts Reporting</p>
+                <p class="metric-card-value">{active_depts_count}</p>
+                <div class="metric-card-footer">Functional Systems Feed</div>
             </div>""", unsafe_allow_html=True
         )
     with k_col5:
         st.markdown(
             f"""<div class="metric-card-container">
-                <p class="metric-card-title">Ingest Window</p>
-                <p class="metric-card-value" style="font-size: 1.1rem; padding-top: 5px; font-weight:700;">{latest_ts.split()[0] if latest_ts != "N/A" else "N/A"}</p>
-                <div class="metric-card-footer">Matrix Max Limit</div>
+                <p class="metric-card-title">Meters Reporting</p>
+                <p class="metric-card-value">{total_reporting_meters} / {meter_count}</p>
+                <div class="metric-card-footer">Active Subnodes Trace</div>
             </div>""", unsafe_allow_html=True
         )
     with k_col6:
-        availability = kpi_service.calculate_data_availability(dashboard.get("overview", pd.DataFrame()))
         st.markdown(
             f"""<div class="metric-card-container">
-                <p class="metric-card-title">Matrix Density</p>
-                <p class="metric-card-value">{availability * 100:.1f}%</p>
-                <div class="metric-card-footer">Data Cell Population</div>
+                <p class="metric-card-title">Last Updated</p>
+                <p class="metric-card-value" style="font-size: 1.3rem; font-weight: 700; padding-top: 3px;">{latest_ts_display}</p>
+                <div class="metric-card-footer">Chronological Base Target</div>
             </div>""", unsafe_allow_html=True
         )
 
 
-def render_department_grid(dashboard: dict[str, Any]) -> str:
-    """Render secondary responsive system component button array metrics.
+def _get_representative_meter(dept_obj: dict[str, Any]) -> str:
+    """Safely select the first valid numeric column within a department context."""
+    meters = dept_obj.get("meters", [])
+    latest_values = dept_obj.get("latest_values", {})
+    for m in meters:
+        if isinstance(latest_values.get(m), (int, float)):
+            return m
+    return meters[0] if meters else ""
 
-    Returns:
-        The string name index of the user selected department workspace.
-    """
+
+def render_department_grid(dashboard: dict[str, Any]) -> str:
+    """Render specialized structural matrix navigation system grids."""
     departments: dict[str, dict[str, Any]] = dashboard.get("departments", {})
     dept_names = list(departments.keys())
 
     st.markdown('<p class="section-panel-title">🏭 Infrastructure Component Subsystems Matrix</p>', unsafe_allow_html=True)
 
     if not dept_names:
-        st.info("No architectural components resolved.")
         return ""
 
     if "selected_department" not in st.session_state or st.session_state["selected_department"] not in dept_names:
@@ -389,23 +404,25 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
         for col, d_name in zip(cols, row_slice):
             dept_obj = departments[d_name]
             meters = dept_obj.get("meters", [])
-            rep_m = meters[0] if meters else ""
             
-            l_v = dept_obj.get("latest_values", {}).get(rep_m)
-            u_lbl = dept_obj.get("units", {}).get(rep_m, "")
+            rep_m = _get_representative_meter(dept_obj)
+            l_v = dept_obj.get("latest_values", {}).get(rep_m) if rep_m else None
+            u_lbl = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
+            avg_m = dept_obj.get("average_values", {}).get(rep_m, 0.0) if rep_m else 0.0
             
             is_active = (d_name == current_selection)
             active_class = "tile-active" if is_active else "tile-inactive"
 
-            health_dot = "🟢" if l_v is not None else "⚪"
+            health_indicator = "🟢" if l_v is not None else "⚪"
             val_display = f"{l_v:,.1f} {u_lbl}" if isinstance(l_v, (int, float)) else "Offline"
+            avg_display = f"{avg_m:,.1f}" if isinstance(avg_m, (int, float)) else "N/A"
 
             with col:
                 st.markdown(f'<div class="{active_class}">', unsafe_allow_html=True)
                 btn_txt = (
-                    f"{health_dot} {d_name}\n"
-                    f"Nodes: {len(meters)} | Primary: {rep_m[:14]}...\n"
-                    f"Value: {val_display}"
+                    f"{health_indicator} {d_name}\n"
+                    f"Meters: {len(meters)} | Value: {val_display}\n"
+                    f"Average: {avg_display}"
                 )
                 if st.button(btn_txt, key=f"nav_tile_{d_name}"):
                     st.session_state["selected_department"] = d_name
@@ -416,7 +433,7 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
 
 
 def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> None:
-    """Render detailed interactive operational trend lines and telemetry channels."""
+    """Render comprehensive diagnostic analysis charts and comparative tables for selected block."""
     dept_obj: dict[str, Any] = dashboard.get("departments", {}).get(active_dept, {})
     overview_df: pd.DataFrame = dashboard.get("overview", pd.DataFrame())
 
@@ -424,104 +441,115 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
         return
 
     st.markdown(f'<div class="panel-container">', unsafe_allow_html=True)
-    st.markdown(f"<h3>🛡️ Operational Diagnostic Workspace &mdash; {active_dept}</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3>🛡️ Engineering Supervisory System Diagnostics &mdash; {active_dept}</h3>", unsafe_allow_html=True)
     st.markdown('<hr style="margin: 4px 0 16px 0; border-color: rgba(255,255,255,0.05);"/>', unsafe_allow_html=True)
 
-    # Isolated analytical blocks mapping equipment layout footprints
-    is_special_utility = any(k in active_dept.lower() for k in ("compressor", "freon", "ammonia"))
     meters = dept_obj.get("meters", [])
     df_block = dept_obj.get("dataframe", pd.DataFrame())
+    rep_m = _get_representative_meter(dept_obj)
 
-    # Row A: Graphic Visualizations Layout Blocks
+    # Contextual Layout Optimization: Core Visualizations Grid Panel
     chart_col1, chart_col2 = st.columns([6, 4])
     
     with chart_col1:
-        st.markdown("##### 📉 Continuous Timeline Telemetry Profile")
+        st.markdown("##### 📉 Chronological Primary Parameter Trend Channel")
         fig_primary = chart_service.build_section_trend_chart(overview_df, dept_obj)
         if fig_primary:
             st.plotly_chart(fig_primary, use_container_width=True)
         else:
-            st.caption("Primary chronological metric profile logs absent or structurally misaligned.")
+            st.caption("Primary timeline track vector unpopulated or matching string scalars.")
 
-    with chart_col2:
-        st.markdown("##### 📊 Subsystem Diagnostics & Distribution")
-        if is_special_utility and len(meters) > 1:
-            # Map a multi-channel aggregate load visualization across parameters
+        # Secondary Cross-Channel Comparative Trajectory Layout Plotting
+        if len(meters) > 1:
+            st.markdown("<br/>##### 📊 Multi-Variable Process Cross-Channel Analysis", unsafe_allow_html=True)
             fig_compare = chart_service.create_multi_line_chart(
-                df_block.reset_index(),
+                dataframe=df_block.reset_index(),
                 x_column="index",
-                y_columns=meters[:3],
-                title="Cross-Channel Comparative Load Matrix"
+                y_columns=meters[:min(len(meters), 4)],
+                title="Parallel Operations Diagnostic Load Profiles"
             )
             if fig_compare:
                 st.plotly_chart(fig_compare, use_container_width=True)
-            else:
-                st.caption("Distribution comparisons unrenderable.")
-        else:
-            # Drop a standard volumetric distribution wheel for standard structures
-            rep_m = meters[0] if meters else ""
+
+    with chart_col2:
+        st.markdown("##### 🧭 Node Dynamic Scale instrumentation Gauge")
+        if rep_m:
             latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0)
             avg_val = dept_obj.get("average_values", {}).get(rep_m, 100.0)
+            unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
             
             fig_gauge = chart_service.create_gauge_chart(
                 value=float(latest_val) if isinstance(latest_val, (int, float)) else 0.0,
-                title=f"Node Scale: {rep_m[:15]}",
+                title=f"Gauge: {rep_m[:18]}",
                 maximum=float(avg_val * 2.0) if isinstance(avg_val, (int, float)) and avg_val > 0 else 100.0,
-                unit=str(dept_obj.get("units", {}).get(rep_m, ""))
+                unit=str(unit_lbl)
             )
             if fig_gauge:
                 st.plotly_chart(fig_gauge, use_container_width=True)
             else:
-                st.caption("Diagnostic indicator gauge unrenderable.")
+                st.caption("Gauge visualization failed.")
+        
+        # Display localized subsystem summary table inside secondary visualization column
+        st.markdown("<br/>##### 📑 Node Current Process Vector Snapshots", unsafe_allow_html=True)
+        mini_records = []
+        for m in meters[:min(len(meters), 6)]:
+            v = dept_obj.get("latest_values", {}).get(m)
+            u = dept_obj.get("units", {}).get(m, "N/A")
+            mini_records.append({
+                "Channel ID": m[:20],
+                "Log Readout": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline",
+                "Unit": u if u else "N/A"
+            })
+        if mini_records:
+            st.dataframe(pd.DataFrame(mini_records), use_container_width=True, hide_index=True)
 
-    # Row B: Grid System Tabular Metric Index Specifications
-    st.markdown("<br/>##### 📋 Instrumentation Node Channels Specification Log Index", unsafe_allow_html=True)
+    # Full Matrix Data Logging Specifications Ledger Table
+    st.markdown("<br/>##### 📋 Instrumentation Node Channel Registry Detailed Log Ledger", unsafe_allow_html=True)
     
     units_map = dept_obj.get("units", {})
     latest_vals = dept_obj.get("latest_values", {})
     avg_vals = dept_obj.get("average_values", {})
     total_vals = dept_obj.get("total_values", {})
 
-    records = []
+    ledger_records = []
     for m in meters:
-        lbl = units_map.get(m, "Smp")
+        lbl = units_map.get(m)
         l_v = latest_vals.get(m)
         a_v = avg_vals.get(m)
         t_v = total_vals.get(m)
         
-        status = "🟢 Operational" if l_v is not None else "⚪ Idle / Deconditioned"
+        status_string = "🟢 Active" if l_v is not None else "⚪ Idle"
 
-        records.append({
+        ledger_records.append({
             "Instrumentation Node / Meter Channel": m,
-            "Engineering Unit": lbl,
+            "Engineering Unit": lbl if (lbl and str(lbl).strip()) else "N/A",
             "Latest Value Check": round(l_v, 2) if isinstance(l_v, (int, float)) else "N/A",
             "Mean Running Load": round(a_v, 2) if isinstance(a_v, (int, float)) else "N/A",
             "Accumulated Quantity Sum": round(t_v, 2) if isinstance(t_v, (int, float)) else "N/A",
-            "Operational Flag Status": status
+            "Operational Status Flag": status_string
         })
 
-    if records:
-        st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
-    else:
-        st.caption("No registered diagnostic records populated within target column boundary structures.")
+    if ledger_records:
+        st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_footer(dashboard: dict[str, Any] | None) -> None:
-    """Render the standardized minimal presentation bottom block."""
+    """Render a minimal presentation bottom block containing deployment indicators."""
     last_refresh = st.session_state.get("last_refresh")
     refresh_text = last_refresh.strftime("%d %b %Y, %H:%M:%S") if last_refresh else "N/A"
     
     meta = (dashboard or {}).get("metadata", {})
-    active_sheet = meta.get("sheet_names", ["Data Source Unlinked"])[0]
+    sheet_names = meta.get("sheet_names", ["Data Source Unlinked"])
+    active_workbook = sheet_names[0] if sheet_names else "N/A"
 
     st.markdown(
         f"""
         <div class="scada-footer">
-            System Operations Cluster Base: <code>{active_sheet}</code> · 
-            Master Cycle Clock: <code>{refresh_text}</code> · 
-            {APP_NAME} Supervision Suite Framework v{APP_VERSION}
+            Workbook Context: <code>{active_workbook}</code> · 
+            Ingestion Sync Clock: <code>{refresh_text}</code> · 
+            Dashboard Baseline Engine Suite v{APP_VERSION}
         </div>
         """,
         unsafe_allow_html=True,
@@ -529,46 +557,29 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
 
 
 def main() -> None:
-    """Orchestrate presentation layouts and handle context loading loops safely."""
+    """Orchestrate layout render workflows safely utilizing session cache resources."""
     inject_global_styles()
-
-    # Load shared Analytical Context dictionary mappings via pipeline loaders
-    if "dashboard_data" not in st.session_state:
-        dashboard, error_msg = load_dashboard_safe()
-        st.session_state["dashboard_data"] = dashboard
-        st.session_state["dashboard_error"] = error_msg
-        st.session_state["last_refresh"] = dt.datetime.now()
 
     dashboard, error_msg = get_dashboard()
 
-    # Render SCADA Top Identity Navigation Header Banner
-    render_top_header(dashboard)
+    # Render low-latency application framework
+    render_header_return = render_header(dashboard)
 
     if error_msg is not None or dashboard is None:
-        st.error(f"⚠️ CRITICAL SYSTEM ACCESS VIOLATION: {error_msg if error_msg else 'Ingestion context fault.'}")
-        render_footer(None)
+        st.error(error_msg or "Critical Infrastructure Alert: Analytical context dictionary failed initialization.")
+        render_footer(dashboard)
         return
 
-    # Render Analytical Executive KPI Block Strips
+    # Trigger components sequence matching structural definitions
     render_executive_kpi_strip(dashboard)
-
-    # Render Subsystem Navigation Grid Component Channels Selection Blocks
-    active_dept = render_department_grid(dashboard)
-
-    # Engage Specialized Active Workspaces Displays
-    if active_dept:
-        render_subsystem_workspace(dashboard, active_dept)
-
-    # Append Minimal Footer Specifications
+    selected_dept = render_department_grid(dashboard)
+    
+    if selected_dept:
+        render_subsystem_workspace(dashboard, selected_dept)
+        
     render_footer(dashboard)
 
 
 if __name__ == "__main__":
-    # Standard configuration arguments passed directly to st.set_page_config
-    st.set_page_config(
-        page_title=PAGE_CONFIG.get("page_title", APP_NAME),
-        page_icon=PAGE_CONFIG.get("page_icon", "⚙️"),
-        layout="wide",
-        initial_sidebar_state="collapsed"
-    )
+    st.set_page_config(**PAGE_CONFIG)
     main()
