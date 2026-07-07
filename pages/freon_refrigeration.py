@@ -1,12 +1,11 @@
 """Freon Refrigeration monitoring page for the Engineering Monitoring
 Dashboard.
 
-This module renders the real Freon Refrigeration overview. It prefers a
-dedicated Freon worksheet when the workbook provides one, and falls back
-to dynamically discovering a Freon Refrigeration section from the
-engineering overview worksheet otherwise, via ``services.page_service``.
-It performs no engineering KPI calculation beyond simple counts, no fake
-data generation, and no hardcoded row, column, or meter names.
+Renders the real Freon Refrigeration data, preferring a dedicated Freon
+worksheet and falling back to a discovered overview section, via
+``services.page_service``. KPI cards come from ``services.kpi_service``
+and the trend chart comes from ``services.chart_service``. No KPI
+calculation or chart-building logic lives in this file.
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ import streamlit as st
 
 import ui
 from dashboard_data import get_date_columns
+from services import chart_service, kpi_service
 from services.page_service import load_dedicated_sheet
 
 FREON_KEY: str = "freon"
@@ -24,105 +24,152 @@ FREON_KEY: str = "freon"
 FREON_KEYWORD: str = "freon"
 """Keyword used to identify the Freon section among discovered sections."""
 
+AVAILABILITY_HEALTHY_THRESHOLD: float = 0.9
+"""Availability ratio at/above which data is considered healthy."""
 
-def count_available_readings(dataframe: pd.DataFrame) -> int:
-    """Count the total number of non-null readings in a worksheet.
-
-    Args:
-        dataframe: The Freon Refrigeration DataFrame.
-
-    Returns:
-        The total count of non-null cells in the DataFrame.
-    """
-    return int(dataframe.notna().sum().sum())
+AVAILABILITY_PARTIAL_THRESHOLD: float = 0.5
+"""Availability ratio at/above which data is considered partially available."""
 
 
-def count_meters(dataframe: pd.DataFrame, section: dict | None) -> int:
-    """Determine the number of meters represented in the Freon data.
-
-    When a discovered overview section is available, its meter list is
-    used directly. Otherwise, for a dedicated Freon worksheet, the
-    number of meters is derived as the number of columns that are not
-    date columns, since dedicated worksheets typically use one column
-    per meter alongside a date column.
+def render_kpi_row(summary: dict) -> None:
+    """Render the top KPI row from a kpi_service summary.
 
     Args:
-        dataframe: The Freon Refrigeration DataFrame.
-        section: The discovered overview section dictionary, or ``None``
-            when a dedicated Freon worksheet is used.
-
-    Returns:
-        The number of meters found in the Freon data.
-    """
-    if section is not None:
-        return len(section["meters"])
-
-    date_columns = get_date_columns(dataframe)
-    return max(dataframe.shape[1] - len(date_columns), 0)
-
-
-def get_latest_timestamp(dataframe: pd.DataFrame) -> str:
-    """Find the latest timestamp available in the Freon data, if any.
-
-    Args:
-        dataframe: The Freon Refrigeration DataFrame.
-
-    Returns:
-        The latest date value found in a discovered date column,
-        formatted as a string, or ``"N/A"`` if no date column or value
-        is available.
-    """
-    date_columns = get_date_columns(dataframe)
-    if not date_columns:
-        return "N/A"
-
-    for column_index in reversed(date_columns):
-        column_values = dataframe.iloc[:, column_index].dropna()
-        if not column_values.empty:
-            return str(column_values.iloc[-1])
-
-    return "N/A"
-
-
-def render_kpi_row(dataframe: pd.DataFrame, section: dict | None) -> None:
-    """Render the top KPI row derived from the Freon Refrigeration data.
-
-    Args:
-        dataframe: The Freon Refrigeration DataFrame.
-        section: The discovered overview section dictionary, or ``None``
-            when a dedicated Freon worksheet is used.
+        summary: The KPI summary dictionary from
+            ``kpi_service.build_kpi_summary``.
     """
     cards = [
-        {"title": "Number of Meters", "value": count_meters(dataframe, section)},
+        {"title": "Number of Meters", "value": summary["meters"]},
+        {"title": "Available Readings", "value": summary["available_readings"]},
+        {"title": "Latest Timestamp", "value": summary["latest_timestamp"]},
         {
-            "title": "Available Readings",
-            "value": count_available_readings(dataframe),
+            "title": "Data Availability",
+            "value": f"{summary['availability'] * 100:.1f}%",
         },
-        {
-            "title": "Latest Timestamp",
-            "value": get_latest_timestamp(dataframe),
-        },
-        {"title": "Status", "value": "Monitoring"},
     ]
     ui.render_kpi_cards(cards)
 
 
+def render_status_section(summary: dict) -> None:
+    """Render a status banner based on the data's availability.
+
+    Args:
+        summary: The KPI summary dictionary from
+            ``kpi_service.build_kpi_summary``.
+    """
+    availability = summary["availability"]
+    if availability >= AVAILABILITY_HEALTHY_THRESHOLD:
+        ui.render_success_banner("Status: Monitoring — data is healthy.")
+    elif availability >= AVAILABILITY_PARTIAL_THRESHOLD:
+        ui.render_info_banner("Status: Monitoring — partial data available.")
+    else:
+        ui.render_error_banner(
+            "Status: Attention needed — low data availability."
+        )
+
+
+def render_trend_section(dataframe: pd.DataFrame, section: dict | None) -> None:
+    """Render a Plotly trend chart for the Freon Refrigeration data.
+
+    When a discovered overview ``section`` is available, reuses
+    ``chart_service.build_section_trend_chart`` (which aligns the
+    section's meters against the overview worksheet's date column).
+    Otherwise, for a dedicated worksheet, discovers the date column
+    directly and treats every other column as a candidate meter series.
+
+    Args:
+        dataframe: The Freon Refrigeration DataFrame.
+        section: The discovered overview section dictionary, or ``None``
+            when a dedicated Freon worksheet is used.
+    """
+    ui.render_section("Trend Analysis")
+    with st.container(border=True):
+        if section is not None:
+            figure = chart_service.build_section_trend_chart(
+                section["overview_dataframe"], section
+            )
+            if figure is None:
+                ui.render_info_banner("No trend data is available to chart yet.")
+            else:
+                st.plotly_chart(figure, use_container_width=True)
+            return
+
+        date_columns = get_date_columns(dataframe)
+        if not date_columns:
+            ui.render_info_banner("No date column was discovered to chart.")
+            return
+
+        date_column_name = dataframe.columns[date_columns[0]]
+        meter_columns = [
+            column for column in dataframe.columns if column != date_column_name
+        ]
+        if not meter_columns:
+            ui.render_info_banner("No meter columns were discovered to chart.")
+            return
+
+        figure = chart_service.create_multi_line_chart(
+            dataframe,
+            x_column=date_column_name,
+            y_columns=meter_columns,
+            title="Freon Refrigeration Meters Trend",
+        )
+        st.plotly_chart(figure, use_container_width=True)
+
+
+def render_latest_readings_table(
+    dataframe: pd.DataFrame, section: dict | None
+) -> None:
+    """Render a table of the latest reading for every meter.
+
+    Args:
+        dataframe: The Freon Refrigeration DataFrame.
+        section: The discovered overview section dictionary, or ``None``
+            when a dedicated Freon worksheet is used.
+    """
+    ui.render_section("Latest Readings")
+
+    if section is not None:
+        latest = section["latest_values"]
+    else:
+        latest = {
+            str(column): (
+                dataframe[column].dropna().iloc[-1]
+                if not dataframe[column].dropna().empty
+                else None
+            )
+            for column in dataframe.columns
+        }
+
+    table = pd.DataFrame(
+        {"Meter": list(latest.keys()), "Latest Value": list(latest.values())}
+    )
+    with st.container(border=True):
+        ui.render_dataframe(table)
+
+
 def render_data_section(dataframe: pd.DataFrame) -> None:
-    """Render the Freon Refrigeration data table, limited to 15 rows.
+    """Render a preview and expandable full history of the Freon data.
 
     Args:
         dataframe: The Freon Refrigeration DataFrame.
     """
-    ui.render_section("Data")
+    ui.render_section("Historical Data")
     with st.container(border=True):
-        st.dataframe(dataframe.head(15))
+        ui.render_dataframe(dataframe.head(15))
+        with st.expander("View full history"):
+            ui.render_dataframe(dataframe)
 
 
-def render_trend_section() -> None:
-    """Render the bordered Trend Analysis placeholder section."""
+def render_summary_section(summary: dict) -> None:
+    """Render a compact data summary table.
+
+    Args:
+        summary: The KPI summary dictionary from
+            ``kpi_service.build_kpi_summary``.
+    """
+    ui.render_section("Data Summary")
     with st.container(border=True):
-        st.write("**Trend Analysis**")
-        st.caption("Charts and engineering KPIs will be implemented here.")
+        ui.render_dataframe(pd.DataFrame([summary]))
 
 
 def render() -> None:
@@ -138,10 +185,19 @@ def render() -> None:
     if freon_dataframe is None:
         return
 
-    render_kpi_row(freon_dataframe, section)
+    summary = kpi_service.build_kpi_summary(freon_dataframe, section)
+
+    render_kpi_row(summary)
+    render_status_section(summary)
+    ui.render_divider()
+
+    render_trend_section(freon_dataframe, section)
+    ui.render_divider()
+
+    render_latest_readings_table(freon_dataframe, section)
     ui.render_divider()
 
     render_data_section(freon_dataframe)
     ui.render_divider()
 
-    render_trend_section()
+    render_summary_section(summary)
