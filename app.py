@@ -28,13 +28,7 @@ from config import (
 import services.chart_service as chart_service
 import services.kpi_service as kpi_service
 from services.dashboard_loader import load_dashboard_safe
-from dashboard_data import (
-    select_representative_meter,
-    _calculate_latest_valid_value,
-    _calculate_sum,
-    _calculate_mean,
-    get_date_columns,
-)
+from dashboard_data import select_representative_meter
 
 st.set_page_config(
     page_title=PAGE_CONFIG.get("page_title", APP_NAME),
@@ -47,11 +41,7 @@ st.set_page_config(
 GRID_COLUMNS: Final[int] = 4
 
 def get_dashboard() -> tuple[dict[str, Any] | None, str | None]:
-    """Retrieve the cached dashboard session payload framework context safely.
-
-    Returns:
-        A tuple of (dashboard_dict, error_message).
-    """
+    """Retrieve the cached dashboard session payload framework context safely."""
     if "dashboard_data" not in st.session_state:
         dashboard, error = load_dashboard_safe()
         st.session_state["dashboard_data"] = dashboard
@@ -74,59 +64,78 @@ def inject_global_styles() -> None:
     st.markdown(
         f"""
         <style>
+            /* ── Global Reset ──────────────────────────────────────────── */
             #MainMenu {{visibility: hidden;}}
             footer {{visibility: hidden;}}
             header[data-testid="stHeader"] {{background: transparent;}}
 
-            .block-container {{
-                padding-top: 1.0rem;
-                padding-bottom: 2.0rem;
-                max-width: 1550px;
+            .stApp {{
+                background: linear-gradient(168deg, #0a0e1a 0%, #0f1629 35%, #111827 70%, #0d1117 100%);
             }}
 
+            .block-container {{
+                padding-top: 0.8rem;
+                padding-bottom: 2.0rem;
+                max-width: 1600px;
+            }}
+
+            /* ── SCADA Header ──────────────────────────────────────────── */
             .scada-header {{
-                background: linear-gradient(135deg, rgba(108, 99, 255, 0.12), rgba(22, 26, 37, 0.95));
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 12px;
-                padding: 16px 20px;
-                margin-bottom: 16px;
+                background: linear-gradient(135deg, rgba(108, 99, 255, 0.08), rgba(0, 212, 255, 0.04), rgba(22, 26, 37, 0.92));
+                border: 1px solid rgba(0, 212, 255, 0.1);
+                border-radius: 14px;
+                padding: 18px 24px;
+                margin-bottom: 18px;
+                backdrop-filter: blur(12px);
+                box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.03);
             }}
 
             .scada-title-block {{
                 display: flex;
                 align-items: center;
-                gap: 14px;
+                gap: 16px;
             }}
 
             .scada-logo {{
-                width: 44px;
-                height: 44px;
-                border-radius: 8px;
-                background: linear-gradient(135deg, {THEME_PRIMARY_COLOR}, #3a34a1);
+                width: 48px;
+                height: 48px;
+                border-radius: 10px;
+                background: linear-gradient(135deg, {THEME_PRIMARY_COLOR}, #00D4FF);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 22px;
-                box-shadow: 0 4px 12px rgba(108, 99, 255, 0.3);
+                font-size: 24px;
+                box-shadow: 0 4px 20px rgba(0, 212, 255, 0.25), 0 0 40px rgba(0, 212, 255, 0.08);
             }}
 
             .scada-main-title {{
-                font-size: 1.25rem;
-                font-weight: 700;
+                font-size: 1.35rem;
+                font-weight: 800;
                 color: #FAFAFA;
                 margin: 0;
+                letter-spacing: -0.3px;
+                background: linear-gradient(90deg, #F8FAFC, #CBD5E1);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
             }}
 
             .status-pill {{
                 display: inline-flex;
                 align-items: center;
                 gap: 6px;
-                padding: 3px 10px;
-                border-radius: 12px;
+                padding: 4px 12px;
+                border-radius: 20px;
                 background: rgba(255, 255, 255, 0.03);
                 border: 1px solid rgba(255, 255, 255, 0.06);
-                font-size: 0.72rem;
-                color: #CBD5E1;
+                font-size: 0.68rem;
+                color: #94A3B8;
+                font-weight: 500;
+                letter-spacing: 0.3px;
+                text-transform: uppercase;
+                transition: border-color 0.2s;
+            }}
+            .status-pill:hover {{
+                border-color: rgba(0, 212, 255, 0.2);
             }}
 
             .status-dot {{
@@ -134,449 +143,324 @@ def inject_global_styles() -> None:
                 height: 7px;
                 border-radius: 50%;
                 display: inline-block;
+                animation: pulse-dot 2s ease-in-out infinite;
             }}
 
+            @keyframes pulse-dot {{
+                0%, 100% {{ opacity: 1; }}
+                50% {{ opacity: 0.5; }}
+            }}
+
+            /* ── Metric / KPI Cards ────────────────────────────────────── */
             .metric-card-container {{
-                background: linear-gradient(145deg, rgba(30, 41, 59, 0.35), rgba(15, 23, 42, 0.75));
+                background: linear-gradient(145deg, rgba(30, 41, 59, 0.3), rgba(15, 23, 42, 0.7));
                 border: 1px solid rgba(255, 255, 255, 0.05);
-                border-radius: 10px;
-                padding: 14px 18px;
-                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+                border-radius: 12px;
+                padding: 16px 20px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.03);
+                backdrop-filter: blur(8px);
+                transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+                position: relative;
+                overflow: hidden;
+            }}
+            .metric-card-container::before {{
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 2px;
+                background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.4), transparent);
+                opacity: 0;
+                transition: opacity 0.3s;
+            }}
+            .metric-card-container:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 212, 255, 0.06);
+                border-color: rgba(0, 212, 255, 0.15);
+            }}
+            .metric-card-container:hover::before {{
+                opacity: 1;
+            }}
+
+            .metric-card-icon {{
+                font-size: 1.1rem;
+                margin-bottom: 6px;
+                opacity: 0.8;
             }}
 
             .metric-card-title {{
-                font-size: 0.75rem;
-                color: #94A3B8;
-                font-weight: 600;
+                font-size: 0.68rem;
+                color: #64748B;
+                font-weight: 700;
                 text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin: 0 0 4px 0;
+                letter-spacing: 0.8px;
+                margin: 0 0 6px 0;
             }}
 
             .metric-card-value {{
-                font-size: 1.5rem;
-                font-weight: 700;
+                font-size: 1.6rem;
+                font-weight: 800;
                 color: #F8FAFC;
                 margin: 0;
+                letter-spacing: -0.5px;
+                font-variant-numeric: tabular-nums;
             }}
 
             .metric-card-footer {{
-                font-size: 0.7rem;
-                color: #64748B;
-                margin-top: 4px;
+                font-size: 0.65rem;
+                color: #475569;
+                margin-top: 6px;
+                font-weight: 500;
+                letter-spacing: 0.3px;
             }}
 
+            /* ── Section Titles ────────────────────────────────────────── */
             .section-panel-title {{
-                font-size: 0.9rem;
-                font-weight: 700;
-                color: #F1F5F9;
+                font-size: 0.82rem;
+                font-weight: 800;
+                color: #E2E8F0;
                 text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin: 16px 0 10px 2px;
+                letter-spacing: 1.2px;
+                margin: 20px 0 12px 2px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            .section-panel-title::after {{
+                content: '';
+                flex: 1;
+                height: 1px;
+                background: linear-gradient(90deg, rgba(148, 163, 184, 0.15), transparent);
+                margin-left: 8px;
             }}
 
+            /* ── Department Asset Cards ────────────────────────────────── */
             .scada-asset-card {{
-                background: linear-gradient(145deg, rgba(30, 41, 59, 0.45), rgba(15, 23, 42, 0.85));
-                border: 1px solid rgba(255, 255, 255, 0.06);
-                border-radius: 12px;
-                padding: 18px;
-                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-                transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-                min-height: 250px;
+                background: linear-gradient(145deg, rgba(30, 41, 59, 0.35), rgba(15, 23, 42, 0.75));
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 14px;
+                padding: 20px;
+                box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+                transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+                min-height: 240px;
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
                 box-sizing: border-box;
-                margin-bottom: 16px;
+                margin-bottom: 14px;
+                backdrop-filter: blur(10px);
+                position: relative;
+                overflow: hidden;
             }}
-
+            .scada-asset-card::before {{
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.5), transparent);
+                opacity: 0;
+                transition: opacity 0.3s;
+            }}
             .scada-asset-card:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 10px 24px rgba(108, 99, 255, 0.15);
-                border-color: {THEME_PRIMARY_COLOR}55;
+                transform: translateY(-3px);
+                box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(0, 212, 255, 0.08);
+                border-color: rgba(0, 212, 255, 0.2);
+            }}
+            .scada-asset-card:hover::before {{
+                opacity: 1;
             }}
 
             .scada-asset-title {{
                 font-size: 1.05rem;
-                font-weight: 700;
+                font-weight: 800;
                 color: #FAFAFA;
-                margin: 0 0 12px 0;
+                margin: 0 0 14px 0;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
+                letter-spacing: -0.2px;
             }}
 
             .scada-asset-data-row {{
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin: 4px 0;
-                font-size: 0.82rem;
+                margin: 5px 0;
+                font-size: 0.8rem;
+                padding: 4px 0;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            }}
+            .scada-asset-data-row:last-of-type {{
+                border-bottom: none;
             }}
 
             .scada-asset-label {{
-                color: #94A3B8;
-                font-weight: 500;
+                color: #64748B;
+                font-weight: 600;
+                text-transform: uppercase;
+                font-size: 0.7rem;
+                letter-spacing: 0.5px;
             }}
 
             .scada-asset-value {{
-                color: #F8FAFC;
+                color: #F1F5F9;
                 font-weight: 700;
                 text-align: right;
                 white-space: nowrap;
+                font-variant-numeric: tabular-nums;
             }}
 
             .scada-asset-status {{
                 display: flex;
                 align-items: center;
                 gap: 6px;
-                font-size: 0.75rem;
-                color: #CBD5E1;
-                margin-top: 10px;
-                margin-bottom: 12px;
+                font-size: 0.72rem;
+                color: #94A3B8;
+                margin-top: 12px;
+                margin-bottom: 8px;
+                font-weight: 500;
             }}
 
+            /* ── Buttons ───────────────────────────────────────────────── */
             div[data-testid="stButton"] > button {{
                 width: 100%;
-                border-radius: 8px !important;
-                border: 1px solid rgba(255, 255, 255, 0.05) !important;
-                background: linear-gradient(145deg, rgba(30, 41, 59, 0.3), rgba(15, 23, 42, 0.7)) !important;
-                padding: 10px 12px !important;
+                border-radius: 10px !important;
+                border: 1px solid rgba(255, 255, 255, 0.06) !important;
+                background: linear-gradient(145deg, rgba(30, 41, 59, 0.25), rgba(15, 23, 42, 0.6)) !important;
+                padding: 10px 14px !important;
                 text-align: left !important;
-                transition: all 0.15s ease-in-out !important;
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                font-weight: 500 !important;
             }}
 
             div[data-testid="stButton"] > button:hover {{
                 transform: translateY(-1px);
-                border-color: {THEME_PRIMARY_COLOR}66 !important;
-                box-shadow: 0 4px 12px rgba(108, 99, 255, 0.12) !important;
+                border-color: rgba(0, 212, 255, 0.3) !important;
+                box-shadow: 0 4px 16px rgba(0, 212, 255, 0.1) !important;
+                background: linear-gradient(145deg, rgba(30, 41, 59, 0.4), rgba(15, 23, 42, 0.8)) !important;
             }}
 
             .tile-active > div[data-testid="stButton"] > button {{
-                border-color: {THEME_PRIMARY_COLOR} !important;
-                background: linear-gradient(145deg, rgba(108, 99, 255, 0.15), rgba(15, 23, 42, 0.85)) !important;
-                box-shadow: 0 4px 12px rgba(108, 99, 255, 0.18) !important;
+                border-color: rgba(0, 212, 255, 0.4) !important;
+                background: linear-gradient(145deg, rgba(0, 212, 255, 0.1), rgba(15, 23, 42, 0.8)) !important;
+                box-shadow: 0 4px 20px rgba(0, 212, 255, 0.12) !important;
             }}
 
             .scada-action-btn > div[data-testid="stButton"] > button {{
                 text-align: center !important;
-                background: linear-gradient(145deg, {THEME_PRIMARY_COLOR}22, rgba(15, 23, 42, 0.8)) !important;
-                border: 1px solid rgba(108, 99, 255, 0.2) !important;
-                font-weight: 600 !important;
-                color: #E2E8F0 !important;
+                background: linear-gradient(145deg, rgba(0, 212, 255, 0.08), rgba(15, 23, 42, 0.7)) !important;
+                border: 1px solid rgba(0, 212, 255, 0.15) !important;
+                font-weight: 700 !important;
+                color: #CBD5E1 !important;
+                letter-spacing: 0.5px !important;
+                text-transform: uppercase !important;
+                font-size: 0.72rem !important;
             }}
 
             .scada-action-btn > div[data-testid="stButton"] > button:hover {{
-                background: linear-gradient(145deg, {THEME_PRIMARY_COLOR}44, rgba(15, 23, 42, 0.9)) !important;
-                border-color: {THEME_PRIMARY_COLOR} !important;
+                background: linear-gradient(145deg, rgba(0, 212, 255, 0.18), rgba(15, 23, 42, 0.85)) !important;
+                border-color: rgba(0, 212, 255, 0.4) !important;
                 color: #FAFAFA !important;
+                box-shadow: 0 4px 20px rgba(0, 212, 255, 0.15) !important;
             }}
 
-            .tile-dept-name {{
-                font-size: 0.82rem;
-                font-weight: 700;
-                color: #F8FAFC;
-                margin: 0 0 4px 0;
-            }}
-
-            .tile-meta-row {{
-                display: flex;
-                justify-content: space-between;
-                font-size: 0.7rem;
-                color: #94A3B8;
-                margin-top: 2px;
-            }}
-
+            /* ── Panel Containers ──────────────────────────────────────── */
             .panel-container {{
-                background: rgba(22, 26, 37, 0.45);
+                background: linear-gradient(145deg, rgba(22, 26, 37, 0.4), rgba(15, 23, 42, 0.6));
                 border: 1px solid rgba(255, 255, 255, 0.04);
-                border-radius: 12px;
-                padding: 18px;
+                border-radius: 16px;
+                padding: 24px;
                 margin-top: 14px;
+                backdrop-filter: blur(10px);
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
             }}
 
+            /* ── Data Tables ───────────────────────────────────────────── */
+            div[data-testid="stDataFrame"] {{
+                border: 1px solid rgba(255, 255, 255, 0.05) !important;
+                border-radius: 10px !important;
+                overflow: hidden !important;
+            }}
+            div[data-testid="stDataFrame"] table {{
+                font-size: 0.78rem !important;
+            }}
+            div[data-testid="stDataFrame"] th {{
+                background: rgba(30, 41, 59, 0.7) !important;
+                color: #94A3B8 !important;
+                font-weight: 700 !important;
+                text-transform: uppercase !important;
+                font-size: 0.68rem !important;
+                letter-spacing: 0.5px !important;
+                border-bottom: 1px solid rgba(0, 212, 255, 0.15) !important;
+                padding: 10px 12px !important;
+            }}
+            div[data-testid="stDataFrame"] td {{
+                background: rgba(15, 23, 42, 0.4) !important;
+                color: #CBD5E1 !important;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+                padding: 8px 12px !important;
+                font-variant-numeric: tabular-nums;
+            }}
+            div[data-testid="stDataFrame"] tr:hover td {{
+                background: rgba(0, 212, 255, 0.04) !important;
+            }}
+            div[data-testid="stDataFrame"] tr:nth-child(even) td {{
+                background: rgba(30, 41, 59, 0.2) !important;
+            }}
+            div[data-testid="stDataFrame"] tr:nth-child(even):hover td {{
+                background: rgba(0, 212, 255, 0.04) !important;
+            }}
+
+            /* ── Selectbox / Filter Styling ────────────────────────────── */
+            div[data-baseweb="select"] > div {{
+                background: rgba(15, 23, 42, 0.6) !important;
+                border: 1px solid rgba(255, 255, 255, 0.08) !important;
+                border-radius: 8px !important;
+            }}
+            div[data-baseweb="select"] > div:hover {{
+                border-color: rgba(0, 212, 255, 0.2) !important;
+            }}
+
+            /* ── Footer ────────────────────────────────────────────────── */
             .scada-footer {{
-                margin-top: 28px;
-                padding: 12px;
-                border-radius: 8px;
-                background: rgba(255, 255, 255, 0.01);
+                margin-top: 32px;
+                padding: 14px 20px;
+                border-radius: 10px;
+                background: linear-gradient(145deg, rgba(255, 255, 255, 0.01), rgba(15, 23, 42, 0.3));
                 border: 1px solid rgba(255, 255, 255, 0.03);
-                font-size: 0.7rem;
+                font-size: 0.68rem;
                 color: #475569;
                 text-align: center;
+                letter-spacing: 0.3px;
             }}
+
+            /* ── Scrollbar ─────────────────────────────────────────────── */
+            ::-webkit-scrollbar {{ width: 6px; height: 6px; }}
+            ::-webkit-scrollbar-track {{ background: rgba(15, 23, 42, 0.5); }}
+            ::-webkit-scrollbar-thumb {{ background: rgba(100, 116, 139, 0.3); border-radius: 3px; }}
+            ::-webkit-scrollbar-thumb:hover {{ background: rgba(100, 116, 139, 0.5); }}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def _get_filtered_date_indices(
-    overview_df: pd.DataFrame, 
-    selected_month: str, 
-    selected_date: str
-) -> list[int]:
-    """Identify row indices in the overview dataframe that match the filter criteria.
-    
-    Args:
-        overview_df: The full overview dataframe.
-        selected_month: The selected month string (e.g., "2023-01") or "All".
-        selected_date: The selected date string (e.g., "2023-01-01") or "All".
-        
-    Returns:
-        A list of integer indices corresponding to rows in the original dataframe.
-    """
-    date_cols = get_date_columns(overview_df)
-    if not date_cols:
-        return []
-        
-    date_col_idx = date_cols[0]
-    raw_dates = overview_df.iloc[3:, date_col_idx]
-    
-    keep_indices = []
-    for idx, date_val in raw_dates.items():
-        if pd.isna(date_val):
-            continue
-            
-        date_str = ""
-        if isinstance(date_val, (dt.datetime, dt.date)):
-            date_str = date_val.strftime("%Y-%m-%d")
-        else:
-            s_val = str(date_val).strip().split()[0]
-            for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y"):
-                try:
-                    parsed = dt.datetime.strptime(s_val, fmt)
-                    date_str = parsed.strftime("%Y-%m-%d")
-                    break
-                except ValueError:
-                    continue
-        
-        if not date_str:
-            continue
-            
-        include = False
-        if selected_date != "All":
-            if date_str == selected_date:
-                include = True
-        elif selected_month != "All":
-            if date_str.startswith(selected_month):
-                include = True
-        else:
-            include = True
-            
-        if include:
-            keep_indices.append(idx)
-            
-    return keep_indices
-
-
-def _slice_overview_dataframe(
-    overview_df: pd.DataFrame, 
-    keep_indices: list[int]
-) -> pd.DataFrame:
-    """Create a new overview dataframe containing only headers and filtered rows.
-    
-    Args:
-        overview_df: The full overview dataframe.
-        keep_indices: List of row indices to include from the data section.
-        
-    Returns:
-        A sliced dataframe with headers (rows 0-2) and matched data rows.
-    """
-    if not keep_indices:
-        return overview_df.iloc[:3, :]
-        
-    header_rows = overview_df.iloc[:3, :]
-    data_rows = overview_df.loc[keep_indices, :]
-    return pd.concat([header_rows, data_rows])
-
-
-def _rebuild_department_data(
-    dept_name: str,
-    dept_meta: dict[str, Any],
-    filtered_overview: pd.DataFrame
-) -> dict[str, Any]:
-    """Recalculate metrics and extract data for a single department based on filtered overview.
-    
-    Args:
-        dept_name: Name of the department.
-        dept_meta: Original department metadata including meters and column indexes.
-        filtered_overview: The sliced overview dataframe.
-        
-    Returns:
-        Updated department dictionary with new dataframe and metrics.
-    """
-    meters = dept_meta.get("meters", [])
-    units_map = dept_meta.get("units", {})
-    col_indexes = dept_meta.get("metadata", {}).get("column_indexes", [])
-    
-    # If no columns or meters, return empty metrics
-    if not col_indexes or not meters:
-        return {
-            **dept_meta,
-            "dataframe": pd.DataFrame(),
-            "latest_values": {m: None for m in meters},
-            "average_values": {m: None for m in meters},
-            "total_values": {m: None for m in meters},
-        }
-        
-    # Filter valid columns that exist in the filtered overview
-    valid_cols = [c for c in col_indexes if c < filtered_overview.shape[1]]
-    if not valid_cols:
-        return {
-            **dept_meta,
-            "dataframe": pd.DataFrame(),
-            "latest_values": {m: None for m in meters},
-            "average_values": {m: None for m in meters},
-            "total_values": {m: None for m in meters},
-        }
-        
-    # Extract data rows (starting from index 3) for valid columns
-    data_part = filtered_overview.iloc[3:, valid_cols]
-    
-    # Map columns to meters based on order
-    dept_df_data = {}
-    for i, meter in enumerate(meters):
-        if i < len(valid_cols):
-            col_idx = valid_cols[i]
-            series = filtered_overview.iloc[3:, col_idx].reset_index(drop=True)
-            dept_df_data[meter] = series
-            
-    if not dept_df_data:
-        return {
-            **dept_meta,
-            "dataframe": pd.DataFrame(),
-            "latest_values": {m: None for m in meters},
-            "average_values": {m: None for m in meters},
-            "total_values": {m: None for m in meters},
-        }
-        
-    dept_df = pd.DataFrame(dept_df_data)
-    
-    # Recalculate metrics
-    latest_vals = {}
-    avg_vals = {}
-    total_vals = {}
-    
-    for meter in meters:
-        if meter in dept_df.columns:
-            s = dept_df[meter]
-            latest_vals[meter] = _calculate_latest_valid_value(s)
-            avg_vals[meter] = _calculate_mean(s)
-            total_vals[meter] = _calculate_sum(s)
-        else:
-            latest_vals[meter] = None
-            avg_vals[meter] = None
-            total_vals[meter] = None
-            
-    return {
-        **dept_meta,
-        "dataframe": dept_df,
-        "latest_values": latest_vals,
-        "average_values": avg_vals,
-        "total_values": total_vals,
-    }
-
-
-def _rebuild_departments_payload(
-    original_departments: dict[str, Any],
-    filtered_overview: pd.DataFrame
-) -> dict[str, Any]:
-    """Rebuild the entire departments payload with recalculated metrics.
-    
-    Args:
-        original_departments: The original unfiltered departments dictionary.
-        filtered_overview: The sliced overview dataframe.
-        
-    Returns:
-        A new departments dictionary with updated dataframes and metrics.
-    """
-    filtered_departments = {}
-    for dept_name, dept_meta in original_departments.items():
-        filtered_departments[dept_name] = _rebuild_department_data(
-            dept_name, dept_meta, filtered_overview
-        )
-    return filtered_departments
-
-
-def _build_filtered_summary(
-    original_summary: dict[str, Any],
-    filtered_departments: dict[str, Any]
-) -> dict[str, Any]:
-    """Update summary statistics based on filtered department data.
-    
-    Args:
-        original_summary: The original summary dictionary.
-        filtered_departments: The recalculated departments dictionary.
-        
-    Returns:
-        An updated summary dictionary.
-    """
-    return {
-        **original_summary,
-        "latest_values": {k: v["latest_values"] for k, v in filtered_departments.items()},
-        "average_values": {k: v["average_values"] for k, v in filtered_departments.items()},
-        "total_values": {k: v["total_values"] for k, v in filtered_departments.items()},
-        "department_latest_values": {k: v["latest_values"] for k, v in filtered_departments.items()},
-        "department_totals": {k: v["total_values"] for k, v in filtered_departments.items()},
-        "department_averages": {k: v["average_values"] for k, v in filtered_departments.items()},
-    }
-
-
-def apply_filters(dashboard: dict[str, Any], selected_month: str, selected_date: str) -> dict[str, Any]:
-    """Apply month and date filters to the dashboard data.
-    
-    Args:
-        dashboard: The original full dashboard data.
-        selected_month: The selected month string (e.g., "2023-01") or "All".
-        selected_date: The selected date string (e.g., "2023-01-01") or "All".
-        
-    Returns:
-        A new dashboard dictionary with filtered overview and recalculated departments.
-    """
-    if not dashboard:
-        return dashboard
-        
-    overview_df = dashboard.get("overview", pd.DataFrame())
-    if overview_df.empty:
-        return dashboard
-        
-    # 1. Identify matching rows
-    keep_indices = _get_filtered_date_indices(overview_df, selected_month, selected_date)
-    
-    # 2. Slice overview dataframe
-    filtered_overview = _slice_overview_dataframe(overview_df, keep_indices)
-    
-    # 3. Rebuild departments
-    original_departments = dashboard.get("departments", {})
-    filtered_departments = _rebuild_departments_payload(original_departments, filtered_overview)
-    
-    # 4. Update summary
-    original_summary = dashboard.get("summary", {})
-    new_summary = _build_filtered_summary(original_summary, filtered_departments)
-    
-    return {
-        **dashboard,
-        "overview": filtered_overview,
-        "departments": filtered_departments,
-        "summary": new_summary,
-    }
-
-
 def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
     """Render the simplified global system supervision header and time controls."""
     now = dt.datetime.now()
-    summary = (dashboard or {}).get("summary", {})
     filters_data = (dashboard or {}).get("filters", {})
     departments = (dashboard or {}).get("departments", {})
-    
+
     plant_ok = bool(departments)
     plant_color = THEME_SUCCESS_COLOR if plant_ok else THEME_DANGER_COLOR
     plant_text = "ONLINE" if plant_ok else "OFFLINE"
-    
+
     wb_color = THEME_SUCCESS_COLOR if dashboard else THEME_DANGER_COLOR
     wb_text = "CONNECTED" if dashboard else "DISCONNECTED"
-    
+
     last_refresh = st.session_state.get("last_refresh", now)
 
     st.markdown(
@@ -587,13 +471,13 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
                     <div class="scada-logo">{APP_ICON}</div>
                     <div>
                         <h1 class="scada-main-title">{APP_NAME}</h1>
-                        <div style="display: flex; gap: 8px; margin-top: 2px; flex-wrap: wrap;">
-                            <div class="status-pill"><span class="status-dot" style="background:{plant_color};"></span>PLANT: {plant_text}</div>
-                            <div class="status-pill"><span class="status-dot" style="background:{wb_color};"></span>WORKBOOK: {wb_text}</div>
+                        <div style="display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
+                            <div class="status-pill"><span class="status-dot" style="background:{plant_color};box-shadow:0 0 6px {plant_color};"></span>PLANT {plant_text}</div>
+                            <div class="status-pill"><span class="status-dot" style="background:{wb_color};box-shadow:0 0 6px {wb_color};"></span>{wb_text}</div>
                             <div class="status-pill">📅 {now.strftime("%d %b %Y")}</div>
                             <div class="status-pill">🕒 {now.strftime("%H:%M:%S")}</div>
-                            <div class="status-pill">🔁 LAST REFRESH: {last_refresh.strftime("%H:%M:%S")}</div>
-                            <div class="status-pill">🐙 GITHUB: {GITHUB_OWNER}/{GITHUB_REPO}@{GITHUB_BRANCH}</div>
+                            <div class="status-pill">🔁 {last_refresh.strftime("%H:%M:%S")}</div>
+                            <div class="status-pill">🐙 {GITHUB_OWNER}/{GITHUB_REPO}@{GITHUB_BRANCH}</div>
                         </div>
                     </div>
                 </div>
@@ -603,32 +487,24 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
         unsafe_allow_html=True,
     )
 
-    # Prepare filter options
-    months = ["All"] + filters_data.get("months", [])
-    dates = ["All"] + filters_data.get("dates", [])
-    
-    # Initialize session state for filters if not present
-    if "selected_month" not in st.session_state:
-        st.session_state["selected_month"] = "All"
-    if "selected_date" not in st.session_state:
-        st.session_state["selected_date"] = "All"
-
     h_col1, h_col2, h_col3 = st.columns([2.5, 2.5, 5])
     with h_col1:
-        selected_month = st.selectbox(
+        st.selectbox(
             "Month Sync Context",
-            options=months,
-            index=months.index(st.session_state["selected_month"]) if st.session_state["selected_month"] in months else 0,
+            options=filters_data.get("months", ["N/A"]),
+            index=0,
             key="header_month_select",
-            help="Filter data by month."
+            disabled=True,
+            help="Filtering by date is managed at downstream visualization layer levels."
         )
     with h_col2:
-        selected_date = st.selectbox(
+        st.selectbox(
             "Date Sync Context",
-            options=dates,
-            index=dates.index(st.session_state["selected_date"]) if st.session_state["selected_date"] in dates else 0,
+            options=filters_data.get("dates", ["N/A"]),
+            index=0,
             key="header_date_select",
-            help="Filter data by specific date. Takes precedence over Month."
+            disabled=True,
+            help="Filtering by date is managed at downstream visualization layer levels."
         )
     with h_col3:
         st.markdown("<div style='padding-top: 24px;'></div>", unsafe_allow_html=True)
@@ -636,13 +512,7 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
             refresh_dashboard()
             st.rerun()
 
-    # Update session state and trigger rerun if filters changed
-    if selected_month != st.session_state["selected_month"] or selected_date != st.session_state["selected_date"]:
-        st.session_state["selected_month"] = selected_month
-        st.session_state["selected_date"] = selected_date
-        st.rerun()
-
-    return selected_month, selected_date
+    return "N/A", "N/A"
 
 
 def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
@@ -667,7 +537,7 @@ def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
         for v in dept.values() if isinstance(v, (int, float))
     ]
     global_average = sum(flat_averages) / len(flat_averages) if flat_averages else 0.0
-    
+
     latest_ts_raw = summary.get("latest_timestamp", "N/A")
     if isinstance(latest_ts_raw, str):
         latest_ts_display = latest_ts_raw.split()[0] if " " in latest_ts_raw else latest_ts_raw
@@ -681,54 +551,28 @@ def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
     st.markdown('<p class="section-panel-title">📈 Corporate Operations KPI Infrastructure</p>', unsafe_allow_html=True)
     k_col1, k_col2, k_col3, k_col4, k_col5, k_col6 = st.columns(6)
 
-    with k_col1:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Total Consumption</p>
-                <p class="metric-card-value">{total_consumption:,.1f}</p>
-                <div class="metric-card-footer">Sum Active Channels</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col2:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Average Consumption</p>
-                <p class="metric-card-value">{global_average:,.1f}</p>
-                <div class="metric-card-footer">Channel Array Average</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col3:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Latest Reading</p>
-                <p class="metric-card-value">{total_consumption / max(total_reporting_meters, 1):,.1f}</p>
-                <div class="metric-card-footer">Mean Vector Output</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col4:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Depts Reporting</p>
-                <p class="metric-card-value">{active_depts_count}</p>
-                <div class="metric-card-footer">Functional Systems Feed</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col5:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Meters Reporting</p>
-                <p class="metric-card-value">{total_reporting_meters} / {meter_count}</p>
-                <div class="metric-card-footer">Active Subnodes Trace</div>
-            </div>""", unsafe_allow_html=True
-        )
-    with k_col6:
-        st.markdown(
-            f"""<div class="metric-card-container">
-                <p class="metric-card-title">Last Updated</p>
-                <p class="metric-card-value" style="font-size: 1.3rem; font-weight: 700; padding-top: 3px;">{latest_ts_display}</p>
-                <div class="metric-card-footer">Chronological Base Target</div>
-            </div>""", unsafe_allow_html=True
-        )
+    kpi_cards = [
+        ("⚡", "Total Consumption", f"{total_consumption:,.1f}", "Sum Active Channels"),
+        ("📊", "Average Consumption", f"{global_average:,.1f}", "Channel Array Average"),
+        ("📡", "Latest Reading", f"{total_consumption / max(total_reporting_meters, 1):,.1f}", "Mean Vector Output"),
+        ("🏭", "Depts Reporting", f"{active_depts_count}", "Functional Systems Feed"),
+        ("🔌", "Meters Reporting", f"{total_reporting_meters} / {meter_count}", "Active Subnodes Trace"),
+        ("🕐", "Last Updated", latest_ts_display, "Chronological Base Target"),
+    ]
+
+    cols = [k_col1, k_col2, k_col3, k_col4, k_col5, k_col6]
+    for col, (icon, title, value, footer) in zip(cols, kpi_cards):
+        val_style = 'font-size: 1.3rem; font-weight: 800; padding-top: 3px;' if title == "Last Updated" else ''
+        with col:
+            st.markdown(
+                f"""<div class="metric-card-container">
+                    <div class="metric-card-icon">{icon}</div>
+                    <p class="metric-card-title">{title}</p>
+                    <p class="metric-card-value" style="{val_style}">{value}</p>
+                    <div class="metric-card-footer">{footer}</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
 
 
 def _get_representative_meter(dept_obj: dict[str, Any]) -> str:
@@ -741,13 +585,8 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
     departments: dict[str, dict[str, Any]] = dashboard.get("departments", {})
 
     critical_assets = [
-        "NPCL",
-        "Dough",
-        "Traywasher",
-        "Air compressor",
-        "Freon Refrigeration",
-        "DG",
-        "GG",
+        "NPCL", "Dough", "Traywasher", "Air compressor",
+        "Freon Refrigeration", "DG", "GG",
     ]
 
     dept_names = [name for name in critical_assets if name in departments]
@@ -761,7 +600,6 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
         st.session_state["selected_department"] = dept_names[0]
     current_selection = st.session_state["selected_department"]
 
-    # Desktop Layout Optimization splitting rows exactly 4 then 3 dynamically
     first_row = dept_names[0:4]
     second_row = dept_names[4:7]
 
@@ -774,7 +612,7 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
             dept_obj = departments[d_name]
             meters = dept_obj.get("meters", [])
             rep_m = _get_representative_meter(dept_obj)
-            
+
             latest_value = dept_obj.get("latest_values", {}).get(rep_m) if rep_m else None
             average_value = dept_obj.get("average_values", {}).get(rep_m) if rep_m else None
             total_value = dept_obj.get("total_values", {}).get(rep_m) if rep_m else None
@@ -787,11 +625,13 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
             average_display = f"{average_value:,.2f}" if isinstance(average_value, (int, float)) else "N/A"
             total_display = f"{total_value:,.2f}" if isinstance(total_value, (int, float)) else "N/A"
 
-            # Nest the Streamlit button cleanly INSIDE the asset card layout framework
+            active_border = "rgba(0, 212, 255, 0.35)" if is_active else "rgba(255,255,255,0.05)"
+            active_glow = "0 0 25px rgba(0, 212, 255, 0.1)" if is_active else "none"
+
             with col:
                 st.markdown(
                     f"""
-                    <div class="scada-asset-card" style="border-color: {THEME_PRIMARY_COLOR if is_active else 'rgba(255,255,255,0.06)'}; margin-bottom: 0px;">
+                    <div class="scada-asset-card" style="border-color: {active_border}; box-shadow: {active_glow}, 0 6px 24px rgba(0,0,0,0.35); margin-bottom: 0px;">
                         <div>
                             <div class="scada-asset-title">⚡ {d_name}</div>
                             <div class="scada-asset-data-row">
@@ -809,15 +649,15 @@ def render_department_grid(dashboard: dict[str, Any]) -> str:
                         </div>
                         <div>
                             <div class="scada-asset-status" style="margin-bottom: 0px;">
-                                <span class="status-dot" style="background: {THEME_SUCCESS_COLOR};"></span>
+                                <span class="status-dot" style="background: {THEME_SUCCESS_COLOR};box-shadow:0 0 6px {THEME_SUCCESS_COLOR};"></span>
                                 Meters : {meter_count}
                             </div>
                         </div>
                     </div>
                     """,
-                    unsafe_allow_html=True
+                    unsafe_allow_html=True,
                 )
-                st.markdown('<div class="scada-action-btn" style="margin-top: -12px; margin-bottom: 16px;">', unsafe_allow_html=True)
+                st.markdown('<div class="scada-action-btn" style="margin-top: -10px; margin-bottom: 14px;">', unsafe_allow_html=True)
                 if st.button("Open Dashboard", key=f"nav_tile_{d_name}"):
                     st.session_state["selected_department"] = d_name
                     st.rerun()
@@ -835,34 +675,45 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
         return
 
     st.markdown(f'<div class="panel-container">', unsafe_allow_html=True)
-    st.markdown(f"<h3>🛡️ Engineering Supervisory System Diagnostics &mdash; {active_dept}</h3>", unsafe_allow_html=True)
-    st.markdown('<hr style="margin: 4px 0 16px 0; border-color: rgba(255,255,255,0.05);"/>', unsafe_allow_html=True)
+    st.markdown(
+        f"""<div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+            <h3 style="margin:0;font-size:1.1rem;font-weight:800;color:#F1F5F9;letter-spacing:-0.2px;">
+                🛡️ Engineering Supervisory System Diagnostics
+            </h3>
+            <span class="status-pill" style="font-size:0.72rem;">
+                <span class="status-dot" style="background:{THEME_SUCCESS_COLOR};box-shadow:0 0 6px {THEME_SUCCESS_COLOR};"></span>
+                {active_dept}
+            </span>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+    st.markdown('<hr style="margin: 8px 0 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.05);"/>', unsafe_allow_html=True)
 
     meters = dept_obj.get("meters", [])
     df_block = dept_obj.get("dataframe", pd.DataFrame())
     rep_m = _get_representative_meter(dept_obj)
 
     chart_col1, chart_col2 = st.columns([6, 4])
-    
+
     with chart_col1:
         st.markdown("##### 📉 Continuous Timeline Telemetry Profile")
         fig_primary = chart_service.build_section_trend_chart(overview_df, dept_obj)
         if fig_primary:
-            st.plotly_chart(fig_primary, use_container_width=True)
+            st.plotly_chart(fig_primary, use_container_width=True, config={"displayModeBar": True, "displaylogo": False})
         else:
             st.caption("Primary chronological metric profile logs absent or structurally misaligned.")
 
         if len(meters) > 1:
             st.markdown("<br/>##### 📊 Multi-Variable Process Cross-Channel Analysis", unsafe_allow_html=True)
-            
+
             fig_compare = chart_service.create_department_multi_line_chart(
                 overview_dataframe=overview_df,
                 section=dept_obj,
                 title="Parallel Operations Diagnostic Load Profiles",
             )
-            
+
             if fig_compare:
-                st.plotly_chart(fig_compare, use_container_width=True)
+                st.plotly_chart(fig_compare, use_container_width=True, config={"displayModeBar": True, "displaylogo": False})
 
     with chart_col2:
         st.markdown("##### 🧭 Node Dynamic Scale Instrumentation Gauge")
@@ -871,8 +722,7 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
             avg_val = dept_obj.get("average_values", {}).get(rep_m, 100.0)
             total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0)
             unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
-            
-            # Calculate gauge maximum using historical data series
+
             max_ceiling = 100.0
             if rep_m and rep_m in df_block.columns:
                 numeric_series = pd.to_numeric(df_block[rep_m], errors='coerce').dropna()
@@ -882,17 +732,15 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
                     base_max = float(numeric_series.max())
                 else:
                     base_max = 0.0
-                
+
                 if base_max > 0:
                     max_ceiling = base_max * 1.15
                 else:
-                    # Fallback if no valid positive data found
                     for potential_max in (total_val, avg_val, latest_val):
                         if isinstance(potential_max, (int, float)) and potential_max > 0:
                             max_ceiling = float(potential_max) * 1.15
                             break
             else:
-                 # Fallback if meter not in dataframe
                 for potential_max in (total_val, avg_val, latest_val):
                     if isinstance(potential_max, (int, float)) and potential_max > 0:
                         max_ceiling = float(potential_max) * 1.15
@@ -902,13 +750,13 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
                 value=float(latest_val) if isinstance(latest_val, (int, float)) else 0.0,
                 title=f"Gauge: {rep_m[:18]}",
                 maximum=max_ceiling if max_ceiling > float(latest_val or 0) else float((latest_val or 0) * 1.5),
-                unit=str(unit_lbl)
+                unit=str(unit_lbl),
             )
             if fig_gauge:
-                st.plotly_chart(fig_gauge, use_container_width=True)
+                st.plotly_chart(fig_gauge, use_container_width=True, config={"displayModeBar": False})
             else:
                 st.caption("Gauge visualization failed.")
-        
+
         st.markdown("<br/>##### 📑 Node Current Process Vector Snapshots", unsafe_allow_html=True)
         mini_records = []
         for m in meters[:min(len(meters), 6)]:
@@ -917,13 +765,13 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
             mini_records.append({
                 "Channel ID": m[:20],
                 "Log Readout": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline",
-                "Unit": u if (u and str(u).strip()) else "N/A"
+                "Unit": u if (u and str(u).strip()) else "N/A",
             })
         if mini_records:
             st.dataframe(pd.DataFrame(mini_records), use_container_width=True, hide_index=True)
 
-    st.markdown("<br/>##### 📋 Instrumentation Node Channel Registry Detailed Log Ledger", unsafe_allow_html=True)
-    
+    st.markdown("<br/>##### 📋 Instrumentation Node Channel Registry — Detailed Log Ledger", unsafe_allow_html=True)
+
     units_map = dept_obj.get("units", {})
     latest_vals = dept_obj.get("latest_values", {})
     avg_vals = dept_obj.get("average_values", {})
@@ -935,7 +783,7 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
         l_v = latest_vals.get(m)
         a_v = avg_vals.get(m)
         t_v = total_vals.get(m)
-        
+
         status_string = "🟢 Active" if l_v is not None else "⚪ Idle"
 
         ledger_records.append({
@@ -944,7 +792,7 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
             "Latest Value Check": round(l_v, 2) if isinstance(l_v, (int, float)) else "N/A",
             "Mean Running Load": round(a_v, 2) if isinstance(a_v, (int, float)) else "N/A",
             "Accumulated Quantity Sum": round(t_v, 2) if isinstance(t_v, (int, float)) else "N/A",
-            "Operational Status Flag": status_string
+            "Operational Status Flag": status_string,
         })
 
     if ledger_records:
@@ -957,7 +805,7 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
     """Render a minimal presentation bottom block containing deployment indicators."""
     last_refresh = st.session_state.get("last_refresh")
     refresh_text = last_refresh.strftime("%d %b %Y, %H:%M:%S") if last_refresh else "N/A"
-    
+
     meta = (dashboard or {}).get("metadata", {})
     sheet_names = meta.get("sheet_names", ["Data Source Unlinked"])
     active_workbook = sheet_names[0] if sheet_names else "N/A"
@@ -965,8 +813,8 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
     st.markdown(
         f"""
         <div class="scada-footer">
-            Workbook Context: {active_workbook} · 
-            Last Refresh: {refresh_text} · 
+            ⚙️ Workbook Context: <b>{active_workbook}</b> · 
+            Last Refresh: <b>{refresh_text}</b> · 
             Dashboard Baseline Version Suite v{APP_VERSION}
         </div>
         """,
@@ -980,22 +828,19 @@ def main() -> None:
 
     dashboard, error_msg = get_dashboard()
 
-    selected_month, selected_date = render_top_header(dashboard)
+    render_top_header(dashboard)
 
     if error_msg is not None or dashboard is None:
         st.error(error_msg or "Critical Infrastructure Alert: Analytical context dictionary failed initialization.")
         render_footer(dashboard)
         return
 
-    # Apply filters
-    filtered_dashboard = apply_filters(dashboard, selected_month, selected_date)
+    selected_dept = render_department_grid(dashboard)
 
-    selected_dept = render_department_grid(filtered_dashboard)
-    
     if selected_dept:
-        render_subsystem_workspace(filtered_dashboard, selected_dept)
-        
-    render_footer(filtered_dashboard)
+        render_subsystem_workspace(dashboard, selected_dept)
+
+    render_footer(dashboard)
 
 
 if __name__ == "__main__":
