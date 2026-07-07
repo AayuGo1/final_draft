@@ -600,11 +600,31 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
             total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0)
             unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
             
+            # Calculate gauge maximum using historical data series
             max_ceiling = 100.0
-            for potential_max in (total_val, avg_val, latest_val):
-                if isinstance(potential_max, (int, float)) and potential_max > 0:
-                    max_ceiling = float(potential_max)
-                    break
+            if rep_m and rep_m in df_block.columns:
+                numeric_series = pd.to_numeric(df_block[rep_m], errors='coerce').dropna()
+                if len(numeric_series) >= 5:
+                    base_max = float(numeric_series.quantile(0.95))
+                elif not numeric_series.empty:
+                    base_max = float(numeric_series.max())
+                else:
+                    base_max = 0.0
+                
+                if base_max > 0:
+                    max_ceiling = base_max * 1.15
+                else:
+                    # Fallback if no valid positive data found
+                    for potential_max in (total_val, avg_val, latest_val):
+                        if isinstance(potential_max, (int, float)) and potential_max > 0:
+                            max_ceiling = float(potential_max) * 1.15
+                            break
+            else:
+                 # Fallback if meter not in dataframe
+                for potential_max in (total_val, avg_val, latest_val):
+                    if isinstance(potential_max, (int, float)) and potential_max > 0:
+                        max_ceiling = float(potential_max) * 1.15
+                        break
 
             fig_gauge = chart_service.create_gauge_chart(
                 value=float(latest_val) if isinstance(latest_val, (int, float)) else 0.0,
