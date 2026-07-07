@@ -1,9 +1,10 @@
 """Air compressor monitoring page for the Engineering Monitoring Dashboard.
 
-This module renders the real Air Compressor section discovered from the
-workbook via ``services.page_service``. It performs no engineering KPI
-calculation, no fake data generation, and no hardcoded row, column, or
-meter references.
+Renders the real Air Compressor worksheet discovered dynamically from
+the workbook via ``services.page_service``, with KPI cards from
+``services.kpi_service``, a Plotly trend chart from
+``services.chart_service``, and native Streamlit data tables. No KPI
+calculation or chart-building logic lives in this file.
 """
 
 from __future__ import annotations
@@ -12,97 +13,136 @@ import pandas as pd
 import streamlit as st
 
 import ui
-from dashboard_data import get_date_columns, get_department_meter_structure
+from dashboard_data import get_date_columns
+from services import chart_service, kpi_service
 from services.page_service import load_dedicated_sheet
 
 AIR_COMPRESSOR_KEY: str = "air_compressor"
 """Dashboard data key used to locate the Air Compressor worksheet."""
 
+AVAILABILITY_HEALTHY_THRESHOLD: float = 0.9
+"""Availability ratio at/above which data is considered healthy."""
 
-def count_meters(dataframe: pd.DataFrame) -> int:
-    """Count the total number of meters discovered in the worksheet.
-
-    Args:
-        dataframe: The Air Compressor DataFrame.
-
-    Returns:
-        The total number of meters across all discovered department
-        groups, using the same two-level header discovery as the home
-        page.
-    """
-    department_structure = get_department_meter_structure(dataframe)
-    return sum(len(meters) for meters in department_structure.values())
+AVAILABILITY_PARTIAL_THRESHOLD: float = 0.5
+"""Availability ratio at/above which data is considered partially available."""
 
 
-def count_available_readings(dataframe: pd.DataFrame) -> int:
-    """Count the total number of non-null readings in the worksheet.
+def render_kpi_row(summary: dict) -> None:
+    """Render the top KPI row from a kpi_service summary.
 
     Args:
-        dataframe: The Air Compressor DataFrame.
-
-    Returns:
-        The total count of non-null cells in the DataFrame.
-    """
-    return int(dataframe.notna().sum().sum())
-
-
-def get_latest_timestamp(dataframe: pd.DataFrame) -> str:
-    """Find the latest timestamp available in the worksheet, if any.
-
-    Args:
-        dataframe: The Air Compressor DataFrame.
-
-    Returns:
-        The latest date value found in a discovered date column,
-        formatted as a string, or ``"N/A"`` if no date column or value
-        is available.
-    """
-    date_columns = get_date_columns(dataframe)
-    if not date_columns:
-        return "N/A"
-
-    for column_index in reversed(date_columns):
-        column_values = dataframe.iloc[:, column_index].dropna()
-        if not column_values.empty:
-            return str(column_values.iloc[-1])
-
-    return "N/A"
-
-
-def render_kpi_row(dataframe: pd.DataFrame) -> None:
-    """Render the top KPI row derived from the Air Compressor worksheet.
-
-    Args:
-        dataframe: The Air Compressor DataFrame.
+        summary: The KPI summary dictionary from
+            ``kpi_service.build_kpi_summary``.
     """
     cards = [
-        {"title": "Number of Meters", "value": count_meters(dataframe)},
+        {"title": "Number of Meters", "value": summary["meters"]},
+        {"title": "Available Readings", "value": summary["available_readings"]},
+        {"title": "Latest Timestamp", "value": summary["latest_timestamp"]},
         {
-            "title": "Available Readings",
-            "value": count_available_readings(dataframe),
+            "title": "Data Availability",
+            "value": f"{summary['availability'] * 100:.1f}%",
         },
-        {"title": "Latest Timestamp", "value": get_latest_timestamp(dataframe)},
-        {"title": "Status", "value": "Monitoring"},
     ]
     ui.render_kpi_cards(cards)
 
 
-def render_data_section(dataframe: pd.DataFrame) -> None:
-    """Render the Air Compressor data table, limited to the first 15 rows.
+def render_status_section(summary: dict) -> None:
+    """Render a status banner based on the worksheet's data availability.
+
+    Args:
+        summary: The KPI summary dictionary from
+            ``kpi_service.build_kpi_summary``.
+    """
+    availability = summary["availability"]
+    if availability >= AVAILABILITY_HEALTHY_THRESHOLD:
+        ui.render_success_banner("Status: Monitoring — data is healthy.")
+    elif availability >= AVAILABILITY_PARTIAL_THRESHOLD:
+        ui.render_info_banner("Status: Monitoring — partial data available.")
+    else:
+        ui.render_error_banner(
+            "Status: Attention needed — low data availability."
+        )
+
+
+def render_trend_section(dataframe: pd.DataFrame) -> None:
+    """Render a multi-meter Plotly trend chart for the worksheet.
+
+    Discovers the date column and treats every other column as a
+    candidate meter series; non-numeric columns are simply ignored by
+    the chart service's numeric coercion.
 
     Args:
         dataframe: The Air Compressor DataFrame.
     """
-    ui.render_section("Data")
+    ui.render_section("Trend Analysis")
+    with st.container(border=True):
+        date_columns = get_date_columns(dataframe)
+        if not date_columns:
+            ui.render_info_banner("No date column was discovered to chart.")
+            return
+
+        date_column_name = dataframe.columns[date_columns[0]]
+        meter_columns = [
+            column for column in dataframe.columns if column != date_column_name
+        ]
+        if not meter_columns:
+            ui.render_info_banner("No meter columns were discovered to chart.")
+            return
+
+        figure = chart_service.create_multi_line_chart(
+            dataframe,
+            x_column=date_column_name,
+            y_columns=meter_columns,
+            title="Air Compressor Meters Trend",
+        )
+        st.plotly_chart(figure, use_container_width=True)
+
+
+def render_latest_readings_table(dataframe: pd.DataFrame) -> None:
+    """Render a table of the latest reading for every meter column.
+
+    Args:
+        dataframe: The Air Compressor DataFrame.
+    """
+    ui.render_section("Latest Readings")
+    latest = {
+        str(column): (
+            dataframe[column].dropna().iloc[-1]
+            if not dataframe[column].dropna().empty
+            else None
+        )
+        for column in dataframe.columns
+    }
+    table = pd.DataFrame(
+        {"Meter": list(latest.keys()), "Latest Value": list(latest.values())}
+    )
+    with st.container(border=True):
+        ui.render_dataframe(table)
+
+
+def render_data_section(dataframe: pd.DataFrame) -> None:
+    """Render a preview and expandable full history of the worksheet.
+
+    Args:
+        dataframe: The Air Compressor DataFrame.
+    """
+    ui.render_section("Historical Data")
     with st.container(border=True):
         ui.render_dataframe(dataframe.head(15))
+        with st.expander("View full history"):
+            ui.render_dataframe(dataframe)
 
 
-def render_trend_section() -> None:
-    """Render the bordered Trend Analysis placeholder section."""
+def render_summary_section(summary: dict) -> None:
+    """Render a compact data summary table.
+
+    Args:
+        summary: The KPI summary dictionary from
+            ``kpi_service.build_kpi_summary``.
+    """
+    ui.render_section("Data Summary")
     with st.container(border=True):
-        st.write("**Trend Analysis**")
-        st.caption("Charts and engineering KPIs will be implemented here.")
+        ui.render_dataframe(pd.DataFrame([summary]))
 
 
 def render() -> None:
@@ -112,14 +152,23 @@ def render() -> None:
         "Air compressor load, output, and efficiency tracking.",
     )
 
-    dataframe, _section = load_dedicated_sheet(AIR_COMPRESSOR_KEY)
+    dataframe, section = load_dedicated_sheet(AIR_COMPRESSOR_KEY)
     if dataframe is None:
         return
 
-    render_kpi_row(dataframe)
+    summary = kpi_service.build_kpi_summary(dataframe, section)
+
+    render_kpi_row(summary)
+    render_status_section(summary)
+    ui.render_divider()
+
+    render_trend_section(dataframe)
+    ui.render_divider()
+
+    render_latest_readings_table(dataframe)
     ui.render_divider()
 
     render_data_section(dataframe)
     ui.render_divider()
 
-    render_trend_section()
+    render_summary_section(summary)
