@@ -389,10 +389,9 @@ def create_multi_line_chart(
     return apply_default_layout(
         figure,
         title=title,
-        x_label=x_label or x_column,
-        y_label=y_label or "Value",
+        x_label=str(x_label or x_column),
+        y_label=str(y_label or "Value"),
     )
-
 
 def create_bar_chart(
     dataframe: pd.DataFrame,
