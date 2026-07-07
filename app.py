@@ -28,7 +28,13 @@ from config import (
 import services.chart_service as chart_service
 import services.kpi_service as kpi_service
 from services.dashboard_loader import load_dashboard_safe
-from dashboard_data import select_representative_meter
+from dashboard_data import (
+    select_representative_meter,
+    _calculate_latest_valid_value,
+    _calculate_sum,
+    _calculate_mean,
+    get_date_columns,
+)
 
 st.set_page_config(
     page_title=PAGE_CONFIG.get("page_title", APP_NAME),
@@ -305,6 +311,258 @@ def inject_global_styles() -> None:
     )
 
 
+def _get_filtered_date_indices(
+    overview_df: pd.DataFrame, 
+    selected_month: str, 
+    selected_date: str
+) -> list[int]:
+    """Identify row indices in the overview dataframe that match the filter criteria.
+    
+    Args:
+        overview_df: The full overview dataframe.
+        selected_month: The selected month string (e.g., "2023-01") or "All".
+        selected_date: The selected date string (e.g., "2023-01-01") or "All".
+        
+    Returns:
+        A list of integer indices corresponding to rows in the original dataframe.
+    """
+    date_cols = get_date_columns(overview_df)
+    if not date_cols:
+        return []
+        
+    date_col_idx = date_cols[0]
+    raw_dates = overview_df.iloc[3:, date_col_idx]
+    
+    keep_indices = []
+    for idx, date_val in raw_dates.items():
+        if pd.isna(date_val):
+            continue
+            
+        date_str = ""
+        if isinstance(date_val, (dt.datetime, dt.date)):
+            date_str = date_val.strftime("%Y-%m-%d")
+        else:
+            s_val = str(date_val).strip().split()[0]
+            for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y"):
+                try:
+                    parsed = dt.datetime.strptime(s_val, fmt)
+                    date_str = parsed.strftime("%Y-%m-%d")
+                    break
+                except ValueError:
+                    continue
+        
+        if not date_str:
+            continue
+            
+        include = False
+        if selected_date != "All":
+            if date_str == selected_date:
+                include = True
+        elif selected_month != "All":
+            if date_str.startswith(selected_month):
+                include = True
+        else:
+            include = True
+            
+        if include:
+            keep_indices.append(idx)
+            
+    return keep_indices
+
+
+def _slice_overview_dataframe(
+    overview_df: pd.DataFrame, 
+    keep_indices: list[int]
+) -> pd.DataFrame:
+    """Create a new overview dataframe containing only headers and filtered rows.
+    
+    Args:
+        overview_df: The full overview dataframe.
+        keep_indices: List of row indices to include from the data section.
+        
+    Returns:
+        A sliced dataframe with headers (rows 0-2) and matched data rows.
+    """
+    if not keep_indices:
+        return overview_df.iloc[:3, :]
+        
+    header_rows = overview_df.iloc[:3, :]
+    data_rows = overview_df.loc[keep_indices, :]
+    return pd.concat([header_rows, data_rows])
+
+
+def _rebuild_department_data(
+    dept_name: str,
+    dept_meta: dict[str, Any],
+    filtered_overview: pd.DataFrame
+) -> dict[str, Any]:
+    """Recalculate metrics and extract data for a single department based on filtered overview.
+    
+    Args:
+        dept_name: Name of the department.
+        dept_meta: Original department metadata including meters and column indexes.
+        filtered_overview: The sliced overview dataframe.
+        
+    Returns:
+        Updated department dictionary with new dataframe and metrics.
+    """
+    meters = dept_meta.get("meters", [])
+    units_map = dept_meta.get("units", {})
+    col_indexes = dept_meta.get("metadata", {}).get("column_indexes", [])
+    
+    # If no columns or meters, return empty metrics
+    if not col_indexes or not meters:
+        return {
+            **dept_meta,
+            "dataframe": pd.DataFrame(),
+            "latest_values": {m: None for m in meters},
+            "average_values": {m: None for m in meters},
+            "total_values": {m: None for m in meters},
+        }
+        
+    # Filter valid columns that exist in the filtered overview
+    valid_cols = [c for c in col_indexes if c < filtered_overview.shape[1]]
+    if not valid_cols:
+        return {
+            **dept_meta,
+            "dataframe": pd.DataFrame(),
+            "latest_values": {m: None for m in meters},
+            "average_values": {m: None for m in meters},
+            "total_values": {m: None for m in meters},
+        }
+        
+    # Extract data rows (starting from index 3) for valid columns
+    data_part = filtered_overview.iloc[3:, valid_cols]
+    
+    # Map columns to meters based on order
+    dept_df_data = {}
+    for i, meter in enumerate(meters):
+        if i < len(valid_cols):
+            col_idx = valid_cols[i]
+            series = filtered_overview.iloc[3:, col_idx].reset_index(drop=True)
+            dept_df_data[meter] = series
+            
+    if not dept_df_data:
+        return {
+            **dept_meta,
+            "dataframe": pd.DataFrame(),
+            "latest_values": {m: None for m in meters},
+            "average_values": {m: None for m in meters},
+            "total_values": {m: None for m in meters},
+        }
+        
+    dept_df = pd.DataFrame(dept_df_data)
+    
+    # Recalculate metrics
+    latest_vals = {}
+    avg_vals = {}
+    total_vals = {}
+    
+    for meter in meters:
+        if meter in dept_df.columns:
+            s = dept_df[meter]
+            latest_vals[meter] = _calculate_latest_valid_value(s)
+            avg_vals[meter] = _calculate_mean(s)
+            total_vals[meter] = _calculate_sum(s)
+        else:
+            latest_vals[meter] = None
+            avg_vals[meter] = None
+            total_vals[meter] = None
+            
+    return {
+        **dept_meta,
+        "dataframe": dept_df,
+        "latest_values": latest_vals,
+        "average_values": avg_vals,
+        "total_values": total_vals,
+    }
+
+
+def _rebuild_departments_payload(
+    original_departments: dict[str, Any],
+    filtered_overview: pd.DataFrame
+) -> dict[str, Any]:
+    """Rebuild the entire departments payload with recalculated metrics.
+    
+    Args:
+        original_departments: The original unfiltered departments dictionary.
+        filtered_overview: The sliced overview dataframe.
+        
+    Returns:
+        A new departments dictionary with updated dataframes and metrics.
+    """
+    filtered_departments = {}
+    for dept_name, dept_meta in original_departments.items():
+        filtered_departments[dept_name] = _rebuild_department_data(
+            dept_name, dept_meta, filtered_overview
+        )
+    return filtered_departments
+
+
+def _build_filtered_summary(
+    original_summary: dict[str, Any],
+    filtered_departments: dict[str, Any]
+) -> dict[str, Any]:
+    """Update summary statistics based on filtered department data.
+    
+    Args:
+        original_summary: The original summary dictionary.
+        filtered_departments: The recalculated departments dictionary.
+        
+    Returns:
+        An updated summary dictionary.
+    """
+    return {
+        **original_summary,
+        "latest_values": {k: v["latest_values"] for k, v in filtered_departments.items()},
+        "average_values": {k: v["average_values"] for k, v in filtered_departments.items()},
+        "total_values": {k: v["total_values"] for k, v in filtered_departments.items()},
+        "department_latest_values": {k: v["latest_values"] for k, v in filtered_departments.items()},
+        "department_totals": {k: v["total_values"] for k, v in filtered_departments.items()},
+        "department_averages": {k: v["average_values"] for k, v in filtered_departments.items()},
+    }
+
+
+def apply_filters(dashboard: dict[str, Any], selected_month: str, selected_date: str) -> dict[str, Any]:
+    """Apply month and date filters to the dashboard data.
+    
+    Args:
+        dashboard: The original full dashboard data.
+        selected_month: The selected month string (e.g., "2023-01") or "All".
+        selected_date: The selected date string (e.g., "2023-01-01") or "All".
+        
+    Returns:
+        A new dashboard dictionary with filtered overview and recalculated departments.
+    """
+    if not dashboard:
+        return dashboard
+        
+    overview_df = dashboard.get("overview", pd.DataFrame())
+    if overview_df.empty:
+        return dashboard
+        
+    # 1. Identify matching rows
+    keep_indices = _get_filtered_date_indices(overview_df, selected_month, selected_date)
+    
+    # 2. Slice overview dataframe
+    filtered_overview = _slice_overview_dataframe(overview_df, keep_indices)
+    
+    # 3. Rebuild departments
+    original_departments = dashboard.get("departments", {})
+    filtered_departments = _rebuild_departments_payload(original_departments, filtered_overview)
+    
+    # 4. Update summary
+    original_summary = dashboard.get("summary", {})
+    new_summary = _build_filtered_summary(original_summary, filtered_departments)
+    
+    return {
+        **dashboard,
+        "overview": filtered_overview,
+        "departments": filtered_departments,
+        "summary": new_summary,
+    }
+
+
 def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
     """Render the simplified global system supervision header and time controls."""
     now = dt.datetime.now()
@@ -345,24 +603,32 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
         unsafe_allow_html=True,
     )
 
+    # Prepare filter options
+    months = ["All"] + filters_data.get("months", [])
+    dates = ["All"] + filters_data.get("dates", [])
+    
+    # Initialize session state for filters if not present
+    if "selected_month" not in st.session_state:
+        st.session_state["selected_month"] = "All"
+    if "selected_date" not in st.session_state:
+        st.session_state["selected_date"] = "All"
+
     h_col1, h_col2, h_col3 = st.columns([2.5, 2.5, 5])
     with h_col1:
-        st.selectbox(
+        selected_month = st.selectbox(
             "Month Sync Context",
-            options=filters_data.get("months", ["N/A"]),
-            index=0,
+            options=months,
+            index=months.index(st.session_state["selected_month"]) if st.session_state["selected_month"] in months else 0,
             key="header_month_select",
-            disabled=True,
-            help="Filtering by date is managed at downstream visualization layer levels."
+            help="Filter data by month."
         )
     with h_col2:
-        st.selectbox(
+        selected_date = st.selectbox(
             "Date Sync Context",
-            options=filters_data.get("dates", ["N/A"]),
-            index=0,
+            options=dates,
+            index=dates.index(st.session_state["selected_date"]) if st.session_state["selected_date"] in dates else 0,
             key="header_date_select",
-            disabled=True,
-            help="Filtering by date is managed at downstream visualization layer levels."
+            help="Filter data by specific date. Takes precedence over Month."
         )
     with h_col3:
         st.markdown("<div style='padding-top: 24px;'></div>", unsafe_allow_html=True)
@@ -370,7 +636,13 @@ def render_top_header(dashboard: dict[str, Any] | None) -> tuple[str, str]:
             refresh_dashboard()
             st.rerun()
 
-    return "N/A", "N/A"
+    # Update session state and trigger rerun if filters changed
+    if selected_month != st.session_state["selected_month"] or selected_date != st.session_state["selected_date"]:
+        st.session_state["selected_month"] = selected_month
+        st.session_state["selected_date"] = selected_date
+        st.rerun()
+
+    return selected_month, selected_date
 
 
 def render_executive_kpi_strip(dashboard: dict[str, Any]) -> None:
@@ -708,19 +980,22 @@ def main() -> None:
 
     dashboard, error_msg = get_dashboard()
 
-    render_top_header(dashboard)
+    selected_month, selected_date = render_top_header(dashboard)
 
     if error_msg is not None or dashboard is None:
         st.error(error_msg or "Critical Infrastructure Alert: Analytical context dictionary failed initialization.")
         render_footer(dashboard)
         return
 
-    selected_dept = render_department_grid(dashboard)
+    # Apply filters
+    filtered_dashboard = apply_filters(dashboard, selected_month, selected_date)
+
+    selected_dept = render_department_grid(filtered_dashboard)
     
     if selected_dept:
-        render_subsystem_workspace(dashboard, selected_dept)
+        render_subsystem_workspace(filtered_dashboard, selected_dept)
         
-    render_footer(dashboard)
+    render_footer(filtered_dashboard)
 
 
 if __name__ == "__main__":
