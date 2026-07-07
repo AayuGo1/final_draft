@@ -2,9 +2,10 @@
 
 Renders the consolidated Engineering overview, combining every
 department/section discovered on the engineering overview worksheet via
-``services.page_service``. KPI cards come from ``services.kpi_service``
-and the trend chart comes from ``services.chart_service``. No KPI
-calculation or chart-building logic lives in this file.
+``dashboard_data.build_overview_dashboard``. KPI cards come from
+``services.kpi_service`` and the trend chart comes from
+``services.chart_service``. No KPI calculation or chart-building logic
+lives in this file.
 """
 
 from __future__ import annotations
@@ -15,13 +16,59 @@ import streamlit as st
 import ui
 from dashboard_data import build_overview_dashboard
 from services import chart_service, kpi_service
-from services.page_service import load_overview
+from services.dashboard_loader import load_dashboard
 
 AVAILABILITY_HEALTHY_THRESHOLD: float = 0.9
 """Availability ratio at/above which data is considered healthy."""
 
 AVAILABILITY_PARTIAL_THRESHOLD: float = 0.5
 """Availability ratio at/above which data is considered partially available."""
+
+
+def load_overview_dataframe() -> pd.DataFrame | None:
+    """Load the dashboard workbook and return the engineering overview sheet.
+
+    Wraps ``services.dashboard_loader.load_dashboard`` with a loading
+    spinner and local error handling so this page can render a friendly
+    message instead of crashing when the workbook cannot be downloaded
+    or parsed.
+
+    Returns:
+        The overview worksheet DataFrame, or ``None`` if the workbook
+        could not be loaded or contains no usable overview data.
+    """
+    try:
+        with st.spinner("Loading engineering data..."):
+            dashboard = load_dashboard()
+    except ConnectionError:
+        ui.render_error_banner(
+            "Could not connect to the data source. Please check your "
+            "network connection and try again."
+        )
+        return None
+    except TimeoutError:
+        ui.render_error_banner(
+            "The request to load the workbook timed out. Please try "
+            "again."
+        )
+        return None
+    except FileNotFoundError:
+        ui.render_error_banner(
+            "The workbook could not be found at the configured source."
+        )
+        return None
+    except (ValueError, RuntimeError) as error:
+        ui.render_error_banner(f"Failed to load engineering data: {error}")
+        return None
+
+    overview_dataframe = dashboard.get("overview")
+    if overview_dataframe is None or overview_dataframe.empty:
+        ui.render_info_banner(
+            "No engineering overview data is available in the workbook."
+        )
+        return None
+
+    return overview_dataframe
 
 
 def render_kpi_row(summary: dict) -> None:
@@ -135,11 +182,16 @@ def render() -> None:
         "Consolidated engineering overview across all departments.",
     )
 
-    overview_dataframe = load_overview()
+    overview_dataframe = load_overview_dataframe()
     if overview_dataframe is None:
         return
 
-    sections = build_overview_dashboard(overview_dataframe)["sections"]
+    try:
+        sections = build_overview_dashboard(overview_dataframe)["sections"]
+    except ValueError as error:
+        ui.render_error_banner(f"Failed to process engineering data: {error}")
+        return
+
     if not sections:
         ui.render_info_banner(
             "No departments were discovered in the engineering overview "
