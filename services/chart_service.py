@@ -4,16 +4,17 @@ This module is responsible for creating Plotly figures from
 already-loaded pandas DataFrames, and for preparing chart-ready data
 (date alignment and numeric meter selection) so that pages do not need
 to contain any chart-preparation logic of their own. It contains no
-Streamlit code, no workbook loading, and no Excel parsing. Every
-dashboard page (Engineering, Utility, Air Compressor, Freon
-Refrigeration, Ammonia Refrigeration, and Home) may reuse these
-functions to build figures, which the calling page is then responsible
-for rendering (e.g. via ``st.plotly_chart``).
+Streamlit code, no workbook loading, no Excel parsing, and no
+engineering KPI calculation. Every dashboard page (Engineering,
+Utility, Air Compressor, Freon Refrigeration, Ammonia Refrigeration,
+and Home) may reuse these functions to build figures, which the calling
+page is then responsible for rendering (e.g. via ``st.plotly_chart``).
 
 No column names, meter names, department names, or worksheet names are
 ever hardcoded; callers must supply the relevant column(s), title, and
 axis labels, or a section dictionary from which these are discovered
-dynamically.
+dynamically. All colors are sourced from ``config.py`` rather than
+hardcoded here.
 """
 
 from __future__ import annotations
@@ -22,6 +23,13 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from config import (
+    THEME_CHART_PALETTE,
+    THEME_DANGER_COLOR,
+    THEME_PRIMARY_COLOR,
+    THEME_SUCCESS_COLOR,
+    THEME_WARNING_COLOR,
+)
 from dashboard_data import get_date_columns
 
 DEFAULT_TEMPLATE: str = "plotly_white"
@@ -32,6 +40,14 @@ DEFAULT_HOVER_MODE: str = "x unified"
 
 DEFAULT_DATE_COLUMN_LABEL: str = "Date"
 """Default column name used for the aligned date axis in trend data."""
+
+DEFAULT_COLOR_SEQUENCE: list[str] = THEME_CHART_PALETTE
+"""Ordered color sequence applied to multi-series charts, from config.py."""
+
+
+# ==================================================
+# DATA PREPARATION HELPERS
+# ==================================================
 
 
 def validate_columns(dataframe: pd.DataFrame, columns: list[str]) -> None:
@@ -268,6 +284,11 @@ def build_section_trend_chart(
     )
 
 
+# ==================================================
+# SHARED STYLING
+# ==================================================
+
+
 def apply_default_layout(
     figure: go.Figure,
     title: str,
@@ -315,6 +336,35 @@ def apply_default_layout(
     return figure
 
 
+def apply_minimal_layout(figure: go.Figure) -> go.Figure:
+    """Apply a stripped-down layout for small, inline indicator charts.
+
+    Removes axes, legends, and margins so the figure (e.g. a sparkline)
+    can sit compactly inside a KPI card.
+
+    Args:
+        figure: The Plotly figure to style.
+
+    Returns:
+        The same ``figure`` instance, updated in place, for convenience
+        chaining.
+    """
+    figure.update_layout(
+        template=DEFAULT_TEMPLATE,
+        showlegend=False,
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+        autosize=True,
+    )
+    return figure
+
+
+# ==================================================
+# CORE CHART BUILDERS
+# ==================================================
+
+
 def create_line_chart(
     dataframe: pd.DataFrame,
     x_column: str,
@@ -343,7 +393,12 @@ def create_line_chart(
     validate_columns(dataframe, [x_column, y_column])
     prepared = prepare_numeric_columns(dataframe, [y_column])
 
-    figure = px.line(prepared, x=x_column, y=y_column)
+    figure = px.line(
+        prepared,
+        x=x_column,
+        y=y_column,
+        color_discrete_sequence=[THEME_PRIMARY_COLOR],
+    )
 
     return apply_default_layout(
         figure,
@@ -384,7 +439,12 @@ def create_multi_line_chart(
     validate_columns(dataframe, [x_column, *y_columns])
     prepared = prepare_numeric_columns(dataframe, y_columns)
 
-    figure = px.line(prepared, x=x_column, y=y_columns)
+    figure = px.line(
+        prepared,
+        x=x_column,
+        y=y_columns,
+        color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+    )
 
     return apply_default_layout(
         figure,
@@ -392,6 +452,50 @@ def create_multi_line_chart(
         x_label=str(x_label or x_column),
         y_label=str(y_label or "Value"),
     )
+
+
+def create_trend_comparison_chart(
+    dataframe: pd.DataFrame,
+    x_column: str,
+    y_columns: list[str],
+    title: str,
+    x_label: str | None = None,
+    y_label: str | None = None,
+) -> go.Figure:
+    """Create a multi-series line chart for comparing several meters' trends.
+
+    This is a semantic wrapper around ``create_multi_line_chart`` intended
+    for side-by-side comparison of two or more meters/departments over a
+    shared date axis (e.g. "this year vs last year", or "compressor A vs
+    compressor B").
+
+    Args:
+        dataframe: The source DataFrame.
+        x_column: The column name to use for the shared x-axis.
+        y_columns: The list of column names to compare as separate lines.
+        title: The descriptive chart title.
+        x_label: Optional custom x-axis label. Defaults to ``x_column``.
+        y_label: Optional custom y-axis label. Defaults to a generic
+            "Value" label.
+
+    Returns:
+        A styled Plotly ``Figure`` comparing every series in
+        ``y_columns``.
+
+    Raises:
+        ValueError: If ``dataframe`` is not a valid ``pandas.DataFrame``,
+            or if ``x_column`` / any of ``y_columns`` is not present in
+            it.
+    """
+    return create_multi_line_chart(
+        dataframe,
+        x_column=x_column,
+        y_columns=y_columns,
+        title=title,
+        x_label=x_label,
+        y_label=y_label,
+    )
+
 
 def create_bar_chart(
     dataframe: pd.DataFrame,
@@ -426,7 +530,13 @@ def create_bar_chart(
     validate_columns(dataframe, [x_column, *columns_list])
     prepared = prepare_numeric_columns(dataframe, columns_list)
 
-    figure = px.bar(prepared, x=x_column, y=y_columns, barmode="group")
+    figure = px.bar(
+        prepared,
+        x=x_column,
+        y=y_columns,
+        barmode="group",
+        color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+    )
 
     default_y_label = columns_list[0] if len(columns_list) == 1 else "Value"
 
@@ -435,6 +545,52 @@ def create_bar_chart(
         title=title,
         x_label=str(x_label) if x_label is not None else str(x_column),
         y_label=y_label or default_y_label,
+    )
+
+
+def create_stacked_bar_chart(
+    dataframe: pd.DataFrame,
+    x_column: str,
+    y_columns: list[str],
+    title: str,
+    x_label: str | None = None,
+    y_label: str | None = None,
+) -> go.Figure:
+    """Create a stacked bar chart across multiple series.
+
+    Args:
+        dataframe: The source DataFrame.
+        x_column: The column name to use for the x-axis categories.
+        y_columns: The list of column names to stack.
+        title: The descriptive chart title.
+        x_label: Optional custom x-axis label. Defaults to ``x_column``.
+        y_label: Optional custom y-axis label. Defaults to a generic
+            "Value" label.
+
+    Returns:
+        A styled Plotly ``Figure`` containing the stacked bar chart.
+
+    Raises:
+        ValueError: If ``dataframe`` is not a valid ``pandas.DataFrame``,
+            or if ``x_column`` / any of ``y_columns`` is not present in
+            it.
+    """
+    validate_columns(dataframe, [x_column, *y_columns])
+    prepared = prepare_numeric_columns(dataframe, y_columns)
+
+    figure = px.bar(
+        prepared,
+        x=x_column,
+        y=y_columns,
+        barmode="stack",
+        color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+    )
+
+    return apply_default_layout(
+        figure,
+        title=title,
+        x_label=str(x_label) if x_label is not None else str(x_column),
+        y_label=str(y_label or "Value"),
     )
 
 
@@ -471,7 +627,12 @@ def create_area_chart(
     validate_columns(dataframe, [x_column, *columns_list])
     prepared = prepare_numeric_columns(dataframe, columns_list)
 
-    figure = px.area(prepared, x=x_column, y=y_columns)
+    figure = px.area(
+        prepared,
+        x=x_column,
+        y=y_columns,
+        color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+    )
 
     default_y_label = columns_list[0] if len(columns_list) == 1 else "Value"
 
@@ -481,6 +642,152 @@ def create_area_chart(
         x_label=str(x_label) if x_label is not None else str(x_column),
         y_label=y_label or default_y_label,
     )
+
+
+def create_pie_chart(
+    dataframe: pd.DataFrame,
+    names_column: str,
+    values_column: str,
+    title: str,
+) -> go.Figure:
+    """Create a pie chart showing the share of each category.
+
+    Args:
+        dataframe: The source DataFrame.
+        names_column: The column name providing each slice's label.
+        values_column: The column name providing each slice's value.
+        title: The descriptive chart title.
+
+    Returns:
+        A styled Plotly ``Figure`` containing the pie chart.
+
+    Raises:
+        ValueError: If ``dataframe`` is not a valid ``pandas.DataFrame``,
+            or if ``names_column`` / ``values_column`` are not present
+            in it.
+    """
+    validate_columns(dataframe, [names_column, values_column])
+    prepared = prepare_numeric_columns(dataframe, [values_column])
+
+    figure = px.pie(
+        prepared,
+        names=names_column,
+        values=values_column,
+        color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+    )
+
+    return apply_default_layout(figure, title=title)
+
+
+def create_donut_chart(
+    dataframe: pd.DataFrame,
+    names_column: str,
+    values_column: str,
+    title: str,
+    hole_size: float = 0.5,
+) -> go.Figure:
+    """Create a donut chart showing the share of each category.
+
+    Args:
+        dataframe: The source DataFrame.
+        names_column: The column name providing each slice's label.
+        values_column: The column name providing each slice's value.
+        title: The descriptive chart title.
+        hole_size: The relative size of the center hole, between 0.0
+            and 1.0. Defaults to 0.5.
+
+    Returns:
+        A styled Plotly ``Figure`` containing the donut chart.
+
+    Raises:
+        ValueError: If ``dataframe`` is not a valid ``pandas.DataFrame``,
+            or if ``names_column`` / ``values_column`` are not present
+            in it.
+    """
+    validate_columns(dataframe, [names_column, values_column])
+    prepared = prepare_numeric_columns(dataframe, [values_column])
+
+    figure = px.pie(
+        prepared,
+        names=names_column,
+        values=values_column,
+        hole=hole_size,
+        color_discrete_sequence=DEFAULT_COLOR_SEQUENCE,
+    )
+
+    return apply_default_layout(figure, title=title)
+
+
+def create_gauge_chart(
+    value: float,
+    title: str,
+    minimum: float = 0.0,
+    maximum: float = 100.0,
+    warning_threshold: float | None = None,
+    danger_threshold: float | None = None,
+    unit: str = "",
+) -> go.Figure:
+    """Create a single-value gauge chart, e.g. for KPI cards.
+
+    The gauge bar and threshold bands use the shared theme colors from
+    ``config.py``: green for the normal range, amber from
+    ``warning_threshold`` onward, and red from ``danger_threshold``
+    onward. If either threshold is omitted, its corresponding band is
+    skipped.
+
+    Args:
+        value: The current value to display.
+        title: The descriptive chart title.
+        minimum: The minimum of the gauge's scale. Defaults to 0.0.
+        maximum: The maximum of the gauge's scale. Defaults to 100.0.
+        warning_threshold: Optional value at which the gauge enters the
+            warning color band.
+        danger_threshold: Optional value at which the gauge enters the
+            danger color band.
+        unit: Optional unit suffix appended to the displayed number.
+
+    Returns:
+        A styled Plotly ``Figure`` containing the gauge chart.
+    """
+    steps = []
+    band_start = minimum
+
+    if warning_threshold is not None and warning_threshold > minimum:
+        steps.append(
+            {"range": [band_start, warning_threshold], "color": THEME_SUCCESS_COLOR}
+        )
+        band_start = warning_threshold
+
+    if danger_threshold is not None and danger_threshold > band_start:
+        steps.append(
+            {"range": [band_start, danger_threshold], "color": THEME_WARNING_COLOR}
+        )
+        band_start = danger_threshold
+
+    if band_start < maximum:
+        steps.append({"range": [band_start, maximum], "color": THEME_DANGER_COLOR})
+
+    figure = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=value,
+            number={"suffix": f" {unit}".rstrip() if unit else ""},
+            gauge={
+                "axis": {"range": [minimum, maximum]},
+                "bar": {"color": THEME_PRIMARY_COLOR},
+                "steps": steps or None,
+            },
+        )
+    )
+
+    figure.update_layout(
+        title=title,
+        template=DEFAULT_TEMPLATE,
+        margin={"l": 20, "r": 20, "t": 60, "b": 20},
+        autosize=True,
+    )
+
+    return figure
 
 
 def create_scatter_chart(
@@ -511,7 +818,12 @@ def create_scatter_chart(
     validate_columns(dataframe, [x_column, y_column])
     prepared = prepare_numeric_columns(dataframe, [x_column, y_column])
 
-    figure = px.scatter(prepared, x=x_column, y=y_column)
+    figure = px.scatter(
+        prepared,
+        x=x_column,
+        y=y_column,
+        color_discrete_sequence=[THEME_PRIMARY_COLOR],
+    )
 
     return apply_default_layout(
         figure,
@@ -547,7 +859,11 @@ def create_histogram(
     validate_columns(dataframe, [x_column])
     prepared = prepare_numeric_columns(dataframe, [x_column])
 
-    figure = px.histogram(prepared, x=x_column)
+    figure = px.histogram(
+        prepared,
+        x=x_column,
+        color_discrete_sequence=[THEME_PRIMARY_COLOR],
+    )
 
     return apply_default_layout(
         figure,
@@ -555,3 +871,105 @@ def create_histogram(
         x_label=str(x_label) if x_label is not None else str(x_column),
         y_label=y_label or "Count",
     )
+
+
+def create_heatmap(
+    dataframe: pd.DataFrame,
+    columns: list[str] | None = None,
+    title: str = "Heatmap",
+    x_label: str | None = None,
+    y_label: str | None = None,
+) -> go.Figure:
+    """Create a heatmap of numeric values across rows and columns.
+
+    Useful for visualizing many meters' readings at once (e.g. a
+    department's full meter set, one column per meter, one row per
+    day), or for a correlation matrix when ``columns`` selects several
+    numeric meters.
+
+    Args:
+        dataframe: The source DataFrame.
+        columns: Optional list of column names to include. Defaults to
+            every column in ``dataframe`` that has at least one numeric
+            value.
+        title: The descriptive chart title.
+        x_label: Optional custom x-axis label.
+        y_label: Optional custom y-axis label.
+
+    Returns:
+        A styled Plotly ``Figure`` containing the heatmap.
+
+    Raises:
+        ValueError: If ``dataframe`` is not a valid ``pandas.DataFrame``,
+            if any of ``columns`` is not present in it, or if no numeric
+            columns are available to plot.
+    """
+    if not isinstance(dataframe, pd.DataFrame):
+        raise ValueError(
+            f"Expected a pandas.DataFrame, got {type(dataframe).__name__}."
+        )
+
+    if columns is None:
+        columns = [
+            column
+            for column in dataframe.columns
+            if pd.to_numeric(dataframe[column], errors="coerce").notna().any()
+        ]
+
+    if not columns:
+        raise ValueError(
+            "No numeric columns were found to build the heatmap."
+        )
+
+    prepared = prepare_numeric_columns(dataframe, columns)
+
+    figure = go.Figure(
+        data=go.Heatmap(
+            z=prepared[columns].to_numpy().T,
+            x=list(range(len(prepared))),
+            y=columns,
+            colorscale="Blues",
+        )
+    )
+
+    return apply_default_layout(
+        figure,
+        title=title,
+        x_label=x_label or "Index",
+        y_label=y_label or "Meter",
+    )
+
+
+def create_sparkline(
+    values: pd.Series,
+    line_color: str = THEME_PRIMARY_COLOR,
+) -> go.Figure:
+    """Create a compact, axis-free sparkline for a single meter.
+
+    Intended for embedding inline next to a KPI value to give a quick
+    visual sense of recent trend, without the overhead of a full chart.
+
+    Args:
+        values: A Series of readings for a single meter, in
+            chronological order.
+        line_color: The line color to use. Defaults to the primary
+            theme color from ``config.py``.
+
+    Returns:
+        A minimally-styled Plotly ``Figure`` containing the sparkline.
+    """
+    numeric_values = pd.to_numeric(values, errors="coerce").dropna()
+
+    figure = go.Figure(
+        data=go.Scatter(
+            x=list(range(len(numeric_values))),
+            y=numeric_values,
+            mode="lines",
+            line={"color": line_color, "width": 2},
+            fill="tozeroy",
+            fillcolor=line_color,
+            opacity=0.9,
+        )
+    )
+
+    return apply_minimal_layout(figure)
