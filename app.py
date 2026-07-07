@@ -13,6 +13,10 @@ from typing import Any, Final
 import pandas as pd
 import streamlit as st
 
+from services.dashboard_loader import load_dashboard_safe
+import services.chart_service as chart_service
+import services.kpi_service as kpi_service
+
 from config import (
     APP_ICON,
     APP_NAME,
