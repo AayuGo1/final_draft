@@ -1460,3 +1460,407 @@ def get_daily_trend_figure_and_stats(
     fig = create_daily_trend_chart(dataframe, date_column, meter_column, title=f"{meter_column} Daily Trend")
     stats = calculate_daily_stats(dataframe, meter_column)
     return fig, stats
+
+
+# ==================================================================
+# DEPARTMENT ANALYTICS SUITE
+# ==================================================================
+#
+# Everything below builds a *bundle* of charts/tables for a department from
+# a single already-prepared DataFrame (Date + one column per meter), the
+# same shape produced by the business layer for every discovered
+# department. Every meter is discovered automatically from the DataFrame's
+# columns — nothing here ever hardcodes a meter or department name.
+# Numeric coercion happens once per call via `prepare_numeric_columns` and
+# the resulting prepared frame is reused across every chart/table built
+# from it, so no chart re-derives the same numeric conversion.
+
+def discover_numeric_meters(
+    dataframe: pd.DataFrame, date_column: str = DEFAULT_DATE_COLUMN_LABEL,
+) -> list[str]:
+    """Discover every numeric meter column in a department DataFrame.
+
+    Args:
+        dataframe: A department DataFrame with a date column plus meter columns.
+        date_column: The name of the date column to exclude.
+
+    Returns:
+        The list of column names (excluding the date column) that contain
+        at least one numeric value, in their original order.
+    """
+    if not isinstance(dataframe, pd.DataFrame) or dataframe.empty:
+        return []
+
+    meters = []
+    for column in dataframe.columns:
+        if column == date_column:
+            continue
+        if pd.to_numeric(dataframe[column], errors="coerce").notna().any():
+            meters.append(column)
+    return meters
+
+
+def create_weekly_moving_average_chart(
+    dataframe: pd.DataFrame, date_column: str, meter_column: str, title: str,
+    window: int = 7,
+) -> go.Figure | None:
+    """Daily readings with a rolling weekly-moving-average overlay.
+
+    Args:
+        dataframe: A DataFrame with a date column and the meter column.
+        date_column: Name of the date column.
+        meter_column: Name of the meter column to plot.
+        title: Chart title.
+        window: Rolling window size, in readings (default 7 = weekly for
+            daily data).
+
+    Returns:
+        A Plotly Figure with the raw daily series (thin) and its moving
+        average (thick, highlighted), or None if there's no plottable data.
+    """
+    try:
+        validate_columns(dataframe, [date_column, meter_column])
+        prepared = prepare_numeric_columns(dataframe, [meter_column]).dropna(subset=[meter_column])
+        if prepared.empty:
+            return None
+
+        moving_avg = prepared[meter_column].rolling(window=window, min_periods=1).mean()
+
+        raw_color = _hex_to_rgba(SCADA_PALETTE[0], 0.45)
+        ma_color = SCADA_PALETTE[2]
+
+        figure = go.Figure()
+        figure.add_trace(go.Scatter(
+            x=prepared[date_column], y=prepared[meter_column], mode="lines",
+            name="Daily", line={"color": raw_color, "width": 1.5, "shape": "spline", "smoothing": 0.4},
+            hovertemplate=f"<b>%{{x|%d %b}}</b><br>Daily: <b>%{{y:,.2f}}</b><extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=prepared[date_column], y=moving_avg, mode="lines",
+            name=f"{window}-Day Avg",
+            line={"color": ma_color, "width": 3, "shape": "spline", "smoothing": 0.6},
+            hovertemplate=f"<b>%{{x|%d %b}}</b><br>{window}-Day Avg: <b>%{{y:,.2f}}</b><extra></extra>",
+        ))
+
+        y_range = _padded_y_range(prepared[meter_column], moving_avg)
+        return _HMI.apply(
+            figure, title=title, x_label=date_column, y_label=meter_column,
+            x_is_date=True, y_range=y_range,
+        )
+    except Exception as e:
+        logger.error(f"Error in create_weekly_moving_average_chart: {e}", exc_info=True)
+        return None
+
+
+def create_daily_comparison_bar_chart(
+    dataframe: pd.DataFrame, date_column: str, meters: list[str], title: str,
+) -> go.Figure | None:
+    """Ranked horizontal bars of every meter's latest-day value.
+
+    Args:
+        dataframe: A department DataFrame with a date column and meter columns.
+        date_column: Name of the date column (used to find the latest row).
+        meters: Meter column names to include.
+        title: Chart title.
+
+    Returns:
+        A ranked horizontal bar chart (via `create_horizontal_bar_chart`),
+        or None if no meter has a latest value.
+    """
+    try:
+        if not meters:
+            return None
+        prepared = prepare_numeric_columns(dataframe, meters)
+
+        latest_row: dict[str, Any] = {}
+        for meter in meters:
+            series = prepared[meter].dropna()
+            if not series.empty:
+                latest_row[meter] = series.iloc[-1]
+
+        if not latest_row:
+            return None
+
+        comparison_df = pd.DataFrame({
+            "Meter": list(latest_row.keys()),
+            "Latest Value": list(latest_row.values()),
+        })
+        return create_horizontal_bar_chart(
+            comparison_df, x_column="Meter", y_column="Latest Value", title=title,
+        )
+    except Exception as e:
+        logger.error(f"Error in create_daily_comparison_bar_chart: {e}", exc_info=True)
+        return None
+
+
+def create_top_bottom_performers_chart(
+    dataframe: pd.DataFrame, meters: list[str], title: str, top_n: int = 5,
+) -> go.Figure | None:
+    """Ranked bars of the top-N and bottom-N meters by latest value.
+
+    Args:
+        dataframe: A department DataFrame with meter columns.
+        meters: Meter column names to rank.
+        title: Chart title.
+        top_n: How many top and bottom meters to include (deduplicated if
+            the department has fewer than ``2 * top_n`` meters).
+
+    Returns:
+        A ranked horizontal bar chart of the combined top/bottom performers,
+        or None if no meter has a latest value.
+    """
+    try:
+        if not meters:
+            return None
+        prepared = prepare_numeric_columns(dataframe, meters)
+
+        latest_values: dict[str, float] = {}
+        for meter in meters:
+            series = prepared[meter].dropna()
+            if not series.empty:
+                latest_values[meter] = float(series.iloc[-1])
+
+        if not latest_values:
+            return None
+
+        ranked = sorted(latest_values.items(), key=lambda kv: kv[1], reverse=True)
+        top = ranked[:top_n]
+        bottom = ranked[-top_n:] if len(ranked) > top_n else []
+        combined = {name: value for name, value in (top + bottom)}
+
+        combined_df = pd.DataFrame({
+            "Meter": list(combined.keys()),
+            "Latest Value": list(combined.values()),
+        })
+        return create_horizontal_bar_chart(
+            combined_df, x_column="Meter", y_column="Latest Value", title=title,
+        )
+    except Exception as e:
+        logger.error(f"Error in create_top_bottom_performers_chart: {e}", exc_info=True)
+        return None
+
+
+def calculate_department_statistics_panel(
+    dataframe: pd.DataFrame, meters: list[str],
+) -> pd.DataFrame:
+    """Build a per-meter statistics table (Latest/Avg/Max/Min/StdDev/Availability/Trend%).
+
+    Args:
+        dataframe: A department DataFrame with meter columns.
+        meters: Meter column names to summarize.
+
+    Returns:
+        A DataFrame with one row per meter and columns: Meter, Latest,
+        Average, Maximum, Minimum, Std Dev, Availability %, Trend %.
+    """
+    rows: list[dict[str, Any]] = []
+    for meter in meters:
+        if meter not in dataframe.columns:
+            continue
+        numeric_series = pd.to_numeric(dataframe[meter], errors="coerce")
+        non_null = numeric_series.dropna()
+
+        if non_null.empty:
+            rows.append({
+                "Meter": meter, "Latest": "—", "Average": "—", "Maximum": "—",
+                "Minimum": "—", "Std Dev": "—", "Availability %": "0.0",
+                "Trend %": "—",
+            })
+            continue
+
+        trend_pct: str = "—"
+        if len(non_null) >= 2 and non_null.iloc[-2] != 0:
+            trend_pct = f"{((non_null.iloc[-1] - non_null.iloc[-2]) / non_null.iloc[-2]) * 100:+.2f}"
+
+        availability = (numeric_series.notna().sum() / len(numeric_series) * 100) if len(numeric_series) else 0.0
+
+        rows.append({
+            "Meter": meter,
+            "Latest": f"{non_null.iloc[-1]:,.2f}",
+            "Average": f"{non_null.mean():,.2f}",
+            "Maximum": f"{non_null.max():,.2f}",
+            "Minimum": f"{non_null.min():,.2f}",
+            "Std Dev": f"{non_null.std():,.2f}" if len(non_null) > 1 else "0.00",
+            "Availability %": f"{availability:.1f}",
+            "Trend %": trend_pct,
+        })
+
+    return pd.DataFrame(rows)
+
+
+def build_daily_change_table(
+    dataframe: pd.DataFrame, date_column: str, meters: list[str],
+) -> pd.DataFrame:
+    """Build a day-over-day change table (Today vs Yesterday) for every meter.
+
+    Args:
+        dataframe: A department DataFrame with a date column and meter columns.
+        date_column: Name of the date column.
+        meters: Meter column names to include.
+
+    Returns:
+        A DataFrame with columns: Meter, Today, Yesterday, Difference,
+        % Change — one row per meter that has at least one reading.
+    """
+    rows: list[dict[str, Any]] = []
+    prepared = prepare_numeric_columns(dataframe, meters) if meters else dataframe
+
+    for meter in meters:
+        series = prepared[meter].dropna()
+        if len(series) < 1:
+            continue
+
+        today_val = series.iloc[-1]
+        yesterday_val = series.iloc[-2] if len(series) >= 2 else None
+
+        if yesterday_val is None:
+            rows.append({
+                "Meter": meter, "Today": f"{today_val:,.2f}", "Yesterday": "—",
+                "Difference": "—", "% Change": "—",
+            })
+            continue
+
+        diff = today_val - yesterday_val
+        pct_change = (diff / yesterday_val * 100) if yesterday_val != 0 else None
+
+        rows.append({
+            "Meter": meter,
+            "Today": f"{today_val:,.2f}",
+            "Yesterday": f"{yesterday_val:,.2f}",
+            "Difference": f"{diff:+,.2f}",
+            "% Change": f"{pct_change:+.2f}%" if pct_change is not None else "—",
+        })
+
+    return pd.DataFrame(rows)
+
+
+def build_department_analytics_bundle(
+    dataframe: pd.DataFrame,
+    meters: list[str] | None = None,
+    title_prefix: str = "",
+    date_column: str = DEFAULT_DATE_COLUMN_LABEL,
+    targets: dict[str, float] | None = None,
+    max_gauges: int = 6,
+    representative_meter: str | None = None,
+) -> dict[str, Any]:
+    """Build the full analytics bundle for a department in one pass.
+
+    Computes numeric coercion once and reuses the same prepared DataFrame
+    across every chart/table, so nothing is rebuilt or recomputed more
+    than once. Meters are auto-discovered from the DataFrame when not
+    supplied; no meter or department name is ever assumed.
+
+    Args:
+        dataframe: A department DataFrame with a ``date_column`` plus one
+            column per meter (the shape the business layer already
+            produces for every discovered department).
+        meters: Meter column names to analyze; auto-discovered when omitted.
+        title_prefix: Prefix used in every chart title (e.g. department name).
+        date_column: Name of the date column.
+        targets: Optional ``{meter: target_value}`` map used to build
+            bullet charts; meters without a target are skipped there.
+        max_gauges: Maximum number of gauge charts to build (keeps the
+            section readable for departments with many meters).
+        representative_meter: Meter to feature in the large daily-trend /
+            weekly-moving-average charts; defaults to the first meter.
+
+    Returns:
+        A dict with keys: ``meters``, ``daily_trend``, ``weekly_moving_average``,
+        ``multi_line``, ``comparison_bar``, ``heatmap``, ``histogram``,
+        ``radar``, ``gauges`` (dict of meter -> figure), ``bullets`` (dict
+        of meter -> figure), ``sparklines`` (dict of meter -> figure),
+        ``statistics_table``, ``change_table``, ``top_bottom_chart``.
+    """
+    bundle: dict[str, Any] = {
+        "meters": [], "daily_trend": None, "weekly_moving_average": None,
+        "multi_line": None, "comparison_bar": None, "heatmap": None,
+        "histogram": None, "radar": None, "gauges": {}, "bullets": {},
+        "sparklines": {}, "statistics_table": pd.DataFrame(),
+        "change_table": pd.DataFrame(), "top_bottom_chart": None,
+    }
+
+    if not isinstance(dataframe, pd.DataFrame) or dataframe.empty or date_column not in dataframe.columns:
+        return bundle
+
+    resolved_meters = meters or discover_numeric_meters(dataframe, date_column=date_column)
+    if not resolved_meters:
+        return bundle
+    bundle["meters"] = resolved_meters
+
+    # Prepare numeric columns exactly once; reused by every chart below.
+    prepared = prepare_numeric_columns(dataframe, resolved_meters)
+    prepared[date_column] = dataframe[date_column]
+
+    rep_meter = representative_meter if representative_meter in resolved_meters else resolved_meters[0]
+    prefix = f"{title_prefix} — " if title_prefix else ""
+
+    bundle["daily_trend"] = create_line_chart(
+        prepared, x_column=date_column, y_column=rep_meter,
+        title=f"{prefix}{rep_meter} Daily Trend",
+    )
+    bundle["weekly_moving_average"] = create_weekly_moving_average_chart(
+        prepared, date_column, rep_meter, title=f"{prefix}{rep_meter} — 7-Day Moving Average",
+    )
+
+    if len(resolved_meters) > 1:
+        if len(resolved_meters) > 8:
+            bundle["multi_line"] = create_heatmap(
+                prepared, columns=resolved_meters, title=f"{prefix}Multi-Channel Trend",
+                x_label=date_column, y_label="Meter",
+            )
+        else:
+            bundle["multi_line"] = create_multi_line_chart(
+                prepared, x_column=date_column, y_columns=resolved_meters,
+                title=f"{prefix}All Meters — Daily Trend",
+            )
+
+    bundle["comparison_bar"] = create_daily_comparison_bar_chart(
+        prepared, date_column, resolved_meters, title=f"{prefix}Latest Day Comparison",
+    )
+
+    bundle["heatmap"] = create_heatmap(
+        prepared, columns=resolved_meters, title=f"{prefix}Readings Heatmap",
+        x_label=date_column, y_label="Meter",
+    )
+
+    bundle["histogram"] = create_histogram(
+        prepared, x_column=rep_meter, title=f"{prefix}{rep_meter} — Distribution",
+    )
+
+    if len(resolved_meters) >= 3:
+        bundle["radar"] = create_radar_chart(
+            prepared, columns=resolved_meters, title=f"{prefix}Meter Profile (% of Peak)",
+        )
+
+    for meter in resolved_meters[:max_gauges]:
+        series = prepared[meter].dropna()
+        if series.empty:
+            continue
+        latest_val = float(series.iloc[-1])
+        peak_val = float(series.max())
+        max_val = peak_val * 1.2 if peak_val > 0 else max(latest_val, 1.0)
+        bundle["gauges"][meter] = create_gauge_chart(
+            value=latest_val, title=meter, minimum=0.0, maximum=max_val,
+        )
+
+    if targets:
+        for meter, target_val in targets.items():
+            if meter not in resolved_meters:
+                continue
+            series = prepared[meter].dropna()
+            if series.empty:
+                continue
+            bundle["bullets"][meter] = create_bullet_chart(
+                actual=float(series.iloc[-1]), target=float(target_val), title=meter,
+            )
+
+    for meter in resolved_meters:
+        bundle["sparklines"][meter] = create_sparkline(prepared[meter])
+
+    bundle["statistics_table"] = calculate_department_statistics_panel(prepared, resolved_meters)
+    bundle["change_table"] = build_daily_change_table(prepared, date_column, resolved_meters)
+    bundle["top_bottom_chart"] = create_top_bottom_performers_chart(
+        prepared, resolved_meters, title=f"{prefix}Top & Bottom Performers",
+    )
+
+    return bundle
