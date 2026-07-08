@@ -1,99 +1,101 @@
-"""Reusable Streamlit UI components for the Engineering Monitoring Dashboard.
-
-This module is responsible ONLY for rendering UI elements using native
-Streamlit components. It performs no data downloading, no Excel parsing,
-no KPI calculation, and no workbook inspection. Future dashboard pages
-should rely exclusively on the functions defined here for rendering.
-"""
-
+"""Reusable Streamlit UI components for the Engineering Monitoring Dashboard."""
 from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
 
-
 def render_page_title(title: str, subtitle: str | None = None) -> None:
-    """Render the dashboard page title with an optional subtitle.
-
-    Args:
-        title: Main title text to display.
-        subtitle: Optional subtitle or descriptive caption shown below
-            the title.
-    """
-    st.title(title)
-    if subtitle:
-        st.caption(subtitle)
-
+    st.markdown(f"""
+    <div style="margin-bottom: 24px;">
+        <h1 style="font-size: 28px; font-weight: 800; color: #111827; margin: 0; letter-spacing: -0.5px;">{title}</h1>
+        {f'<p style="font-size: 15px; color: #6B7280; margin-top: 8px; font-weight: 400;">{subtitle}</p>' if subtitle else ''}
+    </div>
+    """, unsafe_allow_html=True)
 
 def render_success_banner(message: str) -> None:
-    """Render a green success message.
-
-    Args:
-        message: The success message to display.
-    """
-    st.success(message)
-
+    st.markdown(f"""
+    <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid #22C55E; border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 20px;">✅</span>
+        <span style="color: #166534; font-weight: 600; font-size: 14px;">{message}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
 def render_error_banner(message: str) -> None:
-    """Render a red error message.
-
-    Args:
-        message: The error message to display.
-    """
-    st.error(message)
-
+    st.markdown(f"""
+    <div style="background: rgba(227, 30, 36, 0.1); border: 1px solid #E31E24; border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 20px;">🚨</span>
+        <span style="color: #991B1B; font-weight: 600; font-size: 14px;">{message}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
 def render_info_banner(message: str) -> None:
-    """Render an informational message.
-
-    Args:
-        message: The informational message to display.
-    """
-    st.info(message)
-
+    st.markdown(f"""
+    <div style="background: rgba(0, 93, 170, 0.1); border: 1px solid #005DAA; border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 20px;">ℹ️</span>
+        <span style="color: #005DAA; font-weight: 600; font-size: 14px;">{message}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
 def render_kpi_cards(cards: list[dict]) -> None:
-    """Render a responsive row of KPI cards using ``st.metric``.
-
-    Args:
-        cards: A list of dictionaries, each with keys ``title``,
-            ``value``, and the optional keys ``delta`` and ``help``. Each
-            card is rendered in its own column.
-    """
     if not cards:
         return
 
-    columns = st.columns(len(cards))
+    st.markdown("""
+    <style>
+    .kpi-cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
+    .kpi-card {
+        background: #FFFFFF; border: 1px solid #E5E7EB; 
+        border-left: 6px solid var(--accent, #005DAA); border-radius: 16px; padding: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); transition: all 0.3s ease;
+        height: 100%;
+    }
+    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.08); }
+    .kpi-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .kpi-icon { font-size: 24px; color: var(--accent, #005DAA); }
+    .kpi-title { font-size: 13px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
+    .kpi-value { font-size: 32px; font-weight: 800; color: #111827; line-height: 1.2; }
+    .kpi-delta { font-size: 14px; font-weight: 600; margin-top: 8px; }
+    </style>
+    """, unsafe_allow_html=True)
 
-    for column, card in zip(columns, cards):
-        with column:
-            st.metric(
-                label=card.get("title", ""),
-                value=card.get("value", ""),
-                delta=card.get("delta"),
-                help=card.get("help"),
-            )
-
+    html = '<div class="kpi-cards-grid">'
+    for card in cards:
+        title = card.get("title", "")
+        value = card.get("value", "")
+        delta = card.get("delta")
+        color = card.get("color", "#005DAA")
+        
+        delta_html = ""
+        if delta is not None:
+            delta_str = str(delta)
+            is_positive = "+" in delta_str or (not delta_str.startswith("-") and any(c.isdigit() for c in delta_str))
+            d_color = "#22C55E" if is_positive else "#E31E24"
+            arrow = "▲" if is_positive else "▼"
+            delta_html = f'<div class="kpi-delta" style="color: {d_color};">{arrow} {delta_str}</div>'
+            
+        html += f"""
+        <div class="kpi-card" style="--accent: {color};">
+            <div class="kpi-card-top">
+                <div class="kpi-title">{title}</div>
+                <div class="kpi-icon">📊</div>
+            </div>
+            <div class="kpi-value">{value}</div>
+            {delta_html}
+        </div>
+        """
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 def render_dataframe(dataframe: pd.DataFrame) -> None:
-    """Display a DataFrame using the full container width.
-
-    Args:
-        dataframe: The DataFrame to display.
-    """
-    st.dataframe(dataframe, use_container_width=True)
-
+    st.dataframe(dataframe, use_container_width=True, hide_index=True)
 
 def render_section(title: str) -> None:
-    """Render a section heading with surrounding spacing.
-
-    Args:
-        title: The section heading text.
-    """
-    st.write("")
-    st.subheader(title)
-
+    st.markdown(f"""
+    <div class="section-title" style="font-size: 18px; font-weight: 700; color: #111827; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 20px; margin-top: 40px; display: flex; align-items: center; gap: 12px;">
+        <span style="width: 4px; height: 24px; background: #005DAA; border-radius: 2px;"></span>
+        {title}
+    </div>
+    """, unsafe_allow_html=True)
 
 def render_divider() -> None:
-    """Render a horizontal divider."""
-    st.divider()
+    st.markdown('<hr style="border: 0; border-top: 1px solid #E5E7EB; margin: 24px 0;">', unsafe_allow_html=True)
