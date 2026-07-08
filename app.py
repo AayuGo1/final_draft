@@ -1,4 +1,8 @@
+# ==========================================
+# FILE: app.py
+# ==========================================
 """Main Entry Point for the Engineering Monitoring Dashboard."""
+
 from __future__ import annotations
 
 import copy
@@ -88,6 +92,7 @@ OTHER_BUCKET_LABEL: Final[str] = "Other Channels"
 
 _chart_counter = 0
 
+
 def _bucket_meters_dynamically(meters: list[str]) -> "dict[str, list[str]]":
     buckets: dict[str, list[str]] = {label: [] for label, _ in SUBSECTION_RULES}
     buckets[OTHER_BUCKET_LABEL] = []
@@ -104,6 +109,7 @@ def _bucket_meters_dynamically(meters: list[str]) -> "dict[str, list[str]]":
             buckets[OTHER_BUCKET_LABEL].append(meter)
 
     return {label: meters_in_bucket for label, meters_in_bucket in buckets.items() if meters_in_bucket}
+
 
 def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
     units_map = dept_obj.get("units", {})
@@ -130,6 +136,7 @@ def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
             
     return ""
 
+
 def get_dashboard(start_date: str | None = None, end_date: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
     cache_key = f"dashboard_data_{start_date}_{end_date}"
     
@@ -146,6 +153,7 @@ def get_dashboard(start_date: str | None = None, end_date: str | None = None) ->
         
     return st.session_state.get(cache_key), st.session_state.get(f"dashboard_error_{start_date}_{end_date}")
 
+
 def refresh_dashboard() -> None:
     st.cache_data.clear()
     st.cache_resource.clear()
@@ -153,6 +161,7 @@ def refresh_dashboard() -> None:
     for k in keys_to_clear:
         del st.session_state[k]
     st.session_state.pop("last_refresh", None)
+
 
 def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) -> float:
     if rep_m and rep_m in df_block.columns:
@@ -171,11 +180,13 @@ def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) 
             return float(potential_max) * 1.15
     return 100.0
 
+
 def _format_exec_value(value: float) -> str:
     rounded = round(float(value), 2)
     if abs(rounded - round(rounded)) < 0.005:
         return f"{rounded:,.0f}"
     return f"{rounded:,.2f}"
+
 
 def _exec_trend_chip(latest_val: float, avg_val: Any) -> tuple[str, str]:
     if not isinstance(avg_val, (int, float)) or avg_val == 0:
@@ -186,6 +197,7 @@ def _exec_trend_chip(latest_val: float, avg_val: Any) -> tuple[str, str]:
     if ratio <= 0.92:
         return "trend-down", "Low"
     return "trend-flat", "Stable"
+
 
 def inject_global_styles() -> None:
     st.markdown(
@@ -462,15 +474,11 @@ def inject_global_styles() -> None:
         unsafe_allow_html=True,
     )
 
-def render_sidebar_status(dashboard: dict[str, Any] | None) -> None:
-    now = dt.datetime.now()
-    last_refresh = st.session_state.get("last_refresh")
+
+def render_sidebar_filters() -> tuple[str | None, str | None]:
+    """Render the custom compact sidebar with filters."""
     
-    departments = (dashboard or {}).get("departments", {})
-    plant_ok = bool(departments)
-    wb_ok = dashboard is not None
-    gh_ok = dashboard is not None
-    
+    # Company Logo / Title
     st.sidebar.markdown("""
     <div style="text-align: center; margin-bottom: 24px; padding: 20px 0; border-bottom: 1px solid #E5E7EB;">
         <div style="font-size: 36px; font-weight: 800; color: #005DAA; letter-spacing: -1px;">JFL</div>
@@ -478,6 +486,91 @@ def render_sidebar_status(dashboard: dict[str, Any] | None) -> None:
         <div style="font-size: 16px; font-weight: 700; color: #111827; margin-top: 12px;">Engineering Dashboard</div>
     </div>
     """, unsafe_allow_html=True)
+
+    # Date Range
+    st.sidebar.markdown("#### 📅 Date Range")
+    
+    if "filter_start_date" not in st.session_state:
+        st.session_state.filter_start_date = None
+    if "filter_end_date" not in st.session_state:
+        st.session_state.filter_end_date = None
+        
+    start_date = st.sidebar.date_input("Start Date", value=st.session_state.filter_start_date, key="start_date_input")
+    end_date = st.sidebar.date_input("End Date", value=st.session_state.filter_end_date, key="end_date_input")
+    
+    # Quick Filters
+    st.sidebar.markdown("#### ⚡ Quick Filters")
+    cols = st.sidebar.columns(2)
+    
+    with cols[0]:
+        if st.button("Today", use_container_width=True, key="qf_today"):
+            today = dt.date.today()
+            st.session_state.filter_start_date = today
+            st.session_state.filter_end_date = today
+            st.rerun()
+        if st.button("Last 7 Days", use_container_width=True, key="qf_l7d"):
+            end = dt.date.today()
+            start = end - dt.timedelta(days=6)
+            st.session_state.filter_start_date = start
+            st.session_state.filter_end_date = end
+            st.rerun()
+        if st.button("This Month", use_container_width=True, key="qf_tm"):
+            today = dt.date.today()
+            start = today.replace(day=1)
+            st.session_state.filter_start_date = start
+            st.session_state.filter_end_date = today
+            st.rerun()
+        if st.button("YTD", use_container_width=True, key="qf_ytd"):
+            today = dt.date.today()
+            start = today.replace(month=1, day=1)
+            st.session_state.filter_start_date = start
+            st.session_state.filter_end_date = today
+            st.rerun()
+            
+    with cols[1]:
+        if st.button("Yesterday", use_container_width=True, key="qf_yest"):
+            yesterday = dt.date.today() - dt.timedelta(days=1)
+            st.session_state.filter_start_date = yesterday
+            st.session_state.filter_end_date = yesterday
+            st.rerun()
+        if st.button("Last 30 Days", use_container_width=True, key="qf_l30d"):
+            end = dt.date.today()
+            start = end - dt.timedelta(days=29)
+            st.session_state.filter_start_date = start
+            st.session_state.filter_end_date = end
+            st.rerun()
+        if st.button("Prev Month", use_container_width=True, key="qf_pm"):
+            today = dt.date.today()
+            first_day_of_month = today.replace(day=1)
+            last_month_end = first_day_of_month - dt.timedelta(days=1)
+            last_month_start = last_month_end.replace(day=1)
+            st.session_state.filter_start_date = last_month_start
+            st.session_state.filter_end_date = last_month_end
+            st.rerun()
+        if st.button("All Data", use_container_width=True, key="qf_all"):
+            st.session_state.filter_start_date = None
+            st.session_state.filter_end_date = None
+            st.rerun()
+
+    # Refresh Button
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🔄 Refresh Data", use_container_width=True, key="refresh_btn"):
+        refresh_dashboard()
+        st.rerun()
+
+    start_str = start_date.strftime("%Y-%m-%d") if start_date else None
+    end_str = end_date.strftime("%Y-%m-%d") if end_date else None
+    
+    return start_str, end_str
+
+
+def render_sidebar_status(dashboard: dict[str, Any] | None) -> None:
+    """Render the system status panel in the sidebar."""
+    now = dt.datetime.now()
+    last_refresh = st.session_state.get("last_refresh")
+    
+    wb_ok = dashboard is not None
+    gh_ok = dashboard is not None
     
     st.sidebar.markdown(f"""
     <div style="background: #F9FAFB; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid #E5E7EB;">
@@ -505,70 +598,13 @@ def render_sidebar_status(dashboard: dict[str, Any] | None) -> None:
     </div>
     """, unsafe_allow_html=True)
 
-def render_top_controls() -> tuple[str | None, str | None]:
-    st.markdown("""
-    <div style="background: #FFFFFF; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #E5E7EB;">
-        <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 700; color: #111827;">Date Range & Filters</h3>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if "filter_start_date" not in st.session_state:
-            st.session_state.filter_start_date = None
-        if "filter_end_date" not in st.session_state:
-            st.session_state.filter_end_date = None
-            
-        start_date = st.date_input("Start Date", value=st.session_state.filter_start_date, key="start_date_input")
-        end_date = st.date_input("End Date", value=st.session_state.filter_end_date, key="end_date_input")
-        
-    with col2:
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        c1, c2, c3, c4, c5 = st.columns(5)
-        with c1:
-            if st.button("Today", use_container_width=True, key="qf_today"):
-                today = dt.date.today()
-                st.session_state.filter_start_date = today
-                st.session_state.filter_end_date = today
-                st.rerun()
-        with c2:
-            if st.button("7 Days", use_container_width=True, key="qf_l7d"):
-                end = dt.date.today()
-                start = end - dt.timedelta(days=6)
-                st.session_state.filter_start_date = start
-                st.session_state.filter_end_date = end
-                st.rerun()
-        with c3:
-            if st.button("30 Days", use_container_width=True, key="qf_l30d"):
-                end = dt.date.today()
-                start = end - dt.timedelta(days=29)
-                st.session_state.filter_start_date = start
-                st.session_state.filter_end_date = end
-                st.rerun()
-        with c4:
-            if st.button("Month", use_container_width=True, key="qf_tm"):
-                today = dt.date.today()
-                start = today.replace(day=1)
-                st.session_state.filter_start_date = start
-                st.session_state.filter_end_date = today
-                st.rerun()
-        with c5:
-            if st.button("YTD", use_container_width=True, key="qf_ytd"):
-                today = dt.date.today()
-                start = today.replace(month=1, day=1)
-                st.session_state.filter_start_date = start
-                st.session_state.filter_end_date = today
-                st.rerun()
-
-    start_str = start_date.strftime("%Y-%m-%d") if start_date else None
-    end_str = end_date.strftime("%Y-%m-%d") if end_date else None
-    return start_str, end_str
 
 ALARM_WATCHLIST: Final[dict[str, float]] = {
     "Air compressor": 0.90,
     "DG": 0.90,
     "GG": 0.90,
 }
+
 
 def render_alarm_ribbon(dashboard: dict[str, Any]) -> None:
     departments = dashboard.get("departments", {})
@@ -616,6 +652,7 @@ def render_alarm_ribbon(dashboard: dict[str, Any]) -> None:
     </div>""",
         unsafe_allow_html=True,
     )
+
 
 def render_executive_summary(dashboard: dict[str, Any]) -> None:
     departments = dashboard.get("departments", {})
@@ -665,6 +702,7 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
     if tiles_html:
         st.markdown(f'<div class="exec-grid">{tiles_html}</div>', unsafe_allow_html=True)
 
+
 def render_daily_trend(dashboard: dict[str, Any]) -> None:
     overview_df = dashboard.get("overview", pd.DataFrame())
     if overview_df.empty:
@@ -681,8 +719,6 @@ def render_daily_trend(dashboard: dict[str, Any]) -> None:
         
     fig, stats = chart_service.get_daily_trend_figure_and_stats(overview_df, meter_col, date_col)
     
-    st.markdown('<div class="section-title">Daily Trend Overview</div>', unsafe_allow_html=True)
-    
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Average", stats.get("Average", "—"))
     col2.metric("Maximum", stats.get("Maximum", "—"))
@@ -691,6 +727,7 @@ def render_daily_trend(dashboard: dict[str, Any]) -> None:
     
     if fig:
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
 
 OPS_CONSOLE_PROCESSES: Final[list[str]] = [
     "NPCL",
@@ -702,6 +739,7 @@ OPS_CONSOLE_PROCESSES: Final[list[str]] = [
     "Bread",
     "Donut",
 ]
+
 
 def render_operations_overview(dashboard: dict[str, Any]) -> None:
     departments = dashboard.get("departments", {})
@@ -749,6 +787,7 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
 
     if rows_html:
         st.markdown(f'<div class="ops-console">{header_html}{rows_html}</div>', unsafe_allow_html=True)
+
 
 def render_process_selector(dashboard: dict[str, Any]) -> str | None:
     departments = dashboard.get("departments", {})
@@ -821,6 +860,7 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
 
     return st.session_state["selected_process"]
 
+
 def _chart_box(label: str, fig) -> None:
     global _chart_counter
     _chart_counter += 1
@@ -841,6 +881,7 @@ def _chart_box(label: str, fig) -> None:
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
+
 def _render_meter_kpi_strip(dept_obj: dict[str, Any], meters: list[str]) -> None:
     latest_vals = dept_obj.get("latest_values", {})
     cells_html = ""
@@ -855,6 +896,7 @@ def _render_meter_kpi_strip(dept_obj: dict[str, Any], meters: list[str]) -> None
         </div>"""
     if cells_html:
         st.markdown(f'<div class="kpi-strip">{cells_html}</div>', unsafe_allow_html=True)
+
 
 def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj: dict[str, Any]) -> None:
     overview_df = dashboard.get("overview", pd.DataFrame())
@@ -913,6 +955,7 @@ def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj:
                 fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
                 _chart_box("Current Status", fig)
 
+
 def _render_subsection_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any], subsection_meters: list[str]) -> None:
     overview_df = dashboard.get("overview", pd.DataFrame())
     _render_meter_kpi_strip(dept_obj, subsection_meters)
@@ -925,6 +968,7 @@ def _render_subsection_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any], 
         )
         _chart_box("Channel Trend", fig)
 
+
 def _render_history_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any]) -> None:
     overview_df = dashboard.get("overview", pd.DataFrame())
     fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
@@ -933,6 +977,7 @@ def _render_history_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any]) -> 
         overview_dataframe=overview_df, section=dept_obj, title="All Channels — Full History"
     )
     _chart_box("Multi-Channel History", fig2)
+
 
 def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
     meters = dept_obj.get("meters", [])
@@ -967,6 +1012,7 @@ def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
         st.markdown('<div class="chart-box">', unsafe_allow_html=True)
         st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
         st.markdown("</div>", unsafe_allow_html=True)
+
 
 def render_department_workspace(dashboard: dict[str, Any], process_name: str) -> None:
     departments = dashboard.get("departments", {})
@@ -1006,6 +1052,7 @@ def render_department_workspace(dashboard: dict[str, Any], process_name: str) ->
     with tabs[-1]:
         _render_diagnostics_tab(dept_obj)
 
+
 def render_footer(dashboard: dict[str, Any] | None) -> None:
     last_refresh = st.session_state.get("last_refresh")
     refresh_text = last_refresh.strftime("%d %b %Y, %H:%M:%S") if last_refresh else "N/A"
@@ -1017,19 +1064,20 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
         unsafe_allow_html=True,
     )
 
+
 def main() -> None:
     global _chart_counter
     _chart_counter = 0
     
     inject_global_styles()
     
-    # 1. Render Top Controls (Date Filters)
-    start_date, end_date = render_top_controls()
+    # 1. Render Sidebar Filters (Date Range & Quick Filters)
+    start_date, end_date = render_sidebar_filters()
     
     # 2. Load Data
     dashboard, error_msg = get_dashboard(start_date, end_date)
 
-    # 3. Render Sidebar Status Panel
+    # 3. Render Sidebar Status (System Status)
     render_sidebar_status(dashboard)
 
     if error_msg is not None or dashboard is None:
@@ -1043,20 +1091,21 @@ def main() -> None:
     st.markdown('<div class="section-title">Executive Summary</div>', unsafe_allow_html=True)
     render_executive_summary(dashboard)
 
-    # Primary Visualization: Daily Trend
-    render_daily_trend(dashboard)
-
     st.markdown('<div class="section-title">Plant Operations Overview</div>', unsafe_allow_html=True)
     render_operations_overview(dashboard)
 
     st.markdown('<div class="section-title">Process Selection</div>', unsafe_allow_html=True)
     selected_process = render_process_selector(dashboard)
 
+    st.markdown('<div class="section-title">Daily Trend Overview</div>', unsafe_allow_html=True)
+    render_daily_trend(dashboard)
+
     if selected_process:
         st.markdown('<div class="section-title">Engineering Workspace</div>', unsafe_allow_html=True)
         render_department_workspace(dashboard, selected_process)
 
     render_footer(dashboard)
+
 
 if __name__ == "__main__":
     main()
