@@ -14,17 +14,38 @@ import pandas as pd
 import streamlit as st
 
 from config import (
-    APP_ICON, APP_NAME, APP_VERSION, GITHUB_BRANCH, GITHUB_OWNER, GITHUB_REPO, PAGE_CONFIG,
-    THEME_DANGER_COLOR, THEME_PRIMARY_COLOR, THEME_SUCCESS_COLOR,
+    APP_ICON,
+    APP_NAME,
+    APP_VERSION,
+    GITHUB_BRANCH,
+    GITHUB_OWNER,
+    GITHUB_REPO,
+    PAGE_CONFIG,
+    THEME_DANGER_COLOR,
+    THEME_PRIMARY_COLOR,
+    THEME_SUCCESS_COLOR,
 )
 import services.chart_service as chart_service
 import services.kpi_service as kpi_service
 from services.dashboard_loader import load_dashboard_safe
 from dashboard_data import select_representative_meter
 
-st.set_page_config(page_title=PAGE_CONFIG.get("page_title", APP_NAME), page_icon=PAGE_CONFIG.get("page_icon", "⚙️"), layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title=PAGE_CONFIG.get("page_title", APP_NAME),
+    page_icon=PAGE_CONFIG.get("page_icon", "⚙️"),
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-CRITICAL_SYSTEMS = ["NPCL", "DG", "GG", "Air compressor", "Traywasher", "Freon Refrigeration", "Ammonia Refrigeration"]
+CRITICAL_SYSTEMS = [
+    "NPCL",
+    "DG",
+    "GG",
+    "Air compressor",
+    "Traywasher",
+    "Freon Refrigeration",
+    "Ammonia Refrigeration",
+]
 
 DEPT_CONFIGS = {
     "NPCL": {"accent": "#3B82F6", "label": "Power & Utilities", "primary_kpi": "Total Energy"},
@@ -45,7 +66,9 @@ DEPT_CONFIGS = {
 }
 DEFAULT_CONFIG = {"accent": "#8B5CF6", "label": "Engineering Systems", "primary_kpi": "Energy"}
 
+
 def get_dashboard() -> tuple[dict[str, Any] | None, str | None]:
+    """Retrieve the cached dashboard session payload framework context safely."""
     if "dashboard_data" not in st.session_state:
         dashboard, error = load_dashboard_safe()
         st.session_state["dashboard_data"] = dashboard
@@ -53,14 +76,19 @@ def get_dashboard() -> tuple[dict[str, Any] | None, str | None]:
         st.session_state["last_refresh"] = dt.datetime.now()
     return st.session_state.get("dashboard_data"), st.session_state.get("dashboard_error")
 
+
 def refresh_dashboard() -> None:
+    """Evict structural context references from active session state layers and clear caches."""
     st.cache_data.clear()
     st.cache_resource.clear()
-    for key in ("dashboard_data", "dashboard_error", "last_refresh"): 
+    for key in ("dashboard_data", "dashboard_error", "last_refresh"):
         st.session_state.pop(key, None)
 
+
 def inject_global_styles() -> None:
-    st.markdown(f"""
+    """Inject customized production glassmorphism responsive layout rules."""
+    st.markdown(
+        f"""
         <style>
             #MainMenu {{visibility: hidden;}} 
             footer {{visibility: hidden;}} 
@@ -166,9 +194,13 @@ def inject_global_styles() -> None:
             ::-webkit-scrollbar {{ width: 6px; height: 6px; }}
             ::-webkit-scrollbar-track {{ background: #0B0D12; }}
             ::-webkit-scrollbar-thumb {{ background: #374151; border-radius: 3px; }}
-        </style>""", unsafe_allow_html=True)
+        </style>""",
+        unsafe_allow_html=True,
+    )
+
 
 def render_header(dashboard: dict[str, Any] | None) -> None:
+    """Render the simplified global system supervision header and time controls."""
     now = dt.datetime.now()
     departments = (dashboard or {}).get("departments", {})
     plant_ok = bool(departments)
@@ -176,9 +208,9 @@ def render_header(dashboard: dict[str, Any] | None) -> None:
     plant_text = "ONLINE" if plant_ok else "OFFLINE"
     wb_color = THEME_SUCCESS_COLOR if dashboard else THEME_DANGER_COLOR
     wb_text = "CONNECTED" if dashboard else "DISCONNECTED"
-    last_refresh = st.session_state.get("last_refresh", now)
 
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div class="app-header">
         <div class="header-left">
             <div class="app-logo">{APP_ICON}</div>
@@ -189,24 +221,28 @@ def render_header(dashboard: dict[str, Any] | None) -> None:
             <div class="header-status"><span class="status-dot" style="background: {wb_color};"></span>{wb_text}</div>
             <div class="header-time">{now.strftime("%H:%M:%S")}</div>
         </div>
-    </div>""", unsafe_allow_html=True)
+    </div>""",
+        unsafe_allow_html=True,
+    )
+
 
 def render_executive_summary(dashboard: dict[str, Any]) -> None:
+    """Render executive summary cards for critical plant systems."""
     departments = dashboard.get("departments", {})
-    
+
     cols = st.columns(7)
-    
+
     for i, sys_name in enumerate(CRITICAL_SYSTEMS):
         if sys_name not in departments:
             continue
-            
+
         dept_obj = departments[sys_name]
         config = DEPT_CONFIGS.get(sys_name, DEFAULT_CONFIG)
         rep_m = select_representative_meter(dept_obj)
-        
+
         val = dept_obj.get("latest_values", {}).get(rep_m)
         unit = dept_obj.get("units", {}).get(rep_m, "")
-        
+
         if isinstance(val, (int, float)):
             val_str = f"{val:,.0f}"
             status = "ONLINE"
@@ -215,53 +251,60 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
             val_str = "N/A"
             status = "OFFLINE"
             status_color = "#EF4444"
-            
+
         unit_str = str(unit).strip() if unit else ""
-        
+
         with cols[i]:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div class="exec-card active" style="--accent: {config['accent']};">
                 <div class="exec-name">{sys_name}</div>
                 <div class="exec-kpi-label">{config['primary_kpi']}</div>
                 <div class="exec-value">{val_str}</div>
                 <div class="exec-unit">{unit_str}</div>
                 <div class="exec-status" style="color: {status_color};">{status}</div>
-            </div>""", unsafe_allow_html=True)
+            </div>""",
+                unsafe_allow_html=True,
+            )
+
 
 def render_operations_overview(dashboard: dict[str, Any]) -> None:
+    """Render the plant operations overview table."""
     departments = dashboard.get("departments", {})
-    
+
     rows = []
     for dept_name, dept_obj in departments.items():
         config = DEPT_CONFIGS.get(dept_name, DEFAULT_CONFIG)
         rep_m = select_representative_meter(dept_obj)
-        
+
         total_val = dept_obj.get("total_values", {}).get(rep_m)
         avg_val = dept_obj.get("average_values", {}).get(rep_m)
         latest_val = dept_obj.get("latest_values", {}).get(rep_m)
         unit = dept_obj.get("units", {}).get(rep_m, "")
-        
+
         total_str = f"{total_val:,.0f}" if isinstance(total_val, (int, float)) else "N/A"
         avg_str = f"{avg_val:,.1f}" if isinstance(avg_val, (int, float)) else "N/A"
         latest_str = f"{latest_val:,.0f}" if isinstance(latest_val, (int, float)) else "N/A"
         unit_str = str(unit).strip() if unit else ""
-        
+
         is_online = latest_val is not None and isinstance(latest_val, (int, float))
         status = "● Online" if is_online else "○ Offline"
         status_color = "#10B981" if is_online else "#6B7280"
-        
-        rows.append({
-            "Process": dept_name,
-            "Category": config["label"],
-            "Total": f"{total_str} {unit_str}".strip(),
-            "Average": f"{avg_str} {unit_str}".strip(),
-            "Latest": f"{latest_str} {unit_str}".strip(),
-            "Status": f'<span style="color: {status_color};">{status}</span>'
-        })
-    
+
+        rows.append(
+            {
+                "Process": dept_name,
+                "Category": config["label"],
+                "Total": f"{total_str} {unit_str}".strip(),
+                "Average": f"{avg_str} {unit_str}".strip(),
+                "Latest": f"{latest_str} {unit_str}".strip(),
+                "Status": f'<span style="color: {status_color};">{status}</span>',
+            }
+        )
+
     if rows:
-        df = pd.DataFrame(rows)
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <table class="ops-table">
             <thead>
                 <tr>
@@ -276,109 +319,114 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
             <tbody>
                 {''.join([f"<tr><td>{r['Process']}</td><td>{r['Category']}</td><td>{r['Total']}</td><td>{r['Average']}</td><td>{r['Latest']}</td><td>{r['Status']}</td></tr>" for r in rows])}
             </tbody>
-        </table>""", unsafe_allow_html=True)
+        </table>""",
+            unsafe_allow_html=True,
+        )
+
 
 def render_process_selector(dashboard: dict[str, Any]) -> str | None:
+    """Render the process selector grid."""
     departments = dashboard.get("departments", {})
-    
+
     if "selected_process" not in st.session_state:
         st.session_state["selected_process"] = None
-        
+
     selected = st.session_state["selected_process"]
-    
-    st.markdown('<div class="process-selector">', unsafe_allow_html=True)
-    
+
     cols = st.columns(4)
     col_idx = 0
-    
+
     for dept_name in sorted(departments.keys()):
         dept_obj = departments[dept_name]
         config = DEPT_CONFIGS.get(dept_name, DEFAULT_CONFIG)
         rep_m = select_representative_meter(dept_obj)
-        
+
         latest_val = dept_obj.get("latest_values", {}).get(rep_m)
         is_online = latest_val is not None and isinstance(latest_val, (int, float))
         status = "●" if is_online else "○"
         status_color = "#10B981" if is_online else "#6B7280"
-        
-        is_active = (dept_name == selected)
-        
+
+        is_active = dept_name == selected
+
         with cols[col_idx % 4]:
             if st.button(
                 f"{dept_name}\n\n{config['label']}\n\n{status} {status_color}",
                 key=f"proc_{dept_name}",
                 use_container_width=True,
-                type="primary" if is_active else "secondary"
+                type="primary" if is_active else "secondary",
             ):
                 st.session_state["selected_process"] = dept_name
                 st.rerun()
-        
+
         col_idx += 1
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    
+
     return st.session_state["selected_process"]
 
+
 def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) -> float:
+    """Calculate the maximum value for the gauge chart."""
     if rep_m and rep_m in df_block.columns:
-        numeric_series = pd.to_numeric(df_block[rep_m], errors='coerce').dropna()
+        numeric_series = pd.to_numeric(df_block[rep_m], errors="coerce").dropna()
         if len(numeric_series) >= 5:
             return float(numeric_series.quantile(0.95)) * 1.15
         elif not numeric_series.empty:
             return float(numeric_series.max()) * 1.15
-    
+
     total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0) or 500.0
     avg_val = dept_obj.get("average_values", {}).get(rep_m, 100.0) or 100.0
     latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0) or 0.0
-    
+
     for potential_max in (total_val, avg_val, latest_val):
         if isinstance(potential_max, (int, float)) and potential_max > 0:
             return float(potential_max) * 1.15
     return 100.0
 
+
 def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
+    """Render the engineering workspace for a selected process."""
     departments = dashboard.get("departments", {})
     dept_obj = departments.get(process_name, {})
     overview_df = dashboard.get("overview", pd.DataFrame())
-    
+
     if not dept_obj:
         return
-    
+
     config = DEPT_CONFIGS.get(process_name, DEFAULT_CONFIG)
     meters = dept_obj.get("meters", [])
     df_block = dept_obj.get("dataframe", pd.DataFrame())
     rep_m = select_representative_meter(dept_obj)
-    
-    st.markdown(f"""
+
+    st.markdown(
+        f"""
     <div class="workspace" style="--accent: {config['accent']};">
         <div class="workspace-header">
             <h2 class="workspace-title">{process_name}</h2>
             <div class="workspace-label">{config['label']}</div>
         </div>
-    </div>""", unsafe_allow_html=True)
-    
+    </div>""",
+        unsafe_allow_html=True,
+    )
+
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         st.markdown('<div class="chart-label">Primary Telemetry</div>', unsafe_allow_html=True)
         fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
         if fig:
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-        st.markdown('</div>', unsafe_allow_html=True)
-        
+        st.markdown("</div>", unsafe_allow_html=True)
+
         if len(meters) > 1:
             st.markdown('<div class="chart-container">', unsafe_allow_html=True)
             st.markdown('<div class="chart-label">Multi-Channel Analysis</div>', unsafe_allow_html=True)
             fig = chart_service.create_department_multi_line_chart(
-                overview_dataframe=overview_df,
-                section=dept_obj,
-                title="Load Profiles"
+                overview_dataframe=overview_df, section=dept_obj, title="Load Profiles"
             )
             if fig:
                 st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-            st.markdown('</div>', unsafe_allow_html=True)
-    
+            st.markdown("</div>", unsafe_allow_html=True)
+
     with col2:
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         st.markdown('<div class="chart-label">Current Status</div>', unsafe_allow_html=True)
@@ -389,30 +437,32 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
             fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
             if fig:
                 st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-        st.markdown('</div>', unsafe_allow_html=True)
-        
+        st.markdown("</div>", unsafe_allow_html=True)
+
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         st.markdown('<div class="chart-label">Channel Summary</div>', unsafe_allow_html=True)
         mini_records = []
-        for m in meters[:min(len(meters), 5)]:
+        for m in meters[: min(len(meters), 5)]:
             v = dept_obj.get("latest_values", {}).get(m)
             u = dept_obj.get("units", {}).get(m, "N/A")
-            mini_records.append({
-                "Channel": m[:15],
-                "Value": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline",
-                "Unit": u if (u and str(u).strip()) else "N/A"
-            })
+            mini_records.append(
+                {
+                    "Channel": m[:15],
+                    "Value": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline",
+                    "Unit": u if (u and str(u).strip()) else "N/A",
+                }
+            )
         if mini_records:
             st.dataframe(pd.DataFrame(mini_records), use_container_width=True, hide_index=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    
+        st.markdown("</div>", unsafe_allow_html=True)
+
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.markdown('<div class="chart-label">Channel Registry</div>', unsafe_allow_html=True)
     units_map = dept_obj.get("units", {})
     latest_vals = dept_obj.get("latest_values", {})
     avg_vals = dept_obj.get("average_values", {})
     total_vals = dept_obj.get("total_values", {})
-    
+
     ledger_records = []
     for m in meters:
         lbl = units_map.get(m)
@@ -420,59 +470,81 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
         a_v = avg_vals.get(m)
         t_v = total_vals.get(m)
         status_string = "Active" if l_v is not None else "Idle"
-        ledger_records.append({
-            "Channel": m,
-            "Unit": lbl if (lbl and str(lbl).strip()) else "N/A",
-            "Latest": round(l_v, 2) if isinstance(l_v, (int, float)) else "N/A",
-            "Mean": round(a_v, 2) if isinstance(a_v, (int, float)) else "N/A",
-            "Total": round(t_v, 2) if isinstance(t_v, (int, float)) else "N/A",
-            "Status": status_string
-        })
+        ledger_records.append(
+            {
+                "Channel": m,
+                "Unit": lbl if (lbl and str(lbl).strip()) else "N/A",
+                "Latest": round(l_v, 2) if isinstance(l_v, (int, float)) else "N/A",
+                "Mean": round(a_v, 2) if isinstance(a_v, (int, float)) else "N/A",
+                "Total": round(t_v, 2) if isinstance(t_v, (int, float)) else "N/A",
+                "Status": status_string,
+            }
+        )
     if ledger_records:
         st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 def render_footer(dashboard: dict[str, Any] | None) -> None:
+    """Render a minimal presentation bottom block containing deployment indicators."""
     last_refresh = st.session_state.get("last_refresh")
     refresh_text = last_refresh.strftime("%d %b %Y, %H:%M:%S") if last_refresh else "N/A"
     meta = (dashboard or {}).get("metadata", {})
     sheet_names = meta.get("sheet_names", ["Data Source Unlinked"])
     active_workbook = sheet_names[0] if sheet_names else "N/A"
-    st.markdown(f"""<div class="app-footer">Workbook: {active_workbook} · Refreshed: {refresh_text} · v{APP_VERSION}</div>""", unsafe_allow_html=True)
+    st.markdown(
+        f"""<div class="app-footer">Workbook: {active_workbook} · Refreshed: {refresh_text} · v{APP_VERSION}</div>""",
+        unsafe_allow_html=True,
+    )
+
 
 def main() -> None:
+    """Orchestrate layout render workflows safely utilizing session cache resources."""
     inject_global_styles()
     dashboard, error_msg = get_dashboard()
-    
+
     render_header(dashboard)
-    
+
     if error_msg is not None or dashboard is None:
         st.error(error_msg or "Critical Infrastructure Alert: Analytical context dictionary failed initialization.")
         render_footer(dashboard)
         return
-    
+
     st.markdown('<div style="margin-bottom: 24px;">', unsafe_allow_html=True)
-    st.markdown('<div style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Executive Summary</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Executive Summary</div>',
+        unsafe_allow_html=True,
+    )
     render_executive_summary(dashboard)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
+    st.markdown("</div>", unsafe_allow_html=True)
+
     st.markdown('<div style="margin-bottom: 24px;">', unsafe_allow_html=True)
-    st.markdown('<div style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Plant Operations Overview</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Plant Operations Overview</div>',
+        unsafe_allow_html=True,
+    )
     render_operations_overview(dashboard)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
+    st.markdown("</div>", unsafe_allow_html=True)
+
     st.markdown('<div style="margin-bottom: 24px;">', unsafe_allow_html=True)
-    st.markdown('<div style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Process Selection</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Process Selection</div>',
+        unsafe_allow_html=True,
+    )
     selected_process = render_process_selector(dashboard)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
+    st.markdown("</div>", unsafe_allow_html=True)
+
     if selected_process:
         st.markdown('<div style="margin-bottom: 24px;">', unsafe_allow_html=True)
-        st.markdown('<div style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Engineering Workspace</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Engineering Workspace</div>',
+            unsafe_allow_html=True,
+        )
         render_workspace(dashboard, selected_process)
-        st.markdown('</div>', unsafe_allow_html=True)
-    
+        st.markdown("</div>", unsafe_allow_html=True)
+
     render_footer(dashboard)
+
 
 if __name__ == "__main__":
     main()
