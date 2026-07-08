@@ -35,7 +35,7 @@ st.set_page_config(
     page_title=PAGE_CONFIG.get("page_title", APP_NAME),
     page_icon=PAGE_CONFIG.get("page_icon", "⚙️"),
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 CRITICAL_SYSTEMS = [
@@ -158,35 +158,20 @@ def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
 # Data access
 # ==================================================================
 
-def get_dashboard(start_date: str | None = None, end_date: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
-    # Use a cache key that includes the date range to ensure fresh data when filters change
-    cache_key = f"dashboard_data_{start_date}_{end_date}"
-    
-    if cache_key not in st.session_state:
-        # Clear old cache entries if they exist to prevent memory bloat, 
-        # keeping only the current one and maybe a previous one if needed.
-        # For simplicity, we just clear all dashboard_data keys starting with 'dashboard_data_'
-        keys_to_clear = [k for k in st.session_state if k.startswith("dashboard_data_")]
-        for k in keys_to_clear:
-            if k != cache_key:
-                del st.session_state[k]
-
-        dashboard, error = load_dashboard_safe(start_date, end_date)
-        st.session_state[cache_key] = dashboard
-        st.session_state[f"dashboard_error_{start_date}_{end_date}"] = error
+def get_dashboard() -> tuple[dict[str, Any] | None, str | None]:
+    if "dashboard_data" not in st.session_state:
+        dashboard, error = load_dashboard_safe()
+        st.session_state["dashboard_data"] = dashboard
+        st.session_state["dashboard_error"] = error
         st.session_state["last_refresh"] = dt.datetime.now()
-        
-    return st.session_state.get(cache_key), st.session_state.get(f"dashboard_error_{start_date}_{end_date}")
+    return st.session_state.get("dashboard_data"), st.session_state.get("dashboard_error")
 
 
 def refresh_dashboard() -> None:
     st.cache_data.clear()
     st.cache_resource.clear()
-    # Clear all session state keys related to dashboard data
-    keys_to_clear = [k for k in st.session_state if k.startswith("dashboard_data")]
-    for k in keys_to_clear:
-        del st.session_state[k]
-    st.session_state.pop("last_refresh", None)
+    for key in ("dashboard_data", "dashboard_error", "last_refresh"):
+        st.session_state.pop(key, None)
 
 
 def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) -> float:
@@ -243,44 +228,6 @@ def inject_global_styles() -> None:
 
             * {{ box-sizing: border-box; }}
             .tnum {{ font-family: 'JetBrains Mono', 'Inter', monospace; font-variant-numeric: tabular-nums; }}
-
-            /* Sidebar Styling for Glassmorphism */
-            section[data-testid="stSidebar"] {{
-                background: rgba(16, 19, 26, 0.95) !important;
-                backdrop-filter: blur(10px);
-                border-right: 1px solid #1C212B;
-            }}
-            section[data-testid="stSidebar"] .stSelectbox label,
-            section[data-testid="stSidebar"] .stDateInput label,
-            section[data-testid="stSidebar"] .stMultiSelect label {{
-                color: #E5E9F0 !important;
-                font-weight: 600;
-                font-size: 10px;
-                text-transform: uppercase;
-                letter-spacing: 0.8px;
-            }}
-            section[data-testid="stSidebar"] div[data-baseweb="select"] > div,
-            section[data-testid="stSidebar"] div[data-baseweb="datepicker"] > div {{
-                background-color: #14171F !important;
-                border: 1px solid #2A3140 !important;
-                color: #D1D5DB !important;
-            }}
-            section[data-testid="stSidebar"] button[kind="secondary"] {{
-                background: #14171F !important;
-                border: 1px solid #2A3140 !important;
-                color: #D1D5DB !important;
-                font-size: 10px;
-                font-weight: 600;
-                width: 100%;
-                margin-bottom: 4px;
-                border-radius: 4px;
-                transition: all 0.2s ease;
-            }}
-            section[data-testid="stSidebar"] button[kind="secondary"]:hover {{
-                background: #1C212B !important;
-                border-color: #3B82F6 !important;
-                color: #FFF !important;
-            }}
 
             .scada-header {{
                 display: flex; justify-content: space-between; align-items: center;
@@ -1018,123 +965,6 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
 
 
 # ==================================================================
-# Sidebar Filters
-# ==================================================================
-
-def render_sidebar_filters() -> tuple[str | None, str | None, list[str], str]:
-    """Render the global filter panel in the sidebar."""
-    
-    st.sidebar.markdown("### 📅 Date Range")
-    
-    # Initialize session state for dates if not present
-    if "filter_start_date" not in st.session_state:
-        st.session_state.filter_start_date = None
-    if "filter_end_date" not in st.session_state:
-        st.session_state.filter_end_date = None
-    if "filter_depts" not in st.session_state:
-        st.session_state.filter_depts = []
-    if "filter_metric_mode" not in st.session_state:
-        st.session_state.filter_metric_mode = "Latest"
-
-    # Date Input
-    start_date = st.sidebar.date_input("Start Date", value=st.session_state.filter_start_date)
-    end_date = st.sidebar.date_input("End Date", value=st.session_state.filter_end_date)
-    
-    # Quick Presets
-    st.sidebar.markdown("### ⚡ Quick Presets")
-    cols = st.sidebar.columns(2)
-    with cols[0]:
-        if st.button("Today", use_container_width=True):
-            today = dt.date.today()
-            st.session_state.filter_start_date = today
-            st.session_state.filter_end_date = today
-            st.rerun()
-        if st.button("Last 7 Days", use_container_width=True):
-            end = dt.date.today()
-            start = end - dt.timedelta(days=6)
-            st.session_state.filter_start_date = start
-            st.session_state.filter_end_date = end
-            st.rerun()
-        if st.button("This Month", use_container_width=True):
-            today = dt.date.today()
-            start = today.replace(day=1)
-            st.session_state.filter_start_date = start
-            st.session_state.filter_end_date = today
-            st.rerun()
-        if st.button("YTD", use_container_width=True):
-            today = dt.date.today()
-            start = today.replace(month=1, day=1)
-            st.session_state.filter_start_date = start
-            st.session_state.filter_end_date = today
-            st.rerun()
-            
-    with cols[1]:
-        if st.button("Yesterday", use_container_width=True):
-            yesterday = dt.date.today() - dt.timedelta(days=1)
-            st.session_state.filter_start_date = yesterday
-            st.session_state.filter_end_date = yesterday
-            st.rerun()
-        if st.button("Last 30 Days", use_container_width=True):
-            end = dt.date.today()
-            start = end - dt.timedelta(days=29)
-            st.session_state.filter_start_date = start
-            st.session_state.filter_end_date = end
-            st.rerun()
-        if st.button("Prev Month", use_container_width=True):
-            today = dt.date.today()
-            first_day_of_month = today.replace(day=1)
-            last_month_end = first_day_of_month - dt.timedelta(days=1)
-            last_month_start = last_month_end.replace(day=1)
-            st.session_state.filter_start_date = last_month_start
-            st.session_state.filter_end_date = last_month_end
-            st.rerun()
-        if st.button("All Data", use_container_width=True):
-            st.session_state.filter_start_date = None
-            st.session_state.filter_end_date = None
-            st.rerun()
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🏭 Department Filter")
-    
-    # We need to get the list of departments. Since this runs before dashboard data is loaded,
-    # we might need to load a minimal version or rely on a cached list.
-    # For now, we'll assume the dashboard data is loaded or we use a placeholder.
-    # To make it dynamic, we can try to load the dashboard data here if not already in session state,
-    # but that might be heavy. Instead, we can pass the selected depts to the main logic.
-    
-    # Let's assume we have a way to get department names. 
-    # In a real app, we might load a lightweight metadata file.
-    # For this implementation, we will use a placeholder list if dashboard isn't loaded yet,
-    # or update it once loaded.
-    
-    # To keep it simple and robust, we will let the user select from ALL known departments
-    # defined in DEPT_CONFIGS, and then filter the dashboard data accordingly.
-    
-    all_known_depts = sorted(DEPT_CONFIGS.keys())
-    selected_depts = st.sidebar.multiselect(
-        "Select Departments",
-        options=all_known_depts,
-        default=st.session_state.filter_depts if st.session_state.filter_depts else all_known_depts
-    )
-    st.session_state.filter_depts = selected_depts
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📊 Metric Mode")
-    metric_mode = st.sidebar.selectbox(
-        "View Mode",
-        options=["Latest", "Average", "Total", "Trend"],
-        index=["Latest", "Average", "Total", "Trend"].index(st.session_state.filter_metric_mode)
-    )
-    st.session_state.filter_metric_mode = metric_mode
-    
-    # Convert dates to string for passing to backend
-    start_str = start_date.strftime("%Y-%m-%d") if start_date else None
-    end_str = end_date.strftime("%Y-%m-%d") if end_date else None
-    
-    return start_str, end_str, selected_depts, metric_mode
-
-
-# ==================================================================
 # Main
 # ==================================================================
 
@@ -1143,12 +973,7 @@ def main() -> None:
     _chart_counter = 0  # Reset counter to ensure deterministic unique keys on every rerun
     
     inject_global_styles()
-    
-    # Render Sidebar Filters
-    start_date, end_date, selected_depts, metric_mode = render_sidebar_filters()
-    
-    # Load Dashboard Data with Filters
-    dashboard, error_msg = get_dashboard(start_date, end_date)
+    dashboard, error_msg = get_dashboard()
 
     render_header(dashboard)
 
@@ -1157,15 +982,6 @@ def main() -> None:
         render_footer(dashboard)
         return
 
-    # Filter Departments based on selection
-    if selected_depts:
-        # Create a filtered dashboard view
-        filtered_departments = {k: v for k, v in dashboard["departments"].items() if k in selected_depts}
-        dashboard["departments"] = filtered_departments
-        # Also filter other parts of dashboard if necessary, e.g., summary
-        dashboard["summary"]["available_sections"] = list(filtered_departments.keys())
-        dashboard["summary"]["department_count"] = len(filtered_departments)
-        
     render_alarm_ribbon(dashboard)
 
     st.markdown('<div class="section-title">Executive Summary</div>', unsafe_allow_html=True)
