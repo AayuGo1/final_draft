@@ -108,170 +108,204 @@ def inject_global_styles() -> None:
     st.markdown(
         f"""
         <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
             #MainMenu {{visibility: hidden;}}
             footer {{visibility: hidden;}}
             header[data-testid="stHeader"] {{background: transparent;}}
-            .stApp {{ background: #0A0C10 !important; }}
+            .stApp {{ background: #0A0C10 !important; font-family: 'Inter', -apple-system, sans-serif; }}
             .block-container {{ padding-top: 8px; padding-bottom: 16px; max-width: 1680px; }}
 
             * {{ box-sizing: border-box; }}
+            .tnum {{ font-family: 'JetBrains Mono', 'Inter', monospace; font-variant-numeric: tabular-nums; }}
 
             /* ---------- Header ---------- */
             .scada-header {{
                 display: flex; justify-content: space-between; align-items: center;
-                background: #10131A; border: 1px solid #1C212B;
-                padding: 6px 12px; margin-bottom: 6px; border-radius: 2px;
+                background: linear-gradient(180deg, #12151C 0%, #0F1218 100%);
+                border: 1px solid #1C212B;
+                padding: 8px 14px; margin-bottom: 8px; border-radius: 3px;
+                box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset;
             }}
             .header-left {{ display: flex; align-items: center; gap: 10px; }}
             .app-logo {{
-                width: 24px; height: 24px; background: #171B24; border: 1px solid #2A3140;
-                border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 12px;
+                width: 26px; height: 26px; background: #171B24; border: 1px solid #2A3140;
+                border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 13px;
             }}
-            .app-title {{ font-size: 13px; font-weight: 700; color: #E5E9F0; letter-spacing: 0.6px; text-transform: uppercase; }}
-            .app-version {{ font-size: 9px; color: #4B5563; font-weight: 600; margin-left: 4px; }}
+            .app-title {{ font-size: 13px; font-weight: 800; color: #E5E9F0; letter-spacing: 0.8px; text-transform: uppercase; }}
+            .app-version {{ font-size: 9px; color: #4B5563; font-weight: 700; margin-left: 6px; }}
 
-            .header-status-group {{ display: flex; align-items: center; gap: 0; border-left: 1px solid #1C212B; }}
+            .header-status-group {{ display: flex; align-items: stretch; gap: 0; border-left: 1px solid #1C212B; }}
             .header-stat {{
-                display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
-                padding: 0 12px; border-right: 1px solid #1C212B;
+                display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
+                padding: 2px 14px; border-right: 1px solid #1C212B;
             }}
             .header-stat:last-child {{ border-right: none; }}
-            .header-stat-label {{ font-size: 8px; font-weight: 700; color: #4B5563; text-transform: uppercase; letter-spacing: 0.8px; }}
+            .header-stat-label {{ font-size: 8px; font-weight: 700; color: #4B5563; text-transform: uppercase; letter-spacing: 1px; }}
             .header-stat-value {{ display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: #D1D5DB; font-variant-numeric: tabular-nums; }}
-            .status-dot {{ width: 6px; height: 6px; border-radius: 1px; flex-shrink: 0; }}
+            .status-dot {{ width: 6px; height: 6px; border-radius: 1px; flex-shrink: 0; box-shadow: 0 0 4px currentColor; }}
 
             /* ---------- Section headers ---------- */
             .section-title {{
-                font-size: 10px; font-weight: 700; color: #4B5563; text-transform: uppercase;
-                letter-spacing: 1.2px; margin-bottom: 8px; margin-top: 16px;
+                font-size: 10px; font-weight: 800; color: #566072; text-transform: uppercase;
+                letter-spacing: 1.4px; margin-bottom: 8px; margin-top: 18px;
                 display: flex; align-items: center; gap: 8px;
             }}
+            .section-title::before {{ content: ""; width: 3px; height: 10px; background: #3B82F6; border-radius: 1px; }}
             .section-title::after {{ content: ""; flex: 1; height: 1px; background: #1C212B; }}
 
             /* ---------- Executive tiles ---------- */
             .exec-grid {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }}
             .exec-tile {{
                 background: #10131A; border: 1px solid #1C212B; border-left: 3px solid var(--accent, #3B82F6);
-                border-radius: 2px; padding: 8px 10px; min-height: 64px;
+                border-radius: 3px; padding: 9px 11px; min-height: 68px;
                 display: flex; flex-direction: column; justify-content: space-between;
+                transition: transform 0.12s ease, border-color 0.12s ease;
             }}
+            .exec-tile:hover {{ transform: translateY(-1px); border-color: var(--accent, #3B82F6); }}
             .exec-tile-top {{ display: flex; justify-content: space-between; align-items: flex-start; }}
-            .exec-name {{ font-size: 10px; font-weight: 700; color: #D1D5DB; text-transform: uppercase; letter-spacing: 0.4px; }}
-            .exec-label {{ font-size: 8px; color: #4B5563; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }}
-            .exec-value {{ font-size: 15px; font-weight: 700; color: #F3F4F6; font-variant-numeric: tabular-nums; }}
-            .exec-unit {{ font-size: 9px; color: #6B7280; font-weight: 500; margin-left: 3px; }}
-            .exec-status {{ font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }}
+            .exec-name {{ font-size: 10px; font-weight: 800; color: #D1D5DB; text-transform: uppercase; letter-spacing: 0.5px; }}
+            .exec-label {{ font-size: 8px; color: #566072; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; }}
+            .exec-value {{ font-size: 16px; font-weight: 700; color: #F3F4F6; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }}
+            .exec-unit {{ font-size: 9px; color: #6B7280; font-weight: 500; margin-left: 3px; font-family: 'Inter', sans-serif; }}
+            .exec-status {{ font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.7px; }}
             .status-online {{ color: #10B981; }}
             .status-offline {{ color: #EF4444; }}
 
-            /* ---------- Operations console table ---------- */
-            .ops-table {{
-                width: 100%; border-collapse: collapse; background: #10131A; border-radius: 2px;
-                overflow: hidden; border: 1px solid #1C212B;
-            }}
-            .ops-table th {{
-                background: #171B24; color: #6B7280; font-size: 9px; font-weight: 700;
-                text-transform: uppercase; letter-spacing: 0.6px; padding: 6px 10px; text-align: left;
-                border-bottom: 1px solid #262C38;
-            }}
-            .ops-table td {{
-                background: #10131A; color: #C6CBD3; font-size: 10.5px; padding: 5px 10px;
-                border-bottom: 1px solid #171B24; font-variant-numeric: tabular-nums;
-            }}
-            .ops-table tr:nth-child(even) td {{ background: #0D0F14; }}
-            .ops-table tr:hover td {{ background: #1C212B; }}
-            .ops-val {{ color: #F3F4F6; font-weight: 600; }}
-            .ops-unit {{ color: #4B5563; font-size: 9px; margin-left: 2px; }}
-
-            /* ---------- Operations console (row-based, no table/dataframe) ---------- */
+            /* ---------- Operations console (row-based) ---------- */
             .ops-console {{
-                background: #10131A; border: 1px solid #1C212B; border-radius: 2px; overflow: hidden;
+                background: #10131A; border: 1px solid #1C212B; border-radius: 3px; overflow: hidden;
             }}
             .console-row {{
                 display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr 0.9fr;
-                align-items: center; padding: 5px 12px; border-bottom: 1px solid #171B24;
+                align-items: center; padding: 4px 14px; border-bottom: 1px solid #15181F;
                 transition: background 0.1s ease;
             }}
             .console-row:last-child {{ border-bottom: none; }}
-            .console-row-head {{
-                background: #171B24; padding: 6px 12px;
-            }}
+            .console-row-head {{ background: #14171F; padding: 7px 14px; }}
             .console-row-head .console-col {{
-                font-size: 9px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.6px;
+                font-size: 8.5px; font-weight: 800; color: #566072; text-transform: uppercase; letter-spacing: 0.7px;
             }}
             .console-row-alt {{ background: #0D0F14; }}
-            .console-row:not(.console-row-head):hover {{ background: #1C212B; }}
-            .console-col-name {{ font-size: 11px; font-weight: 600; color: #F3F4F6; }}
-            .console-col-num {{ font-size: 10.5px; font-variant-numeric: tabular-nums; }}
-            .console-col-status {{ font-size: 9.5px; font-weight: 700; letter-spacing: 0.4px; }}
+            .console-row:not(.console-row-head):hover {{ background: #1A1F29; }}
+            .console-col-name {{ font-size: 11px; font-weight: 700; color: #F3F4F6; letter-spacing: 0.2px; }}
+            .console-col-num {{ font-size: 10.5px; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }}
+            .console-col-status {{ font-size: 9.5px; font-weight: 800; letter-spacing: 0.4px; }}
+            .ops-val {{ color: #F3F4F6; font-weight: 700; }}
+            .ops-unit {{ color: #566072; font-size: 9px; margin-left: 2px; font-family: 'Inter', sans-serif; }}
 
             /* ---------- Alarm ribbon ---------- */
             .alarm-ribbon {{
                 display: flex; align-items: center; gap: 8px;
-                background: #10131A; border: 1px solid #1C212B; border-left: 3px solid var(--alarm-color, #10B981);
-                border-radius: 2px; padding: 6px 12px; margin-bottom: 8px;
+                background: linear-gradient(90deg, rgba(255,255,255,0.015), transparent);
+                border: 1px solid #1C212B; border-left: 3px solid var(--alarm-color, #10B981);
+                border-radius: 3px; padding: 7px 14px; margin-bottom: 10px;
                 font-size: 10.5px; font-weight: 600; color: #D1D5DB; letter-spacing: 0.2px;
             }}
-            .alarm-dot {{ width: 7px; height: 7px; border-radius: 50%; background: var(--alarm-color, #10B981); flex-shrink: 0; }}
-            .alarm-label {{ font-size: 8px; font-weight: 700; color: #4B5563; text-transform: uppercase; letter-spacing: 0.8px; margin-right: 4px; }}
+            .alarm-dot {{ width: 7px; height: 7px; border-radius: 50%; background: var(--alarm-color, #10B981); flex-shrink: 0; box-shadow: 0 0 6px var(--alarm-color, #10B981); }}
+            .alarm-label {{ font-size: 8px; font-weight: 800; color: #566072; text-transform: uppercase; letter-spacing: 1px; margin-right: 4px; }}
 
-            /* ---------- Equipment selector cards ---------- */
-            .equip-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }}
-            .equip-card {{
-                background: #10131A; border: 1px solid #1C212B; border-radius: 2px;
-                padding: 10px 12px; border-top: 2px solid var(--accent, #8B5CF6);
+            /* ---------- Process selector: clickable equipment cards ---------- */
+            div[data-testid="column"] {{ transition: transform 0.15s ease; }}
+            div[data-testid="column"]:has(button[kind="secondary"]):hover {{ transform: translateY(-2px); cursor: pointer; }}
+            div[data-testid="column"]:has(button[kind="secondary"]):hover .equip-card {{
+                border-color: var(--accent, #8B5CF6);
+                box-shadow: 0 6px 16px rgba(0,0,0,0.45), 0 0 0 1px var(--accent, #8B5CF6) inset;
             }}
-            .equip-card.active {{ background: #171B24; border-color: var(--accent, #8B5CF6); }}
-            .equip-header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }}
-            .equip-name {{ font-size: 11.5px; font-weight: 700; color: #F3F4F6; }}
-            .equip-category {{ font-size: 9px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 1px; }}
-            .equip-metrics {{ display: flex; flex-direction: column; gap: 2px; margin: 6px 0 8px 0; }}
-            .equip-metric-row {{ display: flex; justify-content: space-between; font-size: 9.5px; color: #9CA3AF; }}
-            .equip-metric-row span:last-child {{ color: #D1D5DB; font-weight: 600; font-variant-numeric: tabular-nums; }}
-            .equip-footer {{ display: flex; justify-content: flex-end; }}
 
+            .equip-card {{
+                background: #10131A; border: 1px solid #1C212B; border-radius: 3px;
+                padding: 11px 13px 9px 13px; border-top: 2px solid var(--accent, #8B5CF6);
+                transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+                position: relative;
+            }}
+            .equip-card.active {{
+                background: #14171F; border-color: var(--accent, #8B5CF6);
+                box-shadow: 0 0 0 1px var(--accent, #8B5CF6) inset, 0 4px 14px rgba(0,0,0,0.4);
+                animation: cardSelectPulse 0.35s ease;
+            }}
+            @keyframes cardSelectPulse {{
+                0% {{ transform: scale(0.97); }}
+                60% {{ transform: scale(1.01); }}
+                100% {{ transform: scale(1); }}
+            }}
+            .equip-header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 7px; }}
+            .equip-name {{ font-size: 12px; font-weight: 800; color: #F3F4F6; letter-spacing: 0.1px; }}
+            .equip-category {{ font-size: 8.5px; color: #566072; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }}
+            .equip-live-dot {{ width: 6px; height: 6px; border-radius: 50%; margin-top: 3px; }}
+            .equip-metrics {{ display: flex; flex-direction: column; gap: 3px; margin: 7px 0 8px 0; padding-top: 7px; border-top: 1px solid #171B24; }}
+            .equip-metric-row {{ display: flex; justify-content: space-between; font-size: 9.5px; color: #8B93A3; }}
+            .equip-metric-row span:last-child {{ color: #D1D5DB; font-weight: 700; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }}
+            .equip-activate {{
+                display: flex; justify-content: space-between; align-items: center;
+                font-size: 8.5px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase;
+                color: var(--accent, #8B5CF6); padding-top: 6px; margin-top: 2px; border-top: 1px dashed #1C212B;
+            }}
+
+            /* make the underlying streamlit button an invisible full-width click target
+               positioned to overlay the card (illusion of a single clickable unit) */
+            div[data-testid="stButton"] {{ margin-top: -34px; position: relative; z-index: 5; }}
             div[data-testid="stButton"] > button {{
                 background: transparent !important; border: none !important; padding: 0 !important;
-                width: 100%; text-align: left;
+                width: 100%; height: 30px; text-align: left; color: transparent !important;
+                box-shadow: none !important;
             }}
+            div[data-testid="stButton"] > button:focus {{ box-shadow: none !important; }}
+
+            /* ---------- KPI strip (workspace) ---------- */
+            .kpi-strip {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin-bottom: 8px; }}
+            .kpi-cell {{
+                background: #0D0F14; border: 1px solid #171B24; border-radius: 3px; padding: 8px 12px;
+            }}
+            .kpi-cell-label {{ font-size: 8px; font-weight: 800; color: #566072; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }}
+            .kpi-cell-value {{ font-size: 17px; font-weight: 700; color: #F3F4F6; font-family: 'JetBrains Mono', monospace; }}
+            .kpi-cell-unit {{ font-size: 9.5px; color: #6B7280; margin-left: 3px; font-family: 'Inter', sans-serif; }}
 
             /* ---------- Workspace / control room ---------- */
             .workspace {{
-                background: #10131A; border: 1px solid #1C212B; border-radius: 2px; padding: 10px;
-                border-top: 2px solid var(--accent, #3B82F6); margin-bottom: 8px;
+                background: #10131A; border: 1px solid #1C212B; border-radius: 3px; padding: 12px;
+                border-top: 2px solid var(--accent, #3B82F6); margin-bottom: 10px;
             }}
-            .workspace-header {{ display: flex; justify-content: space-between; align-items: baseline; padding: 4px 6px 8px 6px; }}
-            .workspace-title {{ font-size: 14px; font-weight: 700; color: #F3F4F6; margin: 0; letter-spacing: 0.3px; }}
-            .workspace-label {{ font-size: 9px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.6px; }}
+            .workspace-header {{ display: flex; justify-content: space-between; align-items: baseline; padding: 4px 6px 10px 6px; border-bottom: 1px solid #171B24; margin-bottom: 10px; }}
+            .workspace-title {{ font-size: 15px; font-weight: 800; color: #F3F4F6; margin: 0; letter-spacing: 0.3px; }}
+            .workspace-label {{ font-size: 9px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.7px; font-weight: 700; }}
+
+            .subsection-label {{
+                font-size: 9px; font-weight: 800; color: #4B5563; text-transform: uppercase;
+                letter-spacing: 1px; margin: 12px 2px 6px 2px;
+            }}
 
             .chart-box {{
-                background: #0A0C10; border: 1px solid #171B24; border-radius: 2px; padding: 8px; margin-bottom: 6px;
+                background: #0A0C10; border: 1px solid #171B24; border-radius: 3px; padding: 9px; margin-bottom: 6px;
+                transition: box-shadow 0.15s ease, border-color 0.15s ease;
             }}
+            .chart-box:hover {{ border-color: #262C38; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }}
             .chart-label {{
-                font-size: 9px; font-weight: 700; color: #6B7280; text-transform: uppercase;
-                letter-spacing: 0.6px; margin-bottom: 4px; padding: 0 2px;
+                font-size: 9px; font-weight: 800; color: #6B7280; text-transform: uppercase;
+                letter-spacing: 0.7px; margin-bottom: 5px; padding: 0 2px;
             }}
 
             /* ---------- DataFrames (registers) ---------- */
             div[data-testid="stDataFrame"] {{
-                border: 1px solid #1C212B !important; border-radius: 2px !important; overflow: hidden !important;
+                border: 1px solid #1C212B !important; border-radius: 3px !important; overflow: hidden !important;
             }}
             div[data-testid="stDataFrame"] th {{
-                background: #171B24 !important; color: #6B7280 !important; font-weight: 700 !important;
-                text-transform: uppercase !important; font-size: 9px !important; letter-spacing: 0.6px !important;
-                border-bottom: 1px solid #262C38 !important; padding: 4px 8px !important;
+                background: #14171F !important; color: #566072 !important; font-weight: 800 !important;
+                text-transform: uppercase !important; font-size: 9px !important; letter-spacing: 0.7px !important;
+                border-bottom: 1px solid #262C38 !important; padding: 5px 8px !important;
             }}
             div[data-testid="stDataFrame"] td {{
                 background: #10131A !important; color: #C6CBD3 !important; border-bottom: 1px solid #171B24 !important;
                 padding: 4px 8px !important; font-size: 10.5px !important; font-variant-numeric: tabular-nums;
+                font-family: 'JetBrains Mono', monospace !important;
             }}
-            div[data-testid="stDataFrame"] tr:hover td {{ background: #1C212B !important; }}
+            div[data-testid="stDataFrame"] tr:hover td {{ background: #1A1F29 !important; }}
 
             /* ---------- Footer ---------- */
             .app-footer {{
-                margin-top: 16px; padding: 6px 16px; border-radius: 2px; background: #10131A;
+                margin-top: 18px; padding: 7px 16px; border-radius: 3px; background: #10131A;
                 border: 1px solid #1C212B; font-size: 9px; color: #4B5563; text-align: center;
-                letter-spacing: 0.3px;
+                letter-spacing: 0.4px; font-family: 'JetBrains Mono', monospace;
             }}
 
             ::-webkit-scrollbar {{ width: 6px; height: 6px; }}
@@ -315,23 +349,23 @@ def render_header(dashboard: dict[str, Any] | None) -> None:
         <div class="header-status-group">
             <div class="header-stat">
                 <div class="header-stat-label">Plant</div>
-                <div class="header-stat-value"><span class="status-dot" style="background:{plant_color};"></span>{plant_text}</div>
+                <div class="header-stat-value"><span class="status-dot" style="background:{plant_color};color:{plant_color};"></span>{plant_text}</div>
             </div>
             <div class="header-stat">
                 <div class="header-stat-label">Workbook</div>
-                <div class="header-stat-value"><span class="status-dot" style="background:{wb_color};"></span>{wb_text}</div>
+                <div class="header-stat-value"><span class="status-dot" style="background:{wb_color};color:{wb_color};"></span>{wb_text}</div>
             </div>
             <div class="header-stat">
                 <div class="header-stat-label">GitHub</div>
-                <div class="header-stat-value"><span class="status-dot" style="background:{gh_color};"></span>{gh_text}</div>
+                <div class="header-stat-value"><span class="status-dot" style="background:{gh_color};color:{gh_color};"></span>{gh_text}</div>
             </div>
             <div class="header-stat">
                 <div class="header-stat-label">Time</div>
-                <div class="header-stat-value">{now.strftime("%H:%M:%S")}</div>
+                <div class="header-stat-value tnum">{now.strftime("%H:%M:%S")}</div>
             </div>
             <div class="header-stat">
                 <div class="header-stat-label">Last Refresh</div>
-                <div class="header-stat-value">{refresh_str}</div>
+                <div class="header-stat-value tnum">{refresh_str}</div>
             </div>
         </div>
     </div>""",
@@ -542,6 +576,7 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
         is_online = any(dept_obj.get("latest_values", {}).get(m) is not None for m in meters)
         status_class = "status-online" if is_online else "status-offline"
         status_text = "ONLINE" if is_online else "OFFLINE"
+        live_color = "#10B981" if is_online else "#EF4444"
 
         metrics_html = "".join(
             f'<div class="equip-metric-row"><span>{name}</span><span>{val}</span></div>'
@@ -555,14 +590,19 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
                     <div class="equip-name">{dept_name}</div>
                     <div class="equip-category">{config['category']}</div>
                 </div>
+                <div class="equip-live-dot" style="background:{live_color};box-shadow:0 0 5px {live_color};"></div>
             </div>
             <div class="equip-metrics">{metrics_html}</div>
-            <div class="equip-footer"><span class="exec-status {status_class}">{status_text}</span></div>
+            <div class="equip-activate">
+                <span>{'ACTIVE ●' if is_active else 'ACTIVATE'}</span>
+                <span class="exec-status {status_class}">{status_text}</span>
+            </div>
         </div>"""
 
         with cols[idx % 4]:
             st.markdown(card_html, unsafe_allow_html=True)
-            if st.button("Select", key=f"proc_{dept_name}", use_container_width=True):
+            st.button(" ", key=f"proc_{dept_name}", use_container_width=True)
+            if st.session_state.get(f"proc_{dept_name}"):
                 st.session_state["selected_process"] = dept_name
                 st.rerun()
 
@@ -578,6 +618,38 @@ def _chart_box(label: str, fig) -> None:
     if fig:
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _render_kpi_strip(dept_obj: dict[str, Any], meters: list[str], rep_m: str | None) -> None:
+    """Dense top-of-workspace KPI row: representative meter + up to 3 more."""
+    latest_vals = dept_obj.get("latest_values", {})
+    avg_vals = dept_obj.get("average_values", {})
+    total_vals = dept_obj.get("total_values", {})
+    units = dept_obj.get("units", {})
+
+    strip_meters: list[str] = []
+    if rep_m:
+        strip_meters.append(rep_m)
+    for m in meters:
+        if m not in strip_meters:
+            strip_meters.append(m)
+        if len(strip_meters) >= 4:
+            break
+
+    cells_html = ""
+    labels = [("Latest", latest_vals), ("Average", avg_vals), ("Total", total_vals)]
+    for m in strip_meters:
+        unit_str = str(units.get(m, "") or "").strip()
+        v = latest_vals.get(m)
+        v_str = f"{v:,.1f}" if isinstance(v, (int, float)) else "—"
+        cells_html += f"""
+        <div class="kpi-cell">
+            <div class="kpi-cell-label">{m}</div>
+            <div class="kpi-cell-value">{v_str}<span class="kpi-cell-unit">{unit_str}</span></div>
+        </div>"""
+
+    if cells_html:
+        st.markdown(f'<div class="kpi-strip">{cells_html}</div>', unsafe_allow_html=True)
 
 
 def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
@@ -607,7 +679,12 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
         unsafe_allow_html=True,
     )
 
-    # ---------------- NPCL: Electrical — Demand Gauge / PF Area / Energy Donut ----------------
+    # ---------------- 1. KPI strip (always first) ----------------
+    _render_kpi_strip(dept_obj, meters, rep_m)
+
+    # ---------------- 2. Primary charts (department-specific) ----------------
+    st.markdown('<div class="subsection-label">Primary Telemetry</div>', unsafe_allow_html=True)
+
     if process_name == "NPCL":
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -626,7 +703,6 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
                 fig = chart_service.create_donut_chart(bar_df, "Meter", "Value", "Energy Distribution")
                 _chart_box("Energy Distribution", fig)
 
-    # ---------------- Air Compressor: Pressure Gauge / Stability / Flow / Runtime / Efficiency ----------------
     elif process_name == "Air compressor":
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
@@ -642,10 +718,10 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
                 fig = chart_service.create_horizontal_bar_chart(bar_df, "Meter", "Value", "Runtime")
                 _chart_box("Runtime", fig)
         if len(meters) >= 3:
+            st.markdown('<div class="subsection-label">Diagnostics</div>', unsafe_allow_html=True)
             fig = chart_service.create_radar_chart(df_block, meters[:6], "Efficiency Profile")
             _chart_box("Efficiency", fig)
 
-    # ---------------- Freon / Ammonia Refrigeration: Heatmap / Cooling Trend / COP / Distribution ----------------
     elif process_name in ("Freon Refrigeration", "Ammonia Refrigeration"):
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -660,7 +736,6 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
                 fig = chart_service.create_histogram(df_block, meters[0], "Temperature Distribution")
                 _chart_box("Temperature Distribution", fig)
 
-    # ---------------- DG / GG: Generation Bullet / Fuel Bar / Runtime / Output Trend ----------------
     elif process_name in ("DG", "GG"):
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -677,7 +752,6 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
             fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
             _chart_box("Output Trend", fig)
 
-    # ---------------- Traywasher: Water Usage / Thermal Trend / Cycles / Efficiency ----------------
     elif process_name == "Traywasher":
         col1, col2 = st.columns([1, 1])
         with col1:
@@ -689,10 +763,10 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
             fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
             _chart_box("Thermal Trend", fig)
         if len(meters) >= 3:
+            st.markdown('<div class="subsection-label">Diagnostics</div>', unsafe_allow_html=True)
             fig = chart_service.create_radar_chart(df_block, meters[:6], "Cycle Efficiency")
             _chart_box("Efficiency", fig)
 
-    # ---------------- Default control-room layout ----------------
     else:
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -708,7 +782,7 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
                 fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
                 _chart_box("Current Status", fig)
 
-    # ---------------- Channel Registry (compact register, all departments) ----------------
+    # ---------------- 3. Channel Registry (always last) ----------------
     units_map = dept_obj.get("units", {})
     latest_vals = dept_obj.get("latest_values", {})
     avg_vals = dept_obj.get("average_values", {})
@@ -731,7 +805,8 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
             }
         )
     if ledger_records:
-        st.markdown('<div class="chart-box"><div class="chart-label">Channel Registry</div>', unsafe_allow_html=True)
+        st.markdown('<div class="subsection-label">Channel Register</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chart-box">', unsafe_allow_html=True)
         st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
