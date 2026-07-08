@@ -52,7 +52,7 @@ def load_dashboard(start_date: str | None = None, end_date: str | None = None) -
 
 def load_dashboard_safe(start_date: str | None = None, end_date: str | None = None) -> tuple[dict | None, str | None]:
     """Load dashboard while converting exceptions into friendly messages.
-
+    
     Args:
         start_date: Optional start date string (YYYY-MM-DD) for filtering.
         end_date: Optional end date string (YYYY-MM-DD) for filtering.
