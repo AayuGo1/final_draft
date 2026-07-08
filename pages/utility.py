@@ -14,26 +14,16 @@ import streamlit as st
 
 import ui
 from dashboard_data import build_overview_dashboard, find_section_by_keyword
-from services import chart_service, kpi_service
+from services import chart_service, kpi_service, page_loader
 from services.dashboard_loader import load_dashboard_safe
 
 UTILITY_KEYWORD: str = "utility"
-"""Keyword used to identify the Utility section among discovered sections."""
-
 AVAILABILITY_HEALTHY_THRESHOLD: float = 0.9
-"""Availability ratio at/above which data is considered healthy."""
-
 AVAILABILITY_PARTIAL_THRESHOLD: float = 0.5
-"""Availability ratio at/above which data is considered partially available."""
 
 
 def render_kpi_row(summary: dict) -> None:
-    """Render the top KPI row from a kpi_service summary.
-
-    Args:
-        summary: The KPI summary dictionary from
-            ``kpi_service.build_kpi_summary``.
-    """
+    """Render the top KPI row from a kpi_service summary."""
     cards = [
         {"title": "Number of Meters", "value": summary["meters"]},
         {"title": "Available Readings", "value": summary["available_readings"]},
@@ -47,12 +37,7 @@ def render_kpi_row(summary: dict) -> None:
 
 
 def render_status_section(summary: dict) -> None:
-    """Render a status banner based on the section's data availability.
-
-    Args:
-        summary: The KPI summary dictionary from
-            ``kpi_service.build_kpi_summary``.
-    """
+    """Render a status banner based on the section's data availability."""
     availability = summary["availability"]
     if availability >= AVAILABILITY_HEALTHY_THRESHOLD:
         ui.render_success_banner("Status: Monitoring — data is healthy.")
@@ -65,13 +50,7 @@ def render_status_section(summary: dict) -> None:
 
 
 def render_trend_section(overview_dataframe: pd.DataFrame, section: dict) -> None:
-    """Render the Plotly trend chart for the Utility section.
-
-    Args:
-        overview_dataframe: The engineering overview worksheet DataFrame,
-            used to discover the shared date column.
-        section: The discovered Utility section dictionary.
-    """
+    """Render the Plotly trend chart for the Utility section."""
     ui.render_section("Trend Analysis")
     with st.container(border=True):
         figure = chart_service.build_section_trend_chart(
@@ -84,11 +63,7 @@ def render_trend_section(overview_dataframe: pd.DataFrame, section: dict) -> Non
 
 
 def render_latest_readings_table(section: dict) -> None:
-    """Render a table of the latest reading for every meter.
-
-    Args:
-        section: The discovered Utility section dictionary.
-    """
+    """Render a table of the latest reading for every meter."""
     ui.render_section("Latest Readings")
     latest_values = section["latest_values"]
     table = pd.DataFrame(
@@ -102,11 +77,7 @@ def render_latest_readings_table(section: dict) -> None:
 
 
 def render_data_section(dataframe: pd.DataFrame) -> None:
-    """Render a preview and expandable full history of the Utility data.
-
-    Args:
-        dataframe: The Utility section DataFrame.
-    """
+    """Render a preview and expandable full history of the Utility data."""
     ui.render_section("Historical Data")
     with st.container(border=True):
         ui.render_dataframe(dataframe.head(15))
@@ -115,12 +86,7 @@ def render_data_section(dataframe: pd.DataFrame) -> None:
 
 
 def render_summary_section(summary: dict) -> None:
-    """Render a compact data summary table.
-
-    Args:
-        summary: The KPI summary dictionary from
-            ``kpi_service.build_kpi_summary``.
-    """
+    """Render a compact data summary table."""
     ui.render_section("Data Summary")
     with st.container(border=True):
         ui.render_dataframe(pd.DataFrame([summary]))
@@ -162,6 +128,10 @@ def render() -> None:
 
     render_kpi_row(summary)
     render_status_section(summary)
+    ui.render_divider()
+
+    # TASK 6 & 7: Added Daily Trend Section
+    page_loader.render_daily_trend_section(section["dataframe"])
     ui.render_divider()
 
     render_trend_section(overview_dataframe, section)
