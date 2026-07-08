@@ -41,36 +41,25 @@ CRITICAL_SYSTEMS = [
     "Freon Refrigeration", "Ammonia Refrigeration",
 ]
 
-# ------------------------------------------------------------------
-# Color system — grouped by engineering discipline, applied
-# consistently across cards, panel strips, and badges.
-# ------------------------------------------------------------------
-COLOR_ELECTRICAL = "#3B82F6"      # blue
-COLOR_COMPRESSED_AIR = "#06B6D4"  # cyan
-COLOR_COOLING = "#8B5CF6"         # purple
-COLOR_FUEL = "#F59E0B"            # orange
-COLOR_WATER = "#14B8A6"           # teal
-COLOR_PRODUCTION = "#10B981"      # green
-
-# accent = tile/border/panel-strip color, category = equipment class label
+# accent = tile/border color, category = equipment class label
 DEPT_CONFIGS = {
-    "NPCL": {"accent": COLOR_ELECTRICAL, "category": "Electrical / Incoming Power"},
-    "DG": {"accent": COLOR_FUEL, "category": "Fuel / Diesel Generation"},
-    "GG": {"accent": COLOR_FUEL, "category": "Fuel / Gas Generation"},
-    "Air compressor": {"accent": COLOR_COMPRESSED_AIR, "category": "Compressed Air"},
-    "Freon Refrigeration": {"accent": COLOR_COOLING, "category": "Cooling System"},
-    "Ammonia Refrigeration": {"accent": COLOR_COOLING, "category": "Cooling System"},
-    "Traywasher": {"accent": COLOR_WATER, "category": "Sanitation / Water"},
-    "Dough": {"accent": COLOR_PRODUCTION, "category": "Processing"},
-    "Bread": {"accent": COLOR_PRODUCTION, "category": "Baking"},
-    "Donut": {"accent": COLOR_PRODUCTION, "category": "Production"},
-    "CLC": {"accent": COLOR_ELECTRICAL, "category": "Control Logic"},
-    "Warehouse": {"accent": COLOR_ELECTRICAL, "category": "Storage / Utility"},
-    "Transport": {"accent": COLOR_COMPRESSED_AIR, "category": "Logistics"},
-    "Engineering": {"accent": COLOR_PRODUCTION, "category": "Workshop"},
-    "Utility": {"accent": COLOR_WATER, "category": "Utilities"},
+    "NPCL": {"accent": "#3B82F6", "category": "Electrical / Incoming Power"},
+    "DG": {"accent": "#F59E0B", "category": "Fuel / Diesel Generation"},
+    "GG": {"accent": "#EF4444", "category": "Fuel / Gas Generation"},
+    "Air compressor": {"accent": "#06B6D4", "category": "Compressed Air"},
+    "Freon Refrigeration": {"accent": "#8B5CF6", "category": "Cooling System"},
+    "Ammonia Refrigeration": {"accent": "#8B5CF6", "category": "Cooling System"},
+    "Traywasher": {"accent": "#10B981", "category": "Sanitation / Water"},
+    "Dough": {"accent": "#F59E0B", "category": "Processing"},
+    "Bread": {"accent": "#F59E0B", "category": "Baking"},
+    "Donut": {"accent": "#F59E0B", "category": "Production"},
+    "CLC": {"accent": "#3B82F6", "category": "Control Logic"},
+    "Warehouse": {"accent": "#3B82F6", "category": "Storage / Utility"},
+    "Transport": {"accent": "#06B6D4", "category": "Logistics"},
+    "Engineering": {"accent": "#10B981", "category": "Workshop"},
+    "Utility": {"accent": "#06B6D4", "category": "Utilities"},
 }
-DEFAULT_CONFIG = {"accent": COLOR_COOLING, "category": "Engineering System"}
+DEFAULT_CONFIG = {"accent": "#8B5CF6", "category": "Engineering System"}
 
 
 # ==================================================================
@@ -111,26 +100,6 @@ def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) 
     return 100.0
 
 
-def compute_trend_chip(df_block: pd.DataFrame, rep_m: str | None) -> tuple[str, str] | None:
-    """Pure display computation: % change of the representative meter's last
-    two numeric observations in its already-extracted dataframe. Does not
-    touch representative-meter selection, gauge scaling, or KPI calc logic —
-    it only reads the same column those functions already read.
-    Returns (arrow_symbol, formatted_pct) or None if not computable.
-    """
-    if not rep_m or not isinstance(df_block, pd.DataFrame) or rep_m not in df_block.columns:
-        return None
-    series = pd.to_numeric(df_block[rep_m], errors="coerce").dropna()
-    if len(series) < 2:
-        return None
-    prev, curr = series.iloc[-2], series.iloc[-1]
-    if prev == 0:
-        return None
-    pct = ((curr - prev) / abs(prev)) * 100
-    arrow = "▲" if pct > 0 else ("▼" if pct < 0 else "▬")
-    return arrow, f"{abs(pct):.1f}%"
-
-
 # ==================================================================
 # Styles — industrial SCADA theme, 8px grid
 # ==================================================================
@@ -155,21 +124,21 @@ def inject_global_styles() -> None:
                 display: flex; justify-content: space-between; align-items: center;
                 background: linear-gradient(180deg, #12151C 0%, #0F1218 100%);
                 border: 1px solid #1C212B;
-                padding: 9px 16px; margin-bottom: 10px; border-radius: 3px;
+                padding: 8px 14px; margin-bottom: 8px; border-radius: 3px;
                 box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset;
             }}
-            .header-left {{ display: flex; align-items: center; gap: 11px; }}
+            .header-left {{ display: flex; align-items: center; gap: 10px; }}
             .app-logo {{
-                width: 27px; height: 27px; background: #171B24; border: 1px solid #2A3140;
+                width: 26px; height: 26px; background: #171B24; border: 1px solid #2A3140;
                 border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 13px;
             }}
-            .app-title {{ font-size: 13.5px; font-weight: 800; color: #E5E9F0; letter-spacing: 0.9px; text-transform: uppercase; }}
-            .app-version {{ font-size: 9px; color: #4B5563; font-weight: 700; margin-left: 7px; }}
+            .app-title {{ font-size: 13px; font-weight: 800; color: #E5E9F0; letter-spacing: 0.8px; text-transform: uppercase; }}
+            .app-version {{ font-size: 9px; color: #4B5563; font-weight: 700; margin-left: 6px; }}
 
             .header-status-group {{ display: flex; align-items: stretch; gap: 0; border-left: 1px solid #1C212B; }}
             .header-stat {{
                 display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
-                padding: 2px 16px; border-right: 1px solid #1C212B;
+                padding: 2px 14px; border-right: 1px solid #1C212B;
             }}
             .header-stat:last-child {{ border-right: none; }}
             .header-stat-label {{ font-size: 8px; font-weight: 700; color: #4B5563; text-transform: uppercase; letter-spacing: 1px; }}
@@ -179,59 +148,41 @@ def inject_global_styles() -> None:
             /* ---------- Section headers ---------- */
             .section-title {{
                 font-size: 10px; font-weight: 800; color: #566072; text-transform: uppercase;
-                letter-spacing: 1.4px; margin-bottom: 9px; margin-top: 20px;
+                letter-spacing: 1.4px; margin-bottom: 8px; margin-top: 18px;
                 display: flex; align-items: center; gap: 8px;
             }}
             .section-title::before {{ content: ""; width: 3px; height: 10px; background: #3B82F6; border-radius: 1px; }}
             .section-title::after {{ content: ""; flex: 1; height: 1px; background: #1C212B; }}
 
-            .subsection-label {{
-                font-size: 9px; font-weight: 800; color: #4B5563; text-transform: uppercase;
-                letter-spacing: 1px; margin: 14px 2px 7px 2px;
-                display: flex; align-items: center; gap: 6px;
-            }}
-            .subsection-label::before {{ content: ""; width: 2px; height: 8px; background: #333B4A; border-radius: 1px; }}
-
-            /* ---------- Executive tiles (premium KPI cards) ---------- */
-            .exec-grid {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; }}
+            /* ---------- Executive tiles ---------- */
+            .exec-grid {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }}
             .exec-tile {{
-                background: linear-gradient(180deg, #12151C 0%, #0E1015 100%);
-                border: 1px solid #1C212B; border-top: 2px solid var(--accent, #3B82F6);
-                border-radius: 4px; padding: 10px 11px 9px 11px; min-height: 78px;
+                background: #10131A; border: 1px solid #1C212B; border-left: 3px solid var(--accent, #3B82F6);
+                border-radius: 3px; padding: 9px 11px; min-height: 68px;
                 display: flex; flex-direction: column; justify-content: space-between;
-                transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+                transition: transform 0.12s ease, border-color 0.12s ease;
             }}
-            .exec-tile:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 6px 16px rgba(0,0,0,0.4);
-                border-color: var(--accent, #3B82F6);
-            }}
+            .exec-tile:hover {{ transform: translateY(-1px); border-color: var(--accent, #3B82F6); }}
             .exec-tile-top {{ display: flex; justify-content: space-between; align-items: flex-start; }}
             .exec-name {{ font-size: 10px; font-weight: 800; color: #D1D5DB; text-transform: uppercase; letter-spacing: 0.5px; }}
-            .exec-label {{ font-size: 8px; color: #566072; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; margin-top: 2px; }}
-            .exec-value-row {{ display: flex; align-items: baseline; justify-content: space-between; margin-top: 6px; }}
-            .exec-value {{ font-size: 17px; font-weight: 700; color: #F3F4F6; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }}
+            .exec-label {{ font-size: 8px; color: #566072; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; }}
+            .exec-value {{ font-size: 16px; font-weight: 700; color: #F3F4F6; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }}
             .exec-unit {{ font-size: 9px; color: #6B7280; font-weight: 500; margin-left: 3px; font-family: 'Inter', sans-serif; }}
-            .exec-bottom-row {{ display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px solid #171B24; }}
             .exec-status {{ font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.7px; }}
             .status-online {{ color: #10B981; }}
             .status-offline {{ color: #EF4444; }}
-            .trend-chip {{ font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px; font-family: 'JetBrains Mono', monospace; }}
-            .trend-up {{ color: #10B981; background: rgba(16,185,129,0.1); }}
-            .trend-down {{ color: #EF4444; background: rgba(239,68,68,0.1); }}
-            .trend-flat {{ color: #6B7280; background: rgba(107,114,128,0.1); }}
 
             /* ---------- Operations console (row-based) ---------- */
             .ops-console {{
-                background: #10131A; border: 1px solid #1C212B; border-radius: 4px; overflow: hidden;
+                background: #10131A; border: 1px solid #1C212B; border-radius: 3px; overflow: hidden;
             }}
             .console-row {{
                 display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr 0.9fr;
-                align-items: center; padding: 5px 15px; border-bottom: 1px solid #15181F;
-                transition: background 0.12s ease;
+                align-items: center; padding: 4px 14px; border-bottom: 1px solid #15181F;
+                transition: background 0.1s ease;
             }}
             .console-row:last-child {{ border-bottom: none; }}
-            .console-row-head {{ background: #14171F; padding: 8px 15px; }}
+            .console-row-head {{ background: #14171F; padding: 7px 14px; }}
             .console-row-head .console-col {{
                 font-size: 8.5px; font-weight: 800; color: #566072; text-transform: uppercase; letter-spacing: 0.7px;
             }}
@@ -248,7 +199,7 @@ def inject_global_styles() -> None:
                 display: flex; align-items: center; gap: 8px;
                 background: linear-gradient(90deg, rgba(255,255,255,0.015), transparent);
                 border: 1px solid #1C212B; border-left: 3px solid var(--alarm-color, #10B981);
-                border-radius: 3px; padding: 8px 15px; margin-bottom: 11px;
+                border-radius: 3px; padding: 7px 14px; margin-bottom: 10px;
                 font-size: 10.5px; font-weight: 600; color: #D1D5DB; letter-spacing: 0.2px;
             }}
             .alarm-dot {{ width: 7px; height: 7px; border-radius: 50%; background: var(--alarm-color, #10B981); flex-shrink: 0; box-shadow: 0 0 6px var(--alarm-color, #10B981); }}
@@ -263,9 +214,8 @@ def inject_global_styles() -> None:
             }}
 
             .equip-card {{
-                background: linear-gradient(180deg, #12151C 0%, #0E1015 100%);
-                border: 1px solid #1C212B; border-radius: 4px;
-                padding: 12px 14px 10px 14px; border-top: 2px solid var(--accent, #8B5CF6);
+                background: #10131A; border: 1px solid #1C212B; border-radius: 3px;
+                padding: 11px 13px 9px 13px; border-top: 2px solid var(--accent, #8B5CF6);
                 transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
                 position: relative;
             }}
@@ -279,19 +229,21 @@ def inject_global_styles() -> None:
                 60% {{ transform: scale(1.01); }}
                 100% {{ transform: scale(1); }}
             }}
-            .equip-header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }}
+            .equip-header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 7px; }}
             .equip-name {{ font-size: 12px; font-weight: 800; color: #F3F4F6; letter-spacing: 0.1px; }}
             .equip-category {{ font-size: 8.5px; color: #566072; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }}
             .equip-live-dot {{ width: 6px; height: 6px; border-radius: 50%; margin-top: 3px; }}
-            .equip-metrics {{ display: flex; flex-direction: column; gap: 4px; margin: 8px 0 9px 0; padding-top: 8px; border-top: 1px solid #171B24; }}
+            .equip-metrics {{ display: flex; flex-direction: column; gap: 3px; margin: 7px 0 8px 0; padding-top: 7px; border-top: 1px solid #171B24; }}
             .equip-metric-row {{ display: flex; justify-content: space-between; font-size: 9.5px; color: #8B93A3; }}
             .equip-metric-row span:last-child {{ color: #D1D5DB; font-weight: 700; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }}
             .equip-activate {{
                 display: flex; justify-content: space-between; align-items: center;
                 font-size: 8.5px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase;
-                color: var(--accent, #8B5CF6); padding-top: 7px; margin-top: 2px; border-top: 1px dashed #1C212B;
+                color: var(--accent, #8B5CF6); padding-top: 6px; margin-top: 2px; border-top: 1px dashed #1C212B;
             }}
 
+            /* make the underlying streamlit button an invisible full-width click target
+               positioned to overlay the card (illusion of a single clickable unit) */
             div[data-testid="stButton"] {{ margin-top: -34px; position: relative; z-index: 5; }}
             div[data-testid="stButton"] > button {{
                 background: transparent !important; border: none !important; padding: 0 !important;
@@ -301,47 +253,41 @@ def inject_global_styles() -> None:
             div[data-testid="stButton"] > button:focus {{ box-shadow: none !important; }}
 
             /* ---------- KPI strip (workspace) ---------- */
-            .kpi-strip {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 7px; margin-bottom: 10px; }}
+            .kpi-strip {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin-bottom: 8px; }}
             .kpi-cell {{
-                background: #0D0F14; border: 1px solid #171B24; border-left: 2px solid var(--accent, #3B82F6);
-                border-radius: 3px; padding: 9px 13px;
+                background: #0D0F14; border: 1px solid #171B24; border-radius: 3px; padding: 8px 12px;
             }}
-            .kpi-cell-label {{ font-size: 8px; font-weight: 800; color: #566072; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 5px; }}
-            .kpi-cell-value {{ font-size: 18px; font-weight: 700; color: #F3F4F6; font-family: 'JetBrains Mono', monospace; }}
+            .kpi-cell-label {{ font-size: 8px; font-weight: 800; color: #566072; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }}
+            .kpi-cell-value {{ font-size: 17px; font-weight: 700; color: #F3F4F6; font-family: 'JetBrains Mono', monospace; }}
             .kpi-cell-unit {{ font-size: 9.5px; color: #6B7280; margin-left: 3px; font-family: 'Inter', sans-serif; }}
 
             /* ---------- Workspace / control room ---------- */
             .workspace {{
-                background: #10131A; border: 1px solid #1C212B; border-radius: 4px; padding: 13px;
-                border-top: 2px solid var(--accent, #3B82F6); margin-bottom: 11px;
+                background: #10131A; border: 1px solid #1C212B; border-radius: 3px; padding: 12px;
+                border-top: 2px solid var(--accent, #3B82F6); margin-bottom: 10px;
             }}
-            .workspace-header {{ display: flex; justify-content: space-between; align-items: baseline; padding: 4px 6px 11px 6px; border-bottom: 1px solid #171B24; margin-bottom: 11px; }}
+            .workspace-header {{ display: flex; justify-content: space-between; align-items: baseline; padding: 4px 6px 10px 6px; border-bottom: 1px solid #171B24; margin-bottom: 10px; }}
             .workspace-title {{ font-size: 15px; font-weight: 800; color: #F3F4F6; margin: 0; letter-spacing: 0.3px; }}
             .workspace-label {{ font-size: 9px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.7px; font-weight: 700; }}
 
-            /* ---------- Professional chart panels ---------- */
-            .chart-panel {{
-                background: #0A0C10; border: 1px solid #171B24; border-left: 2px solid var(--accent, #3B82F6);
-                border-radius: 4px; padding: 10px 11px; margin-bottom: 7px;
+            .subsection-label {{
+                font-size: 9px; font-weight: 800; color: #4B5563; text-transform: uppercase;
+                letter-spacing: 1px; margin: 12px 2px 6px 2px;
+            }}
+
+            .chart-box {{
+                background: #0A0C10; border: 1px solid #171B24; border-radius: 3px; padding: 9px; margin-bottom: 6px;
                 transition: box-shadow 0.15s ease, border-color 0.15s ease;
             }}
-            .chart-panel:hover {{ border-color: #262C38; box-shadow: 0 5px 16px rgba(0,0,0,0.38); }}
-            .chart-panel-head {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; }}
-            .chart-panel-title {{ font-size: 9.5px; font-weight: 800; color: #C6CBD3; text-transform: uppercase; letter-spacing: 0.7px; }}
-            .chart-panel-subtitle {{ font-size: 8.5px; color: #566072; font-weight: 500; margin-top: 2px; }}
-            .chart-panel-time {{ font-size: 8px; color: #3A4150; font-weight: 600; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }}
-
-            /* ---------- Tabs ---------- */
-            div[data-testid="stTabs"] button[data-baseweb="tab"] {{
-                font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
-                color: #6B7280; padding: 6px 14px;
+            .chart-box:hover {{ border-color: #262C38; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }}
+            .chart-label {{
+                font-size: 9px; font-weight: 800; color: #6B7280; text-transform: uppercase;
+                letter-spacing: 0.7px; margin-bottom: 5px; padding: 0 2px;
             }}
-            div[data-testid="stTabs"] button[aria-selected="true"] {{ color: #F3F4F6 !important; }}
-            div[data-testid="stTabs"] {{ margin-bottom: 4px; }}
 
             /* ---------- DataFrames (registers) ---------- */
             div[data-testid="stDataFrame"] {{
-                border: 1px solid #1C212B !important; border-radius: 4px !important; overflow: hidden !important;
+                border: 1px solid #1C212B !important; border-radius: 3px !important; overflow: hidden !important;
             }}
             div[data-testid="stDataFrame"] th {{
                 background: #14171F !important; color: #566072 !important; font-weight: 800 !important;
@@ -357,7 +303,7 @@ def inject_global_styles() -> None:
 
             /* ---------- Footer ---------- */
             .app-footer {{
-                margin-top: 20px; padding: 8px 16px; border-radius: 3px; background: #10131A;
+                margin-top: 18px; padding: 7px 16px; border-radius: 3px; background: #10131A;
                 border: 1px solid #1C212B; font-size: 9px; color: #4B5563; text-align: center;
                 letter-spacing: 0.4px; font-family: 'JetBrains Mono', monospace;
             }}
@@ -505,7 +451,6 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
         latest_val = dept_obj.get("latest_values", {}).get(rep_m)
         unit = dept_obj.get("units", {}).get(rep_m, "")
         accent = DEPT_CONFIGS.get(sys_name, DEFAULT_CONFIG)["accent"]
-        df_block = dept_obj.get("dataframe", pd.DataFrame())
 
         if isinstance(latest_val, (int, float)):
             val_str = f"{latest_val:,.0f}"
@@ -515,16 +460,7 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
             status_class, status_text = "status-offline", "OFFLINE"
 
         unit_str = str(unit).strip() if unit else ""
-        # engineering metric label, not the raw meter name
-        metric_label = DEPT_CONFIGS.get(sys_name, DEFAULT_CONFIG).get("category", "Metric").split(" / ")[0]
-
-        trend = compute_trend_chip(df_block, rep_m)
-        if trend:
-            arrow, pct = trend
-            trend_class = "trend-up" if arrow == "▲" else ("trend-down" if arrow == "▼" else "trend-flat")
-            trend_html = f'<span class="trend-chip {trend_class}">{arrow} {pct}</span>'
-        else:
-            trend_html = ""
+        metric_label = str(rep_m) if rep_m else "No Meter"
 
         tiles_html += f"""
         <div class="exec-tile" style="--accent:{accent};">
@@ -532,13 +468,8 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
                 <div class="exec-name">{sys_name}</div>
             </div>
             <div class="exec-label">{metric_label}</div>
-            <div class="exec-value-row">
-                <div class="exec-value">{val_str}<span class="exec-unit">{unit_str}</span></div>
-            </div>
-            <div class="exec-bottom-row">
-                <div class="exec-status {status_class}">{status_text}</div>
-                {trend_html}
-            </div>
+            <div class="exec-value">{val_str}<span class="exec-unit">{unit_str}</span></div>
+            <div class="exec-status {status_class}">{status_text}</div>
         </div>"""
 
     if tiles_html:
@@ -682,30 +613,18 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
 # Section 4 — Workspace / control room, per-department layouts
 # ==================================================================
 
-def _chart_panel(label: str, fig, accent: str, subtitle: str = "") -> None:
-    """Consistent professional chart panel: accent strip, title, subtitle,
-    timestamp — same visual language across every chart in the workspace."""
-    ts = dt.datetime.now().strftime("%H:%M:%S")
-    sub_html = f'<div class="chart-panel-subtitle">{subtitle}</div>' if subtitle else ""
-    st.markdown(
-        f"""<div class="chart-panel" style="--accent:{accent};">
-            <div class="chart-panel-head">
-                <div>
-                    <div class="chart-panel-title">{label}</div>
-                    {sub_html}
-                </div>
-                <div class="chart-panel-time">{ts}</div>
-            </div>""",
-        unsafe_allow_html=True,
-    )
+def _chart_box(label: str, fig) -> None:
+    st.markdown(f'<div class="chart-box"><div class="chart-label">{label}</div>', unsafe_allow_html=True)
     if fig:
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _render_kpi_strip(dept_obj: dict[str, Any], meters: list[str], rep_m: str | None, accent: str) -> None:
+def _render_kpi_strip(dept_obj: dict[str, Any], meters: list[str], rep_m: str | None) -> None:
     """Dense top-of-workspace KPI row: representative meter + up to 3 more."""
     latest_vals = dept_obj.get("latest_values", {})
+    avg_vals = dept_obj.get("average_values", {})
+    total_vals = dept_obj.get("total_values", {})
     units = dept_obj.get("units", {})
 
     strip_meters: list[str] = []
@@ -718,12 +637,13 @@ def _render_kpi_strip(dept_obj: dict[str, Any], meters: list[str], rep_m: str | 
             break
 
     cells_html = ""
+    labels = [("Latest", latest_vals), ("Average", avg_vals), ("Total", total_vals)]
     for m in strip_meters:
         unit_str = str(units.get(m, "") or "").strip()
         v = latest_vals.get(m)
         v_str = f"{v:,.1f}" if isinstance(v, (int, float)) else "—"
         cells_html += f"""
-        <div class="kpi-cell" style="--accent:{accent};">
+        <div class="kpi-cell">
             <div class="kpi-cell-label">{m}</div>
             <div class="kpi-cell-value">{v_str}<span class="kpi-cell-unit">{unit_str}</span></div>
         </div>"""
@@ -732,7 +652,137 @@ def _render_kpi_strip(dept_obj: dict[str, Any], meters: list[str], rep_m: str | 
         st.markdown(f'<div class="kpi-strip">{cells_html}</div>', unsafe_allow_html=True)
 
 
-def _render_channel_register(dept_obj: dict[str, Any], meters: list[str]) -> None:
+def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
+    departments = dashboard.get("departments", {})
+    dept_obj = departments.get(process_name, {})
+    overview_df = dashboard.get("overview", pd.DataFrame())
+
+    if not dept_obj:
+        return
+
+    config = DEPT_CONFIGS.get(process_name, DEFAULT_CONFIG)
+    meters = dept_obj.get("meters", [])
+    df_block = dept_obj.get("dataframe", pd.DataFrame())
+    rep_m = select_representative_meter(dept_obj)
+    unit_lbl = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
+    latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0) or 0.0 if rep_m else 0.0
+    max_ceiling = get_gauge_max(df_block, rep_m, dept_obj) if rep_m else 100.0
+
+    st.markdown(
+        f"""
+    <div class="workspace" style="--accent:{config['accent']};">
+        <div class="workspace-header">
+            <h2 class="workspace-title">{process_name}</h2>
+            <div class="workspace-label">{config['category']}</div>
+        </div>
+    </div>""",
+        unsafe_allow_html=True,
+    )
+
+    # ---------------- 1. KPI strip (always first) ----------------
+    _render_kpi_strip(dept_obj, meters, rep_m)
+
+    # ---------------- 2. Primary charts (department-specific) ----------------
+    st.markdown('<div class="subsection-label">Primary Telemetry</div>', unsafe_allow_html=True)
+
+    if process_name == "NPCL":
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Load Trend", fig)
+            if len(meters) >= 2:
+                fig = chart_service.create_area_chart(df_block, x_column=df_block.columns[0] if not df_block.empty else "", y_columns=meters[:3], title="Power Factor / Load Area") if not df_block.empty else None
+                if fig:
+                    _chart_box("Power Distribution", fig)
+        with col2:
+            fig = chart_service.create_gauge_chart(latest_val, "Demand", maximum=max_ceiling, unit=unit_lbl)
+            _chart_box("Demand Gauge", fig)
+            if len(meters) >= 2:
+                vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:5]}
+                bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
+                fig = chart_service.create_donut_chart(bar_df, "Meter", "Value", "Energy Distribution")
+                _chart_box("Energy Distribution", fig)
+
+    elif process_name == "Air compressor":
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            fig = chart_service.create_gauge_chart(latest_val, "Pressure", maximum=max_ceiling, unit=unit_lbl)
+            _chart_box("Pressure Gauge", fig)
+        with col2:
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Flow Trend / Stability", fig)
+        with col3:
+            if len(meters) >= 2:
+                vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:5]}
+                bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
+                fig = chart_service.create_horizontal_bar_chart(bar_df, "Meter", "Value", "Runtime")
+                _chart_box("Runtime", fig)
+        if len(meters) >= 3:
+            st.markdown('<div class="subsection-label">Diagnostics</div>', unsafe_allow_html=True)
+            fig = chart_service.create_radar_chart(df_block, meters[:6], "Efficiency Profile")
+            _chart_box("Efficiency", fig)
+
+    elif process_name in ("Freon Refrigeration", "Ammonia Refrigeration"):
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fig = chart_service.create_heatmap(df_block, meters[: min(len(meters), 8)], "Temperature Heatmap")
+            _chart_box("Temperature Heatmap", fig)
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Cooling Trend", fig)
+        with col2:
+            fig = chart_service.create_gauge_chart(latest_val, "COP", maximum=max_ceiling, unit=unit_lbl)
+            _chart_box("COP", fig)
+            if len(meters) >= 2:
+                fig = chart_service.create_histogram(df_block, meters[0], "Temperature Distribution")
+                _chart_box("Temperature Distribution", fig)
+
+    elif process_name in ("DG", "GG"):
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            target_val = dept_obj.get("average_values", {}).get(rep_m, latest_val) or latest_val
+            fig = chart_service.create_bullet_chart(latest_val, target_val, "Generation vs Target", unit=unit_lbl)
+            _chart_box("Generation", fig)
+            fig = chart_service.create_gauge_chart(latest_val, "Runtime Load", maximum=100, unit="%")
+            _chart_box("Runtime", fig)
+        with col2:
+            vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:6]}
+            bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
+            fig = chart_service.create_bar_chart(bar_df, "Meter", "Value", "Fuel Consumption")
+            _chart_box("Fuel Consumption", fig)
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Output Trend", fig)
+
+    elif process_name == "Traywasher":
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:5]}
+            bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
+            fig = chart_service.create_horizontal_bar_chart(bar_df, "Meter", "Value", "Water Usage")
+            _chart_box("Water Usage", fig)
+        with col2:
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Thermal Trend", fig)
+        if len(meters) >= 3:
+            st.markdown('<div class="subsection-label">Diagnostics</div>', unsafe_allow_html=True)
+            fig = chart_service.create_radar_chart(df_block, meters[:6], "Cycle Efficiency")
+            _chart_box("Efficiency", fig)
+
+    else:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Primary Telemetry", fig)
+            if len(meters) > 1:
+                fig = chart_service.create_department_multi_line_chart(
+                    overview_dataframe=overview_df, section=dept_obj, title="Load Profiles"
+                )
+                _chart_box("Multi-Channel Analysis", fig)
+        with col2:
+            if rep_m:
+                fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
+                _chart_box("Current Status", fig)
+
+    # ---------------- 3. Channel Registry (always last) ----------------
     units_map = dept_obj.get("units", {})
     latest_vals = dept_obj.get("latest_values", {})
     avg_vals = dept_obj.get("average_values", {})
@@ -755,195 +805,10 @@ def _render_channel_register(dept_obj: dict[str, Any], meters: list[str]) -> Non
             }
         )
     if ledger_records:
-        st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
-
-
-def _render_primary_and_secondary_charts(
-    process_name: str, dept_obj: dict[str, Any], overview_df: pd.DataFrame,
-    df_block: pd.DataFrame, meters: list[str], rep_m: str | None,
-    unit_lbl: str, latest_val: float, max_ceiling: float, accent: str,
-) -> None:
-    """Primary + secondary chart section (department-specific layouts)."""
-    st.markdown('<div class="subsection-label">Primary Charts</div>', unsafe_allow_html=True)
-
-    if process_name == "NPCL":
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_panel("Load Trend", fig, accent, "Representative meter, time series")
-        with col2:
-            fig = chart_service.create_gauge_chart(latest_val, "Demand", maximum=max_ceiling, unit=unit_lbl)
-            _chart_panel("Demand Gauge", fig, accent, "Live reading vs. ceiling")
-
-        st.markdown('<div class="subsection-label">Secondary Charts</div>', unsafe_allow_html=True)
-        col3, col4 = st.columns([1, 1])
-        with col3:
-            if len(meters) >= 2:
-                fig = chart_service.create_area_chart(df_block, x_column=df_block.columns[0] if not df_block.empty else "", y_columns=meters[:3], title="Power Factor / Load Area") if not df_block.empty else None
-                if fig:
-                    _chart_panel("Power Distribution", fig, accent)
-        with col4:
-            if len(meters) >= 2:
-                vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:5]}
-                bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
-                fig = chart_service.create_donut_chart(bar_df, "Meter", "Value", "Energy Distribution")
-                _chart_panel("Energy Distribution", fig, accent)
-
-    elif process_name == "Air compressor":
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            fig = chart_service.create_gauge_chart(latest_val, "Pressure", maximum=max_ceiling, unit=unit_lbl)
-            _chart_panel("Pressure Gauge", fig, accent)
-        with col2:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_panel("Flow Trend / Stability", fig, accent)
-
-        if len(meters) >= 2:
-            st.markdown('<div class="subsection-label">Secondary Charts</div>', unsafe_allow_html=True)
-            vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:5]}
-            bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
-            fig = chart_service.create_horizontal_bar_chart(bar_df, "Meter", "Value", "Runtime")
-            _chart_panel("Runtime", fig, accent)
-
-        if len(meters) >= 3:
-            st.markdown('<div class="subsection-label">Diagnostics</div>', unsafe_allow_html=True)
-            fig = chart_service.create_radar_chart(df_block, meters[:6], "Efficiency Profile")
-            _chart_panel("Efficiency", fig, accent, "Normalized channel profile")
-
-    elif process_name in ("Freon Refrigeration", "Ammonia Refrigeration"):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = chart_service.create_heatmap(df_block, meters[: min(len(meters), 8)], "Temperature Heatmap")
-            _chart_panel("Temperature Heatmap", fig, accent)
-        with col2:
-            fig = chart_service.create_gauge_chart(latest_val, "COP", maximum=max_ceiling, unit=unit_lbl)
-            _chart_panel("COP", fig, accent)
-
-        st.markdown('<div class="subsection-label">Secondary Charts</div>', unsafe_allow_html=True)
-        col3, col4 = st.columns([2, 1])
-        with col3:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_panel("Cooling Trend", fig, accent)
-        with col4:
-            if len(meters) >= 2:
-                fig = chart_service.create_histogram(df_block, meters[0], "Temperature Distribution")
-                _chart_panel("Temperature Distribution", fig, accent)
-
-    elif process_name in ("DG", "GG"):
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            target_val = dept_obj.get("average_values", {}).get(rep_m, latest_val) or latest_val
-            fig = chart_service.create_bullet_chart(latest_val, target_val, "Generation vs Target", unit=unit_lbl)
-            _chart_panel("Generation", fig, accent)
-        with col2:
-            vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:6]}
-            bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
-            fig = chart_service.create_bar_chart(bar_df, "Meter", "Value", "Fuel Consumption")
-            _chart_panel("Fuel Consumption", fig, accent)
-
-        st.markdown('<div class="subsection-label">Secondary Charts</div>', unsafe_allow_html=True)
-        col3, col4 = st.columns([1, 2])
-        with col3:
-            fig = chart_service.create_gauge_chart(latest_val, "Runtime Load", maximum=100, unit="%")
-            _chart_panel("Runtime", fig, accent)
-        with col4:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_panel("Output Trend", fig, accent)
-
-    elif process_name == "Traywasher":
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:5]}
-            bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
-            fig = chart_service.create_horizontal_bar_chart(bar_df, "Meter", "Value", "Water Usage")
-            _chart_panel("Water Usage", fig, accent)
-        with col2:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_panel("Thermal Trend", fig, accent)
-
-        if len(meters) >= 3:
-            st.markdown('<div class="subsection-label">Diagnostics</div>', unsafe_allow_html=True)
-            fig = chart_service.create_radar_chart(df_block, meters[:6], "Cycle Efficiency")
-            _chart_panel("Efficiency", fig, accent)
-
-    else:
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_panel("Primary Telemetry", fig, accent)
-        with col2:
-            if rep_m:
-                fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
-                _chart_panel("Current Status", fig, accent)
-
-        if len(meters) > 1:
-            st.markdown('<div class="subsection-label">Secondary Charts</div>', unsafe_allow_html=True)
-            fig = chart_service.create_department_multi_line_chart(
-                overview_dataframe=overview_df, section=dept_obj, title="Load Profiles"
-            )
-            _chart_panel("Multi-Channel Analysis", fig, accent)
-
-
-def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
-    departments = dashboard.get("departments", {})
-    dept_obj = departments.get(process_name, {})
-    overview_df = dashboard.get("overview", pd.DataFrame())
-
-    if not dept_obj:
-        return
-
-    config = DEPT_CONFIGS.get(process_name, DEFAULT_CONFIG)
-    accent = config["accent"]
-    meters = dept_obj.get("meters", [])
-    df_block = dept_obj.get("dataframe", pd.DataFrame())
-    rep_m = select_representative_meter(dept_obj)
-    unit_lbl = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
-    latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0) or 0.0 if rep_m else 0.0
-    max_ceiling = get_gauge_max(df_block, rep_m, dept_obj) if rep_m else 100.0
-
-    st.markdown(
-        f"""
-    <div class="workspace" style="--accent:{accent};">
-        <div class="workspace-header">
-            <h2 class="workspace-title">{process_name}</h2>
-            <div class="workspace-label">{config['category']}</div>
-        </div>
-    </div>""",
-        unsafe_allow_html=True,
-    )
-
-    # ---------------- Large KPIs (always first, outside tabs) ----------------
-    _render_kpi_strip(dept_obj, meters, rep_m, accent)
-
-    # Departments with many diagnostics get compact tabs to cut scrolling.
-    use_tabs = len(meters) >= 3
-
-    if use_tabs:
-        tab_overview, tab_diag, tab_channels = st.tabs(["Overview", "Diagnostics", "Channels"])
-        with tab_overview:
-            _render_primary_and_secondary_charts(
-                process_name, dept_obj, overview_df, df_block, meters, rep_m,
-                unit_lbl, latest_val, max_ceiling, accent,
-            )
-        with tab_diag:
-            if len(meters) >= 3:
-                fig = chart_service.create_radar_chart(df_block, meters[:6], "Channel Profile")
-                _chart_panel("Diagnostic Profile", fig, accent, "Normalized against channel peak")
-                fig = chart_service.create_histogram(df_block, rep_m, "Value Distribution") if rep_m else None
-                if fig:
-                    _chart_panel("Value Distribution", fig, accent)
-            else:
-                st.caption("Not enough channels for a diagnostic profile.")
-        with tab_channels:
-            st.markdown('<div class="subsection-label">Channel Register</div>', unsafe_allow_html=True)
-            _render_channel_register(dept_obj, meters)
-    else:
-        _render_primary_and_secondary_charts(
-            process_name, dept_obj, overview_df, df_block, meters, rep_m,
-            unit_lbl, latest_val, max_ceiling, accent,
-        )
         st.markdown('<div class="subsection-label">Channel Register</div>', unsafe_allow_html=True)
-        _render_channel_register(dept_obj, meters)
+        st.markdown('<div class="chart-box">', unsafe_allow_html=True)
+        st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ==================================================================
