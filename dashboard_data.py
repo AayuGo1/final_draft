@@ -124,6 +124,14 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
         raw_meter: str = _clean_label(meter_headers.iloc[pos])
         raw_unit: str = _clean_label(unit_headers.iloc[pos])
 
+        # DATA VALIDATION FIX:
+        # Strictly validate the unit against known engineering tokens.
+        # If the workbook contains numeric data values in the unit row (Row 2),
+        # this prevents them from being misinterpreted as string units and 
+        # subsequently concatenated with metric values in the UI.
+        if raw_unit and raw_unit.lower() not in UNIT_TOKENS:
+            raw_unit = ""
+
         if not raw_dept or not raw_meter:
             continue
 
