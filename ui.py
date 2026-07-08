@@ -1,3 +1,6 @@
+# ==========================================
+# FILE: ui_components.py
+# ==========================================
 """Reusable Streamlit UI components for the Engineering Monitoring Dashboard."""
 from __future__ import annotations
 
@@ -6,33 +9,33 @@ import streamlit as st
 
 def render_page_title(title: str, subtitle: str | None = None) -> None:
     st.markdown(f"""
-    <div style="margin-bottom: 24px;">
-        <h1 style="font-size: 28px; font-weight: 800; color: #111827; margin: 0; letter-spacing: -0.5px;">{title}</h1>
-        {f'<p style="font-size: 15px; color: #6B7280; margin-top: 8px; font-weight: 400;">{subtitle}</p>' if subtitle else ''}
+    <div style="margin-bottom: 16px;">
+        <h1 style="font-size: 22px; font-weight: 800; color: #111827; margin: 0; letter-spacing: -0.5px;">{title}</h1>
+        {f'<p style="font-size: 13px; color: #6B7280; margin-top: 4px; font-weight: 400;">{subtitle}</p>' if subtitle else ''}
     </div>
     """, unsafe_allow_html=True)
 
 def render_success_banner(message: str) -> None:
     st.markdown(f"""
-    <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid #22C55E; border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: 20px;">✅</span>
-        <span style="color: #166534; font-weight: 600; font-size: 14px;">{message}</span>
+    <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid #22C55E; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 16px;">✅</span>
+        <span style="color: #166534; font-weight: 600; font-size: 12px;">{message}</span>
     </div>
     """, unsafe_allow_html=True)
 
 def render_error_banner(message: str) -> None:
     st.markdown(f"""
-    <div style="background: rgba(227, 30, 36, 0.1); border: 1px solid #E31E24; border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: 20px;">🚨</span>
-        <span style="color: #991B1B; font-weight: 600; font-size: 14px;">{message}</span>
+    <div style="background: rgba(227, 30, 36, 0.1); border: 1px solid #E31E24; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 16px;">🚨</span>
+        <span style="color: #991B1B; font-weight: 600; font-size: 12px;">{message}</span>
     </div>
     """, unsafe_allow_html=True)
 
 def render_info_banner(message: str) -> None:
     st.markdown(f"""
-    <div style="background: rgba(0, 93, 170, 0.1); border: 1px solid #005DAA; border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: 20px;">ℹ️</span>
-        <span style="color: #005DAA; font-weight: 600; font-size: 14px;">{message}</span>
+    <div style="background: rgba(0, 93, 170, 0.1); border: 1px solid #005DAA; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 16px;">ℹ️</span>
+        <span style="color: #005DAA; font-weight: 600; font-size: 12px;">{message}</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -42,19 +45,19 @@ def render_kpi_cards(cards: list[dict]) -> None:
 
     st.markdown("""
     <style>
-    .kpi-cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
+    .kpi-cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
     .kpi-card {
         background: #FFFFFF; border: 1px solid #E5E7EB; 
-        border-left: 6px solid var(--accent, #005DAA); border-radius: 16px; padding: 24px;
+        border-left: 5px solid var(--accent, #005DAA); border-radius: 10px; padding: 14px;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); transition: all 0.3s ease;
         height: 100%;
     }
-    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.08); }
-    .kpi-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .kpi-icon { font-size: 24px; color: var(--accent, #005DAA); }
-    .kpi-title { font-size: 13px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
-    .kpi-value { font-size: 32px; font-weight: 800; color: #111827; line-height: 1.2; }
-    .kpi-delta { font-size: 14px; font-weight: 600; margin-top: 8px; }
+    .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 8px 12px -3px rgba(0,0,0,0.08); }
+    .kpi-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .kpi-icon { font-size: 18px; color: var(--accent, #005DAA); }
+    .kpi-title { font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
+    .kpi-value { font-size: 22px; font-weight: 800; color: #111827; line-height: 1.2; }
+    .kpi-delta { font-size: 12px; font-weight: 600; margin-top: 6px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -91,11 +94,11 @@ def render_dataframe(dataframe: pd.DataFrame) -> None:
 
 def render_section(title: str) -> None:
     st.markdown(f"""
-    <div class="section-title" style="font-size: 18px; font-weight: 700; color: #111827; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 20px; margin-top: 40px; display: flex; align-items: center; gap: 12px;">
-        <span style="width: 4px; height: 24px; background: #005DAA; border-radius: 2px;"></span>
+    <div class="section-title" style="font-size: 14px; font-weight: 700; color: #111827; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; margin-top: 24px; display: flex; align-items: center; gap: 10px;">
+        <span style="width: 3px; height: 18px; background: #005DAA; border-radius: 2px;"></span>
         {title}
     </div>
     """, unsafe_allow_html=True)
 
 def render_divider() -> None:
-    st.markdown('<hr style="border: 0; border-top: 1px solid #E5E7EB; margin: 24px 0;">', unsafe_allow_html=True)
+    st.markdown('<hr style="border: 0; border-top: 1px solid #E5E7EB; margin: 16px 0;">', unsafe_allow_html=True)
