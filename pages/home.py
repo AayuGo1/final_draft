@@ -17,6 +17,7 @@ import ui
 from dashboard_data import build_overview_dashboard, get_dashboard_data
 from data_loader import load_excel
 from parser import read_all_sheets
+from services import page_loader
 
 
 def render_filters() -> None:
@@ -31,12 +32,7 @@ def render_filters() -> None:
 
 
 def render_overview_kpis(overview_dashboard: dict) -> None:
-    """Render the top-level overview KPI row computed from real section data.
-
-    Args:
-        overview_dashboard: The dictionary returned by
-            ``dashboard_data.build_overview_dashboard``.
-    """
+    """Render the top-level overview KPI row computed from real section data."""
     ui.render_section("Overview")
 
     sections = overview_dashboard["sections"]
@@ -57,12 +53,7 @@ def render_overview_kpis(overview_dashboard: dict) -> None:
 
 
 def render_monitoring_section(section: dict) -> None:
-    """Render a single bordered monitoring section for one department.
-
-    Args:
-        section: A section dictionary with keys ``name``, ``meters``,
-            ``latest_values``, and ``dataframe``.
-    """
+    """Render a single bordered monitoring section for one department."""
     latest_reading_count = sum(
         1 for value in section["latest_values"].values() if value is not None
     )
@@ -83,12 +74,7 @@ def render_monitoring_section(section: dict) -> None:
 
 
 def render_monitoring_sections(overview_dashboard: dict) -> None:
-    """Render one bordered monitoring section for every discovered department.
-
-    Args:
-        overview_dashboard: The dictionary returned by
-            ``dashboard_data.build_overview_dashboard``.
-    """
+    """Render one bordered monitoring section for every discovered department."""
     ui.render_section("Monitoring Sections")
 
     sections = overview_dashboard["sections"]
@@ -101,13 +87,7 @@ def render_monitoring_sections(overview_dashboard: dict) -> None:
 
 
 def load_dashboard_data() -> dict | None:
-    """Load the workbook and assemble dashboard-ready data.
-
-    Returns:
-        The dashboard data dictionary produced by
-        ``dashboard_data.get_dashboard_data``, or ``None`` if loading
-        failed after an error banner has been displayed.
-    """
+    """Load the workbook and assemble dashboard-ready data."""
     try:
         excel_file = load_excel()
         sheets = read_all_sheets(excel_file)
@@ -149,6 +129,10 @@ def render() -> None:
     overview_dashboard = build_overview_dashboard(dashboard_data["overview"])
 
     render_overview_kpis(overview_dashboard)
+    ui.render_divider()
+
+    # TASK 6 & 7: Added Daily Trend Section to Home Page as well
+    page_loader.render_daily_trend_section(dashboard_data["overview"])
     ui.render_divider()
 
     render_monitoring_sections(overview_dashboard)
