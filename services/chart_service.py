@@ -52,6 +52,7 @@ FONT_FAMILY: Final[str] = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI
 
 
 def validate_columns(dataframe: pd.DataFrame, columns: list[str]) -> None:
+    """Validate that the specified columns exist in the dataframe."""
     if not isinstance(dataframe, pd.DataFrame):
         raise ValueError(f"Expected pandas.DataFrame, got {type(dataframe).__name__}.")
     missing = [col for col in columns if col not in dataframe.columns]
@@ -60,6 +61,7 @@ def validate_columns(dataframe: pd.DataFrame, columns: list[str]) -> None:
 
 
 def prepare_numeric_columns(dataframe: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Convert specified columns to numeric types."""
     validate_columns(dataframe, columns)
     prepared = dataframe.copy()
     for column in columns:
@@ -68,6 +70,7 @@ def prepare_numeric_columns(dataframe: pd.DataFrame, columns: list[str]) -> pd.D
 
 
 def find_first_numeric_column(dataframe: pd.DataFrame) -> str | None:
+    """Find the first column in the dataframe that contains numeric data."""
     if not isinstance(dataframe, pd.DataFrame) or dataframe.empty:
         return None
     for column in dataframe.columns:
@@ -80,6 +83,7 @@ def align_dates_with_meter(
     overview_dataframe: pd.DataFrame, meter_series: pd.Series,
     date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
 ) -> pd.DataFrame | None:
+    """Align a meter series with the date column from the overview dataframe."""
     if not isinstance(overview_dataframe, pd.DataFrame) or overview_dataframe.empty:
         return None
     if meter_series is None or meter_series.dropna().empty:
@@ -109,6 +113,7 @@ def _align_dates_with_multiple_meters(
     overview_dataframe: pd.DataFrame, dataframe_block: pd.DataFrame,
     columns: list[str], date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
 ) -> pd.DataFrame | None:
+    """Align multiple meter series with the date column from the overview dataframe."""
     if not isinstance(overview_dataframe, pd.DataFrame) or overview_dataframe.empty:
         return None
     if not isinstance(dataframe_block, pd.DataFrame) or dataframe_block.empty or not columns:
@@ -137,6 +142,7 @@ def build_section_trend_data(
     overview_dataframe: pd.DataFrame, section: dict[str, Any],
     date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
 ) -> tuple[pd.DataFrame, str, str] | None:
+    """Build trend data for a specific section."""
     if not section or "dataframe" not in section:
         return None
     meters_df = section["dataframe"]
@@ -155,6 +161,7 @@ def build_section_trend_chart(
     overview_dataframe: pd.DataFrame, section: dict[str, Any],
     date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
 ) -> go.Figure | None:
+    """Build a trend chart for a specific section."""
     try:
         trend_data = build_section_trend_data(overview_dataframe, section, date_column_label=date_column_label)
         if trend_data is None:
@@ -175,6 +182,7 @@ def create_department_multi_line_chart(
     overview_dataframe: pd.DataFrame, section: dict[str, Any], title: str,
     x_label: str | None = None, y_label: str | None = None,
 ) -> go.Figure | None:
+    """Create a multi-line chart for all meters in a department."""
     if not section or "dataframe" not in section or "meters" not in section:
         return None
     dept_df = section["dataframe"]
@@ -202,6 +210,7 @@ def create_department_multi_line_chart(
 def apply_default_layout(
     figure: go.Figure, title: str, x_label: str | None = None, y_label: str | None = None,
 ) -> go.Figure:
+    """Apply the default dark SCADA layout to a Plotly figure."""
     figure.update_layout(
         title={"text": title, "font": {"size": 11, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "x": 0.01, "y": 0.98, "xanchor": "left", "yanchor": "top"},
         template=DEFAULT_TEMPLATE, hovermode=DEFAULT_HOVER_MODE,
@@ -220,6 +229,7 @@ def apply_default_layout(
 
 
 def apply_minimal_layout(figure: go.Figure) -> go.Figure:
+    """Apply a minimal layout (no axes, no background) for sparklines."""
     figure.update_layout(
         template=DEFAULT_TEMPLATE, showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
@@ -230,6 +240,7 @@ def apply_minimal_layout(figure: go.Figure) -> go.Figure:
 
 
 def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
+    """Create a single line chart."""
     try:
         validate_columns(dataframe, [x_column, y_column])
         prepared = prepare_numeric_columns(dataframe, [y_column]).dropna(subset=[y_column])
@@ -241,6 +252,7 @@ def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, tit
 
 
 def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
+    """Create a multi-line chart."""
     try:
         if not y_columns: return None
         validate_columns(dataframe, [x_column, *y_columns])
@@ -254,6 +266,7 @@ def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: l
 
 
 def create_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: str | list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
+    """Create a bar chart."""
     try:
         cols_list = [y_columns] if isinstance(y_columns, str) else y_columns
         if not cols_list: return None
@@ -266,6 +279,7 @@ def create_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: str | li
 
 
 def create_stacked_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
+    """Create a stacked bar chart."""
     try:
         if not y_columns: return None
         validate_columns(dataframe, [x_column, *y_columns])
@@ -277,6 +291,7 @@ def create_stacked_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: 
 
 
 def create_area_chart(dataframe: pd.DataFrame, x_column: str, y_columns: str | list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
+    """Create an area chart."""
     try:
         cols_list = [y_columns] if isinstance(y_columns, str) else y_columns
         if not cols_list: return None
@@ -289,6 +304,7 @@ def create_area_chart(dataframe: pd.DataFrame, x_column: str, y_columns: str | l
 
 
 def create_pie_chart(dataframe: pd.DataFrame, names_column: str, values_column: str, title: str) -> go.Figure | None:
+    """Create a pie chart."""
     try:
         validate_columns(dataframe, [names_column, values_column])
         prepared = prepare_numeric_columns(dataframe, [values_column]).dropna(subset=[values_column])
@@ -300,6 +316,7 @@ def create_pie_chart(dataframe: pd.DataFrame, names_column: str, values_column: 
 
 
 def create_donut_chart(dataframe: pd.DataFrame, names_column: str, values_column: str, title: str, hole_size: float = 0.6) -> go.Figure | None:
+    """Create a donut chart."""
     try:
         validate_columns(dataframe, [names_column, values_column])
         prepared = prepare_numeric_columns(dataframe, [values_column]).dropna(subset=[values_column])
@@ -311,6 +328,7 @@ def create_donut_chart(dataframe: pd.DataFrame, names_column: str, values_column
 
 
 def create_gauge_chart(value: float, title: str, minimum: float = 0.0, maximum: float = 100.0, warning_threshold: float | None = None, danger_threshold: float | None = None, unit: str = "") -> go.Figure | None:
+    """Create a gauge chart."""
     try:
         if pd.isna(value) or value is None: return None
         steps = []
@@ -336,6 +354,7 @@ def create_gauge_chart(value: float, title: str, minimum: float = 0.0, maximum: 
 
 
 def create_scatter_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
+    """Create a scatter chart."""
     try:
         validate_columns(dataframe, [x_column, y_column])
         prepared = prepare_numeric_columns(dataframe, [x_column, y_column]).dropna(subset=[x_column, y_column])
@@ -346,6 +365,7 @@ def create_scatter_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, 
 
 
 def create_histogram(dataframe: pd.DataFrame, x_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
+    """Create a histogram."""
     try:
         validate_columns(dataframe, [x_column])
         prepared = prepare_numeric_columns(dataframe, [x_column]).dropna(subset=[x_column])
@@ -358,6 +378,7 @@ def create_histogram(dataframe: pd.DataFrame, x_column: str, title: str, x_label
 
 
 def create_heatmap(dataframe: pd.DataFrame, columns: list[str] | None = None, title: str = "Heatmap", x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
+    """Create a heatmap."""
     try:
         if not isinstance(dataframe, pd.DataFrame): return None
         if columns is None: columns = [col for col in dataframe.columns if pd.to_numeric(dataframe[col], errors="coerce").notna().any()]
@@ -369,6 +390,7 @@ def create_heatmap(dataframe: pd.DataFrame, columns: list[str] | None = None, ti
 
 
 def create_sparkline(values: pd.Series, line_color: str = THEME_PRIMARY_COLOR) -> go.Figure | None:
+    """Create a sparkline."""
     try:
         if values is None or values.empty: return None
         numeric_values = pd.to_numeric(values, errors="coerce").dropna()
@@ -380,10 +402,12 @@ def create_sparkline(values: pd.Series, line_color: str = THEME_PRIMARY_COLOR) -
 
 
 def create_kpi_trend(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
+    """Create a KPI trend chart (alias for line chart)."""
     return create_line_chart(dataframe, x_column, y_column, title, x_label, y_label)
 
 
 def create_radar_chart(dataframe: pd.DataFrame, columns: list[str], title: str) -> go.Figure | None:
+    """Create a radar chart."""
     try:
         if not columns: return None
         normalized = []
@@ -408,6 +432,7 @@ def create_radar_chart(dataframe: pd.DataFrame, columns: list[str], title: str) 
 
 
 def create_waterfall_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str) -> go.Figure | None:
+    """Create a waterfall chart."""
     try:
         validate_columns(dataframe, [x_column, y_column])
         prepared = prepare_numeric_columns(dataframe, [y_column]).dropna(subset=[y_column])
@@ -418,6 +443,7 @@ def create_waterfall_chart(dataframe: pd.DataFrame, x_column: str, y_column: str
 
 
 def create_combined_line_area_chart(dataframe: pd.DataFrame, x_column: str, area_column: str, line_column: str, title: str) -> go.Figure | None:
+    """Create a combined line and area chart."""
     try:
         validate_columns(dataframe, [x_column, area_column, line_column])
         prepared = prepare_numeric_columns(dataframe, [area_column, line_column]).dropna(subset=[x_column])
@@ -430,6 +456,7 @@ def create_combined_line_area_chart(dataframe: pd.DataFrame, x_column: str, area
 
 
 def create_horizontal_bar_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str) -> go.Figure | None:
+    """Create a horizontal bar chart."""
     try:
         validate_columns(dataframe, [x_column, y_column])
         prepared = prepare_numeric_columns(dataframe, [y_column]).dropna(subset=[y_column])
@@ -441,6 +468,7 @@ def create_horizontal_bar_chart(dataframe: pd.DataFrame, x_column: str, y_column
 
 
 def create_bullet_chart(actual: float, target: float, title: str, unit: str = "") -> go.Figure | None:
+    """Create a bullet chart."""
     try:
         if pd.isna(actual) or pd.isna(target): return None
         max_val = max(actual, target) * 1.2 if max(actual, target) > 0 else 100
@@ -462,3 +490,97 @@ def create_bullet_chart(actual: float, target: float, title: str, unit: str = ""
         return fig
     except Exception: 
         return None
+
+
+# ==================================================================
+# TASK 6 & 7: Daily Trend Chart & Statistics Helpers
+# ==================================================================
+
+def create_daily_trend_chart(
+    dataframe: pd.DataFrame, date_column: str, meter_column: str, title: str = "Daily Trend"
+) -> go.Figure | None:
+    """Create a daily trend chart with zoom, hover, legend, and grid.
+    
+    Args:
+        dataframe: The source dataframe.
+        date_column: The name of the date column.
+        meter_column: The name of the meter column to plot.
+        title: The title of the chart.
+        
+    Returns:
+        A Plotly Figure object or None if data is invalid.
+    """
+    try:
+        validate_columns(dataframe, [date_column, meter_column])
+        prepared = prepare_numeric_columns(dataframe, [meter_column]).dropna(subset=[meter_column])
+        if prepared.empty:
+            return None
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=prepared[date_column], 
+            y=prepared[meter_column], 
+            mode="lines+markers", 
+            name=meter_column, 
+            line={"color": SCADA_PALETTE[0], "width": 2},
+            marker={"size": 4},
+            hovertemplate=f"<b>%{{x}}</b><br>{meter_column}: %{{y:,.2f}}<extra></extra>"
+        ))
+        
+        fig.update_layout(
+            title={"text": title, "font": {"size": 14, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "x": 0.02, "y": 0.95},
+            template=DEFAULT_TEMPLATE,
+            hovermode="x unified",
+            showlegend=True,
+            xaxis={"title": "Date", "gridcolor": GRID_COLOR, "showgrid": True},
+            yaxis={"title": meter_column, "gridcolor": GRID_COLOR, "showgrid": True},
+            margin={"l": 40, "r": 20, "t": 50, "b": 40},
+            paper_bgcolor=BG_CARD,
+            plot_bgcolor=BG_CARD,
+        )
+        return fig
+    except Exception:
+        return None
+
+
+def calculate_daily_stats(dataframe: pd.DataFrame, meter_column: str) -> dict[str, Any]:
+    """Calculate Average, Maximum, Minimum, and Latest for a specific meter.
+    
+    Args:
+        dataframe: The source dataframe.
+        meter_column: The name of the meter column.
+        
+    Returns:
+        A dictionary containing the calculated statistics.
+    """
+    try:
+        numeric_series = pd.to_numeric(dataframe[meter_column], errors="coerce").dropna()
+        if numeric_series.empty:
+            return {"Average": "—", "Maximum": "—", "Minimum": "—", "Latest": "—"}
+        
+        return {
+            "Average": f"{float(numeric_series.mean()):,.2f}",
+            "Maximum": f"{float(numeric_series.max()):,.2f}",
+            "Minimum": f"{float(numeric_series.min()):,.2f}",
+            "Latest": f"{float(numeric_series.iloc[-1]):,.2f}",
+        }
+    except Exception:
+        return {"Average": "—", "Maximum": "—", "Minimum": "—", "Latest": "—"}
+
+
+def get_daily_trend_figure_and_stats(
+    dataframe: pd.DataFrame, meter_column: str, date_column: str
+) -> tuple[go.Figure | None, dict[str, Any]]:
+    """Get the daily trend figure and stats for a specific meter.
+    
+    Args:
+        dataframe: The source dataframe.
+        meter_column: The name of the meter column.
+        date_column: The name of the date column.
+        
+    Returns:
+        A tuple containing the Plotly Figure and the statistics dictionary.
+    """
+    fig = create_daily_trend_chart(dataframe, date_column, meter_column, title=f"{meter_column} Daily Trend")
+    stats = calculate_daily_stats(dataframe, meter_column)
+    return fig, stats
