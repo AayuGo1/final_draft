@@ -146,9 +146,15 @@ def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
     val = units_map.get(meter)
     if val and str(val).strip():
         return str(val).strip()
+    
+    # Fallback: Strip numeric suffixes (e.g., "Flow_1" -> "Flow") to find base unit
     base = re.sub(r"_\d+$", "", meter)
-    val2 = units_map.get(base)
-    return str(val2).strip() if val2 and str(val2).strip() else ""
+    if base != meter:
+        val2 = units_map.get(base)
+        if val2 and str(val2).strip():
+            return str(val2).strip()
+            
+    return ""
 
 
 # ==================================================================
