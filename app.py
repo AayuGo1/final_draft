@@ -123,16 +123,32 @@ def _bucket_meters_dynamically(meters: list[str]) -> "dict[str, list[str]]":
 
 
 def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
-    """Resolve a meter's display unit, tolerating within-department name collisions."""
+    """Resolve a meter's display unit, tolerating within-department name collisions.
+    
+    Rejects numeric strings to prevent raw data values from being misinterpreted 
+    as units and subsequently concatenated with metric values in the UI.
+    """
     units_map = dept_obj.get("units", {})
+    
+    def _is_valid_unit(val: Any) -> bool:
+        if not val or not str(val).strip():
+            return False
+        s = str(val).strip()
+        # If it can be parsed as a float, it's a data value, not a unit
+        try:
+            float(s)
+            return False
+        except ValueError:
+            return True
+
     val = units_map.get(meter)
-    if val and str(val).strip():
+    if _is_valid_unit(val):
         return str(val).strip()
     
     base = re.sub(r"_\d+$", "", meter)
     if base != meter:
         val2 = units_map.get(base)
-        if val2 and str(val2).strip():
+        if _is_valid_unit(val2):
             return str(val2).strip()
             
     return ""
@@ -629,6 +645,8 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
             continue
         dept_obj = departments[dept_name]
         rep_m = select_representative_meter(dept_obj)
+        
+        # Strictly source from respective dictionaries using the representative meter
         total_val = dept_obj.get("total_values", {}).get(rep_m)
         avg_val = dept_obj.get("average_values", {}).get(rep_m)
         latest_val = dept_obj.get("latest_values", {}).get(rep_m)
@@ -669,6 +687,7 @@ def _top_metrics_for(dept_obj: dict[str, Any], meters: list[str], n: int = 3) ->
         v = latest_vals.get(m)
         u = resolve_meter_unit(dept_obj, m)
         v_str = f"{v:,.1f}" if isinstance(v, (int, float)) else "—"
+        # If unit is empty, strip handles the trailing space gracefully
         out.append((m, f"{v_str} {u}".strip()))
     return out
 
@@ -779,7 +798,11 @@ def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj:
     df_block = dept_obj.get("dataframe", pd.DataFrame())
     rep_m = select_representative_meter(dept_obj)
     unit_lbl = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
-    latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0) or 0.0 if rep_m else 0.0
+    
+    # Strictly source from latest_values using the representative meter
+    latest_val = dept_obj.get("latest_values", {}).get(rep_m)
+    latest_val = latest_val if isinstance(latest_val, (int, float)) else 0.0
+    
     max_ceiling = get_gauge_max(df_block, rep_m, dept_obj) if rep_m else 100.0
 
     _render_meter_kpi_strip(dept_obj, meters)
