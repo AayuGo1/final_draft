@@ -420,4 +420,17 @@ def create_bullet_chart(actual: float, target: float, title: str, unit: str = ""
         fig.add_trace(go.Bar(x=[max_val], y=[title], orientation='h', marker=dict(color='rgba(255, 255, 255, 0.02)'), hoverinfo='skip', showlegend=False))
         fig.add_trace(go.Scatter(x=[target, target], y=[title, title], mode='lines', line=dict(color=SCADA_PALETTE[2], width=2), name='Target', hoverinfo='name+x'))
         fig.add_trace(go.Bar(x=[actual], y=[title], orientation='h', marker=dict(color=SCADA_PALETTE[0], opacity=0.8), name='Actual'))
-        fig.update_layout(barmode='overlay', title={"text": title, "font": {"size": 10, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.9, "x": 0.5, "xanchor": "center", "yanchor": "top"}, xaxis=dict(range=[0, max_val], gridcolor=GRID_COLOR, zerolinecolor=ZERO_COLOR, tickfont=dict(size=9, color=TEXT_MUTED)), yaxis=dict(showticklabels=False, showgrid=False, zeroline=False), showlegend=False, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin=dict(l=20, r=20, t=35, b
+        fig.update_layout(
+            barmode='overlay', 
+            title={"text": title, "font": {"size": 10, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.9, "x": 0.5, "xanchor": "center", "yanchor": "top"}, 
+            xaxis=dict(range=[0, max_val], gridcolor=GRID_COLOR, zerolinecolor=ZERO_COLOR, tickfont=dict(size=9, color=TEXT_MUTED)), 
+            yaxis=dict(showticklabels=False, showgrid=False, zeroline=False), 
+            showlegend=False, 
+            paper_bgcolor=BG_CARD, 
+            plot_bgcolor=BG_CARD, 
+            margin=dict(l=20, r=20, t=35, b=20), 
+            font=dict(family=FONT_FAMILY, color=TEXT_SECONDARY)
+        )
+        return fig
+    except Exception: 
+        return None
