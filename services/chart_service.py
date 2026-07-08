@@ -182,7 +182,11 @@ def align_dates_with_meter(
         trend_df[meter_name] = pd.to_numeric(trend_df[meter_name], errors="coerce")
         
         # Drop rows where either date or value is missing
+        initial_rows = len(trend_df)
         trend_df = trend_df.dropna(subset=[date_column_label, meter_name])
+        final_rows = len(trend_df)
+        
+        logger.debug(f"Align Dates: Initial rows={initial_rows}, Final rows={final_rows}")
         
         return trend_df if not trend_df.empty else None
     except Exception as e:
@@ -246,7 +250,11 @@ def _align_dates_with_multiple_meters(
                         break
         
         # Drop rows where date is missing
+        initial_rows = len(compiled_df)
         compiled_df = compiled_df.dropna(subset=[date_column_label])
+        final_rows = len(compiled_df)
+        
+        logger.debug(f"Align Multi-Meter: Initial rows={initial_rows}, Final rows={final_rows}")
         
         return compiled_df if not compiled_df.empty else None
     except Exception as e:
@@ -408,8 +416,11 @@ def apply_minimal_layout(figure: go.Figure) -> go.Figure:
 def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     """Create a single line chart. Input DF must be pre-aligned."""
     try:
+        logger.debug(f"create_line_chart Input: shape={dataframe.shape}, cols={list(dataframe.columns)}")
         validate_columns(dataframe, [x_column, y_column])
         prepared = prepare_numeric_columns(dataframe, [y_column]).dropna(subset=[y_column])
+        logger.debug(f"create_line_chart After Prep: shape={prepared.shape}")
+        
         if prepared.empty: 
             logger.warning(f"No data to plot for {y_column}")
             return None
@@ -436,6 +447,7 @@ def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: l
     try:
         if not y_columns: 
             return None
+        logger.debug(f"create_multi_line_chart Input: shape={dataframe.shape}, cols={list(dataframe.columns)}")
         validate_columns(dataframe, [x_column, *y_columns])
         prepared = prepare_numeric_columns(dataframe, y_columns)
         
@@ -456,6 +468,7 @@ def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: l
             ))
             
         if not figure.data:
+            logger.warning("No data traces added to multi-line chart.")
             return None
             
         return apply_default_layout(figure, title=title, x_label=x_label or str(x_column), y_label=y_label or "Readings")
