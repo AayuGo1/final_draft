@@ -216,7 +216,7 @@ def inject_global_styles() -> None:
             footer {visibility: hidden;}
             header[data-testid="stHeader"] {background: transparent;}
             .stApp { 
-                background: #0F172A !important; 
+                background: #0B1220 !important; 
                 color: #F8FAFC !important;
                 font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
             }
@@ -231,7 +231,7 @@ def inject_global_styles() -> None:
                 display: none !important;
             }
             section[data-testid="stSidebar"] {
-                background: #0F172A !important;
+                background: #0B1220 !important;
                 border-right: 1px solid #334155 !important;
                 /* Removed width/min-width to let Streamlit handle it */
             }
@@ -428,9 +428,9 @@ def inject_global_styles() -> None:
             .chart-box [data-testid="stPlotlyChart"],
             .chart-box .js-plotly-plot,
             .chart-box .plotly {
-                height: 220px !important;
-                min-height: 220px !important;
-                max-height: 220px !important;
+                height: 350px !important;
+                min-height: 350px !important;
+                max-height: 350px !important;
             }
             .chart-box .modebar-container {
                 display: none !important;
@@ -488,7 +488,7 @@ def inject_global_styles() -> None:
 
             /* Scrollbar */
             ::-webkit-scrollbar { width: 4px; height: 4px; }
-            ::-webkit-scrollbar-track { background: #0F172A; }
+            ::-webkit-scrollbar-track { background: #0B1220; }
             ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
             ::-webkit-scrollbar-thumb:hover { background: #475569; }
         </style>""",
