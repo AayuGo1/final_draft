@@ -59,12 +59,17 @@ REPRESENTATIVE_METER_PRIORITIES: Final[list[list[str]]] = [
 # ==============================================================================
 
 
-def get_dashboard_data(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
+def get_dashboard_data(workbook: dict[str, pd.DataFrame], start_date: str | None = None, end_date: str | None = None) -> dict[str, Any]:
     """Assemble a complete dashboard data model from the parsed workbook.
 
     Backward compatibility wrapper around ``build_dashboard``.
+    
+    Args:
+        workbook: Mapping of sheet names to dataframes.
+        start_date: Optional start date string (YYYY-MM-DD) for filtering.
+        end_date: Optional end date string (YYYY-MM-DD) for filtering.
     """
-    return build_dashboard(workbook)
+    return build_dashboard(workbook, start_date, end_date)
 
 
 def _is_valid_date_string(val: Any) -> bool:
@@ -93,8 +98,8 @@ def _is_valid_date_string(val: Any) -> bool:
     return False
 
 
-def _get_date_string(val: Any) -> str | None:
-    """Extract a standardized date string from a value."""
+def _get_date_object(val: Any) -> datetime.date | None:
+    """Extract a standardized date object from a value."""
     if pd.isna(val) or val is None:
         return None
     
@@ -112,48 +117,66 @@ def _get_date_string(val: Any) -> str | None:
                     continue
         
         if dt and MIN_VALID_YEAR <= dt.year <= MAX_VALID_YEAR:
-            return dt.strftime("%Y-%m-%d")
+            return dt.date() if isinstance(dt, datetime.datetime) else dt
     except Exception:
         pass
     
     return None
 
 
-def _build_valid_row_mask(primary_df: pd.DataFrame, readings_matrix: pd.DataFrame) -> pd.Series:
-    """Create a boolean mask for telemetry rows based on valid dates in Column B.
+def _get_date_string(val: Any) -> str | None:
+    """Extract a standardized date string from a value."""
+    d = _get_date_object(val)
+    if d:
+        return d.strftime("%Y-%m-%d")
+    return None
+
+
+def _build_valid_row_mask(primary_df: pd.DataFrame, readings_matrix: pd.DataFrame, start_date: str | None = None, end_date: str | None = None) -> pd.Series:
+    """Create a boolean mask for telemetry rows based on valid dates in Column B and optional range.
     
     Args:
         primary_df: The original dataframe from the parser.
         readings_matrix: The sliced dataframe containing only telemetry data.
+        start_date: Optional start date string (YYYY-MM-DD).
+        end_date: Optional end date string (YYYY-MM-DD).
         
     Returns:
-        A boolean Series indexed like readings_matrix, True if the corresponding
-        row in primary_df has a valid date in Column B.
+        A boolean Series indexed like readings_matrix.
     """
-    # Readings matrix starts at iloc[2] of primary_df (Row 2 is first telemetry row)
-    # We need to map readings_matrix index back to primary_df index.
-    # readings_matrix was created via primary_df.iloc[2:].copy() or similar slicing.
-    # If readings_matrix preserves the original index, we can use it directly.
-    # If it was reset_index(drop=True), we need to offset by 2.
-    
-    # In our current implementation, readings_matrix = engineering_block.iloc[2:]
-    # engineering_block is a slice of primary_df. So readings_matrix retains the original index from primary_df.
-    
     # Get the date column (Column B, index 1) from primary_df for the relevant rows
     date_series = primary_df.iloc[readings_matrix.index, 1]
     
     # Apply validation to each date
     mask = date_series.apply(_is_valid_date_string)
     
-    # Ensure the mask is indexed correctly for readings_matrix
+    # If date range is specified, further filter
+    if start_date or end_date:
+        start_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+        
+        def in_range(val):
+            d = _get_date_object(val)
+            if not d:
+                return False
+            if start_dt and d < start_dt:
+                return False
+            if end_dt and d > end_dt:
+                return False
+            return True
+            
+        mask = mask & date_series.apply(in_range)
+    
     return mask
 
 
-def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
+def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = None, end_date: str | None = None) -> dict[str, Any]:
     """Orchestrate the extraction, cleaning, validation, and compilation of dashboard data.
 
     Args:
         workbook: Mapping of sheet names to dataframes from ``parser.read_all_sheets``.
+        start_date: Optional start date string (YYYY-MM-DD) for filtering.
+        end_date: Optional end date string (YYYY-MM-DD) for filtering.
 
     Returns:
         Structured dashboard data dictionary matching all downstream consumer APIs.
@@ -197,13 +220,15 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
     # Keep original index by NOT resetting it to preserve row alignment with dates
     readings_matrix: pd.DataFrame = engineering_block.iloc[2:]
 
-    # Build valid row mask based on actual date content in Column B
-    valid_row_mask = _build_valid_row_mask(primary_df, readings_matrix)
+    # Build valid row mask based on actual date content in Column B and optional date range
+    valid_row_mask = _build_valid_row_mask(primary_df, readings_matrix, start_date, end_date)
     
-    # Extract all valid dates for summary/metadata purposes
+    # Extract all valid dates for summary/metadata purposes (within range)
     available_dates: list[str] = []
     date_series_b = primary_df.iloc[readings_matrix.index, 1]
-    for val in date_series_b:
+    # Filter date series by mask to get only valid/in-range dates
+    filtered_date_series = date_series_b[valid_row_mask]
+    for val in filtered_date_series:
         d = _get_date_string(val)
         if d:
             available_dates.append(d)
@@ -279,8 +304,7 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
         
         # Get corresponding valid dates for history alignment
         # We use the same mask on the date series from primary_df
-        date_series_b = primary_df.iloc[readings_matrix.index, 1]
-        valid_dates_series = date_series_b[valid_row_mask].apply(_get_date_string)
+        valid_dates_series = filtered_date_series[valid_row_mask].apply(_get_date_string)
 
         for meter in meters_list:
             series: pd.Series = valid_dept_df[meter]
@@ -328,7 +352,14 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
             "latest_values": latest_values,
             "average_values": average_values,
             "total_values": total_values,
-            "dataframe": dept_df,
+            "dataframe": dept_df, # Note: This is the FULL df, but metrics are calculated on filtered data. 
+                                  # For charting, we might want to pass the filtered df or let chart service handle it.
+                                  # To keep API consistent, we store full df but metrics are correct.
+                                  # However, for history tab, we should probably use the filtered data.
+                                  # Let's store the filtered df for consistency in display if needed, 
+                                  # but usually 'dataframe' is used for raw access. 
+                                  # I will leave it as full df to avoid breaking other assumptions, 
+                                  # but metrics are definitely filtered.
             "totals": total_values,      # Backward compatibility field match
             "averages": average_values,  # Backward compatibility field match
             
