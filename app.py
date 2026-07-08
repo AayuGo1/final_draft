@@ -61,6 +61,28 @@ DEPT_CONFIGS = {
 }
 DEFAULT_CONFIG = {"accent": "#8B5CF6", "category": "Engineering System"}
 
+# Fixed display labels + icons for the Executive Summary tiles only.
+# Display-layer only — does not affect any backend calculation or the
+# representative-meter selection logic used elsewhere in the app.
+EXEC_TILE_LABELS: Final[dict[str, str]] = {
+    "NPCL": "Incoming Electrical",
+    "DG": "Diesel Generation",
+    "GG": "Gas Generation",
+    "Air compressor": "Compressed Air",
+    "Traywasher": "Sanitation Water",
+    "Freon Refrigeration": "Cooling System",
+    "Ammonia Refrigeration": "Cooling System",
+}
+EXEC_TILE_ICONS: Final[dict[str, str]] = {
+    "NPCL": "⚡",
+    "DG": "🛢️",
+    "GG": "🔥",
+    "Air compressor": "🌀",
+    "Traywasher": "💧",
+    "Freon Refrigeration": "❄️",
+    "Ammonia Refrigeration": "❄️",
+}
+
 
 # ==================================================================
 # Data access (untouched logic, only cached in session_state)
@@ -98,6 +120,35 @@ def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) 
         if isinstance(potential_max, (int, float)) and potential_max > 0:
             return float(potential_max) * 1.15
     return 100.0
+
+
+def _format_exec_value(value: float) -> str:
+    """Format a numeric value for the executive tiles.
+
+    Whole (or near-whole) numbers render without decimals; otherwise up to
+    two decimal places are shown. This is purely a display formatting
+    helper — it does not alter the underlying value.
+    """
+    rounded = round(float(value), 2)
+    if abs(rounded - round(rounded)) < 0.005:
+        return f"{rounded:,.0f}"
+    return f"{rounded:,.2f}"
+
+
+def _exec_trend_chip(latest_val: float, avg_val: Any) -> tuple[str, str]:
+    """Return (arrow_class, label) for a lightweight visual trend chip.
+
+    Purely cosmetic — derived only from already-computed latest/average
+    values, no new engineering calculation is introduced.
+    """
+    if not isinstance(avg_val, (int, float)) or avg_val == 0:
+        return "trend-flat", "Stable"
+    ratio = latest_val / avg_val
+    if ratio >= 1.08:
+        return "trend-up", "Healthy"
+    if ratio <= 0.92:
+        return "trend-down", "Low"
+    return "trend-flat", "Stable"
 
 
 # ==================================================================
@@ -155,19 +206,34 @@ def inject_global_styles() -> None:
             .section-title::after {{ content: ""; flex: 1; height: 1px; background: #1C212B; }}
 
             /* ---------- Executive tiles ---------- */
-            .exec-grid {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }}
+            .exec-grid {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }}
             .exec-tile {{
-                background: #10131A; border: 1px solid #1C212B; border-left: 3px solid var(--accent, #3B82F6);
-                border-radius: 3px; padding: 9px 11px; min-height: 68px;
+                background: #10131A; border: 1px solid #1C212B; border-top: 2px solid var(--accent, #3B82F6);
+                border-radius: 4px; padding: 12px 13px 10px 13px; min-height: 104px;
                 display: flex; flex-direction: column; justify-content: space-between;
-                transition: transform 0.12s ease, border-color 0.12s ease;
+                transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
             }}
-            .exec-tile:hover {{ transform: translateY(-1px); border-color: var(--accent, #3B82F6); }}
+            .exec-tile:hover {{
+                transform: translateY(-2px);
+                border-color: var(--accent, #3B82F6);
+                box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+            }}
             .exec-tile-top {{ display: flex; justify-content: space-between; align-items: flex-start; }}
-            .exec-name {{ font-size: 10px; font-weight: 800; color: #D1D5DB; text-transform: uppercase; letter-spacing: 0.5px; }}
-            .exec-label {{ font-size: 8px; color: #566072; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; }}
-            .exec-value {{ font-size: 16px; font-weight: 700; color: #F3F4F6; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }}
-            .exec-unit {{ font-size: 9px; color: #6B7280; font-weight: 500; margin-left: 3px; font-family: 'Inter', sans-serif; }}
+            .exec-name-group {{ display: flex; align-items: center; gap: 6px; }}
+            .exec-icon {{ font-size: 12px; line-height: 1; opacity: 0.9; }}
+            .exec-name {{ font-size: 10.5px; font-weight: 800; color: #E5E9F0; text-transform: uppercase; letter-spacing: 0.6px; }}
+            .exec-label {{ font-size: 8.5px; color: #566072; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; margin-top: 6px; }}
+            .exec-value-row {{ display: flex; align-items: baseline; margin-top: 3px; }}
+            .exec-value {{ font-size: 19px; font-weight: 700; color: #F3F4F6; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; letter-spacing: -0.2px; }}
+            .exec-unit {{ font-size: 9.5px; color: #6B7280; font-weight: 600; margin-left: 4px; font-family: 'Inter', sans-serif; }}
+            .exec-bottom-row {{ display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 7px; border-top: 1px solid #171B24; }}
+            .exec-trend-chip {{
+                display: inline-flex; align-items: center; gap: 3px; font-size: 8.5px; font-weight: 800;
+                letter-spacing: 0.3px; padding: 2px 6px; border-radius: 2px; text-transform: uppercase;
+            }}
+            .trend-up {{ color: #10B981; background: rgba(16,185,129,0.08); }}
+            .trend-down {{ color: #F59E0B; background: rgba(245,158,11,0.08); }}
+            .trend-flat {{ color: #6B7280; background: rgba(107,114,128,0.08); }}
             .exec-status {{ font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.7px; }}
             .status-online {{ color: #10B981; }}
             .status-offline {{ color: #EF4444; }}
@@ -449,27 +515,40 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
         dept_obj = departments[sys_name]
         rep_m = select_representative_meter(dept_obj)
         latest_val = dept_obj.get("latest_values", {}).get(rep_m)
+        avg_val = dept_obj.get("average_values", {}).get(rep_m)
         unit = dept_obj.get("units", {}).get(rep_m, "")
         accent = DEPT_CONFIGS.get(sys_name, DEFAULT_CONFIG)["accent"]
+        icon = EXEC_TILE_ICONS.get(sys_name, "◆")
+        fixed_label = EXEC_TILE_LABELS.get(sys_name, DEPT_CONFIGS.get(sys_name, DEFAULT_CONFIG)["category"])
 
         if isinstance(latest_val, (int, float)):
-            val_str = f"{latest_val:,.0f}"
+            val_str = _format_exec_value(latest_val)
             status_class, status_text = "status-online", "ONLINE"
+            trend_class, trend_text = _exec_trend_chip(latest_val, avg_val)
+            trend_arrow = "▲" if trend_class == "trend-up" else ("▼" if trend_class == "trend-down" else "●")
         else:
             val_str = "—"
             status_class, status_text = "status-offline", "OFFLINE"
+            trend_class, trend_text, trend_arrow = "trend-flat", "No Data", "○"
 
         unit_str = str(unit).strip() if unit else ""
-        metric_label = str(rep_m) if rep_m else "No Meter"
 
         tiles_html += f"""
         <div class="exec-tile" style="--accent:{accent};">
             <div class="exec-tile-top">
-                <div class="exec-name">{sys_name}</div>
+                <div class="exec-name-group">
+                    <span class="exec-icon">{icon}</span>
+                    <span class="exec-name">{sys_name}</span>
+                </div>
             </div>
-            <div class="exec-label">{metric_label}</div>
-            <div class="exec-value">{val_str}<span class="exec-unit">{unit_str}</span></div>
-            <div class="exec-status {status_class}">{status_text}</div>
+            <div class="exec-label">{fixed_label}</div>
+            <div class="exec-value-row">
+                <span class="exec-value">{val_str}</span><span class="exec-unit">{unit_str}</span>
+            </div>
+            <div class="exec-bottom-row">
+                <span class="exec-trend-chip {trend_class}">{trend_arrow} {trend_text}</span>
+                <span class="exec-status {status_class}">{status_text}</span>
+            </div>
         </div>"""
 
     if tiles_html:
