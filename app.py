@@ -218,37 +218,99 @@ def _get_representative_meter(dept_obj: dict[str, Any]) -> str:
     return select_representative_meter(dept_obj)
 
 def render_department_grid(dashboard: dict[str, Any]) -> str:
+    """Render the department navigation panel."""
     departments: dict[str, dict[str, Any]] = dashboard.get("departments", {})
-    critical_assets = ["NPCL", "Dough", "Traywasher", "Air compressor", "Freon Refrigeration", "DG", "GG"]
+
+    critical_assets = [
+        "NPCL",
+        "Dough",
+        "Traywasher",
+        "Air compressor",
+        "Freon Refrigeration",
+        "DG",
+        "GG",
+    ]
+
     dept_names = [name for name in critical_assets if name in departments]
-    
-    st.markdown('<div style="font-size: 12px; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Critical Plant Assets</div>', unsafe_allow_html=True)
-    
-    if not dept_names: return ""
-    if "selected_department" not in st.session_state or st.session_state["selected_department"] not in dept_names: 
+
+    st.markdown(
+        """
+        <div style="
+            font-size:12px;
+            font-weight:600;
+            color:#64748B;
+            text-transform:uppercase;
+            letter-spacing:0.5px;
+            margin-bottom:8px;
+        ">
+            Critical Plant Assets
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not dept_names:
+        return ""
+
+    if (
+        "selected_department" not in st.session_state
+        or st.session_state["selected_department"] not in dept_names
+    ):
         st.session_state["selected_department"] = dept_names[0]
+
     current_selection = st.session_state["selected_department"]
 
     for d_name in dept_names:
+
         dept_obj = departments[d_name]
+
         rep_m = _get_representative_meter(dept_obj)
-        latest_value = dept_obj.get("latest_values", {}).get(rep_m) if rep_m else None
-        unit_label = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
-        latest_display = f"{latest_value:,.2f}" if isinstance(latest_value, (int, float)) else "N/A"
-        
-        is_active = (d_name == current_selection)
-        btn_type = "primary" if is_active else "secondary"
-        
-        label = f"""
-        <div style="display:flex; justify-content:space-between; width:100%;">
-            <span>{d_name}</span>
-            <span style="color: #94A3B8; font-variant-numeric: tabular-nums;">{latest_display} <span style="font-size: 11px; color: #64748B;">{unit_label}</span></span>
-        </div>"""
-        
-        if st.button(label, key=f"nav_{d_name}", type=btn_type, use_container_width=True):
+
+        latest_value = (
+            dept_obj.get("latest_values", {}).get(rep_m)
+            if rep_m
+            else None
+        )
+
+        unit_label = (
+            dept_obj.get("units", {}).get(rep_m, "")
+            if rep_m
+            else ""
+        )
+
+        latest_display = (
+            f"{latest_value:,.2f}"
+            if isinstance(latest_value, (int, float))
+            else "N/A"
+        )
+
+        config = DEPT_CONFIGS.get(d_name, DEFAULT_CONFIG)
+        category = config["label"]
+
+        status = (
+            "ONLINE"
+            if isinstance(latest_value, (int, float))
+            else "OFFLINE"
+        )
+
+        label = (
+            f"**{d_name}**\n\n"
+            f"{category}\n\n"
+            f"**{latest_display}** {unit_label}\n\n"
+            f"{status}"
+        )
+
+        is_active = d_name == current_selection
+
+        if st.button(
+            label,
+            key=f"nav_{d_name}",
+            type="primary" if is_active else "secondary",
+            use_container_width=True,
+        ):
             st.session_state["selected_department"] = d_name
             st.rerun()
-            
+
     return st.session_state["selected_department"]
 
 def render_tables(dept_obj: dict[str, Any], meters: list[str]) -> None:
