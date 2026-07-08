@@ -29,37 +29,26 @@ from config import (
 )
 from dashboard_data import get_date_columns
 
-# ==============================================================================
-# ENTERPRISE SCADA VISUALIZATION CONSTANTS
-# ==============================================================================
-
 DEFAULT_TEMPLATE: str = "plotly_dark"
 DEFAULT_HOVER_MODE: str = "x unified"
 DEFAULT_DATE_COLUMN_LABEL: str = "Date"
 
-# Professional, muted SCADA palette
 SCADA_PALETTE: Final[list[str]] = [
     "#3B82F6", "#10B981", "#F59E0B", "#EF4444", 
     "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16"
 ]
 
-# Industrial dark theme colors
 BG_APP = "#0B0D12"
-BG_CARD = "#151820"
-BG_HOVER = "#1E293B"
-BORDER_SUBTLE = "#222631"
-TEXT_PRIMARY = "#F1F5F9"
-TEXT_SECONDARY = "#94A3B8"
-TEXT_MUTED = "#64748B"
+BG_CARD = "#111827"
+BG_HOVER = "#1F2937"
+BORDER_SUBTLE = "#1F2937"
+TEXT_PRIMARY = "#F9FAFB"
+TEXT_SECONDARY = "#9CA3AF"
+TEXT_MUTED = "#6B7280"
 GRID_COLOR = "rgba(255,255,255,0.04)"
 ZERO_COLOR = "rgba(255,255,255,0.08)"
 
 FONT_FAMILY: Final[str] = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-
-
-# ==============================================================================
-# DATA PREPARATION & SANITIZATION HELPERS
-# ==============================================================================
 
 def validate_columns(dataframe: pd.DataFrame, columns: list[str]) -> None:
     if not isinstance(dataframe, pd.DataFrame):
@@ -168,7 +157,7 @@ def build_section_trend_chart(
         y_axis_title = f"{meter_col} ({unit_suffix})" if unit_suffix else meter_col
         return create_line_chart(
             trend_df, x_column=date_col, y_column=meter_col,
-            title=f"{section.get('name', 'Department')} — {meter_col} Trend",
+            title=f"{meter_col} Trend",
             x_label=date_col, y_label=y_axis_title,
         )
     except Exception:
@@ -201,24 +190,19 @@ def create_department_multi_line_chart(
         y_columns=numeric_meters, title=title, x_label=x_label, y_label=y_label,
     )
 
-
-# ==============================================================================
-# ENTERPRISE SCADA THEME LAYOUTS
-# ==============================================================================
-
 def apply_default_layout(
     figure: go.Figure, title: str, x_label: str | None = None, y_label: str | None = None,
 ) -> go.Figure:
     figure.update_layout(
-        title={"text": title, "font": {"size": 13, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "x": 0.01, "y": 0.98, "xanchor": "left", "yanchor": "top"},
+        title={"text": title, "font": {"size": 11, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "x": 0.01, "y": 0.98, "xanchor": "left", "yanchor": "top"},
         template=DEFAULT_TEMPLATE, hovermode=DEFAULT_HOVER_MODE,
-        hoverlabel={"bgcolor": BG_HOVER, "bordercolor": BORDER_SUBTLE, "font": {"family": FONT_FAMILY, "size": 11, "color": TEXT_PRIMARY}},
+        hoverlabel={"bgcolor": BG_HOVER, "bordercolor": BORDER_SUBTLE, "font": {"family": FONT_FAMILY, "size": 10, "color": TEXT_PRIMARY}},
         showlegend=True, autosize=True, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD,
-        margin={"l": 40, "r": 20, "t": 50, "b": 40},
-        font={"family": FONT_FAMILY, "color": TEXT_SECONDARY, "size": 11},
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0, "bgcolor": "rgba(0,0,0,0)", "font": {"size": 10, "color": TEXT_SECONDARY, "family": FONT_FAMILY}},
-        xaxis={"gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE, "linewidth": 1, "showline": True, "showgrid": True, "tickfont": {"size": 10, "color": TEXT_MUTED}, "title_font": {"size": 11, "color": TEXT_SECONDARY}},
-        yaxis={"gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE, "linewidth": 1, "showline": True, "showgrid": True, "tickfont": {"size": 10, "color": TEXT_MUTED}, "title_font": {"size": 11, "color": TEXT_SECONDARY}},
+        margin={"l": 40, "r": 20, "t": 40, "b": 40},
+        font={"family": FONT_FAMILY, "color": TEXT_SECONDARY, "size": 10},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0, "bgcolor": "rgba(0,0,0,0)", "font": {"size": 9, "color": TEXT_SECONDARY, "family": FONT_FAMILY}},
+        xaxis={"gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE, "linewidth": 1, "showline": True, "showgrid": True, "tickfont": {"size": 9, "color": TEXT_MUTED}, "title_font": {"size": 10, "color": TEXT_SECONDARY}},
+        yaxis={"gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE, "linewidth": 1, "showline": True, "showgrid": True, "tickfont": {"size": 9, "color": TEXT_MUTED}, "title_font": {"size": 10, "color": TEXT_SECONDARY}},
         colorway=SCADA_PALETTE,
     )
     if x_label is not None: figure.update_xaxes(title_text=x_label)
@@ -233,11 +217,6 @@ def apply_minimal_layout(figure: go.Figure) -> go.Figure:
         yaxis={"visible": False, "showgrid": False, "fixedrange": True}, autosize=True,
     )
     return figure
-
-
-# ==============================================================================
-# CORE REUSABLE CHART INTERFACES
-# ==============================================================================
 
 def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     try:
@@ -330,10 +309,10 @@ def create_gauge_chart(value: float, title: str, minimum: float = 0.0, maximum: 
         unit_suffix = f" {unit}".strip() if unit else ""
         figure = go.Figure(go.Indicator(
             mode="gauge+number", value=value,
-            number={"suffix": f" {unit_suffix}" if unit_suffix else "", "font": {"size": 24, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "valueformat": ",.1f"},
-            gauge={"axis": {"range": [minimum, maximum], "tickwidth": 1, "tickcolor": TEXT_MUTED, "tickfont": {"size": 9, "color": TEXT_MUTED, "family": FONT_FAMILY}, "ticklen": 4, "nticks": 6}, "bar": {"color": SCADA_PALETTE[0], "thickness": 0.15, "line": {"width": 0}}, "bgcolor": BG_CARD, "borderwidth": 1, "bordercolor": BORDER_SUBTLE, "steps": steps}
+            number={"suffix": f" {unit_suffix}" if unit_suffix else "", "font": {"size": 20, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "valueformat": ",.1f"},
+            gauge={"axis": {"range": [minimum, maximum], "tickwidth": 1, "tickcolor": TEXT_MUTED, "tickfont": {"size": 8, "color": TEXT_MUTED, "family": FONT_FAMILY}, "ticklen": 4, "nticks": 6}, "bar": {"color": SCADA_PALETTE[0], "thickness": 0.15, "line": {"width": 0}}, "bgcolor": BG_CARD, "borderwidth": 1, "bordercolor": BORDER_SUBTLE, "steps": steps}
         ))
-        figure.update_layout(title={"text": title, "font": {"size": 12, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "y": 0.85, "x": 0.5, "xanchor": "center", "yanchor": "top"}, template=DEFAULT_TEMPLATE, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin={"l": 20, "r": 20, "t": 40, "b": 20}, autosize=True, font={"family": FONT_FAMILY})
+        figure.update_layout(title={"text": title, "font": {"size": 10, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "y": 0.85, "x": 0.5, "xanchor": "center", "yanchor": "top"}, template=DEFAULT_TEMPLATE, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin={"l": 20, "r": 20, "t": 35, "b": 20}, autosize=True, font={"family": FONT_FAMILY})
         return figure
     except Exception: return None
 
@@ -363,7 +342,7 @@ def create_heatmap(dataframe: pd.DataFrame, columns: list[str] | None = None, ti
         if columns is None: columns = [col for col in dataframe.columns if pd.to_numeric(dataframe[col], errors="coerce").notna().any()]
         if not columns: return None
         prepared = prepare_numeric_columns(dataframe, columns)
-        figure = go.Figure(data=go.Heatmap(z=prepared[columns].to_numpy().T, x=list(range(len(prepared))), y=columns, colorscale=[[0.0, BG_CARD], [0.5, "#1E3A8A"], [1.0, SCADA_PALETTE[0]]], showscale=True, colorbar={"tickfont": {"size": 9, "color": TEXT_MUTED}, "outlinewidth": 0, "thickness": 10, "len": 0.8}))
+        figure = go.Figure(data=go.Heatmap(z=prepared[columns].to_numpy().T, x=list(range(len(prepared))), y=columns, colorscale=[[0.0, BG_CARD], [0.5, "#1E3A8A"], [1.0, SCADA_PALETTE[0]]], showscale=True, colorbar={"tickfont": {"size": 8, "color": TEXT_MUTED}, "outlinewidth": 0, "thickness": 10, "len": 0.8}))
         return apply_default_layout(figure, title=title, x_label=x_label or "Observation Index", y_label=y_label or "Meter Channel")
     except Exception: return None
 
@@ -380,7 +359,6 @@ def create_sparkline(values: pd.Series, line_color: str = THEME_PRIMARY_COLOR) -
 def create_kpi_trend(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     return create_line_chart(dataframe, x_column, y_column, title, x_label, y_label)
 
-# Additional enterprise chart interfaces
 def create_radar_chart(dataframe: pd.DataFrame, columns: list[str], title: str) -> go.Figure | None:
     try:
         if not columns: return None
@@ -397,9 +375,9 @@ def create_radar_chart(dataframe: pd.DataFrame, columns: list[str], title: str) 
         values = normalized + [normalized[0]]
         fig = go.Figure(data=go.Scatterpolar(r=values, theta=categories, fill='toself', fillcolor='rgba(59, 130, 246, 0.1)', line=dict(color=SCADA_PALETTE[0], width=1.5), marker=dict(size=4, color=SCADA_PALETTE[0])))
         fig.update_layout(
-            polar=dict(bgcolor=BG_CARD, radialaxis=dict(visible=True, range=[0, 100], gridcolor=GRID_COLOR, tickfont=dict(size=9, color=TEXT_MUTED)), angularaxis=dict(gridcolor=GRID_COLOR, tickfont=dict(size=10, color=TEXT_SECONDARY))),
-            showlegend=False, title={"text": title, "font": {"size": 12, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.95, "x": 0.5, "xanchor": "center", "yanchor": "top"},
-            paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin=dict(l=50, r=50, t=50, b=50), font=dict(family=FONT_FAMILY, color=TEXT_SECONDARY),
+            polar=dict(bgcolor=BG_CARD, radialaxis=dict(visible=True, range=[0, 100], gridcolor=GRID_COLOR, tickfont=dict(size=8, color=TEXT_MUTED)), angularaxis=dict(gridcolor=GRID_COLOR, tickfont=dict(size=9, color=TEXT_SECONDARY))),
+            showlegend=False, title={"text": title, "font": {"size": 10, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.95, "x": 0.5, "xanchor": "center", "yanchor": "top"},
+            paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin=dict(l=40, r=40, t=40, b=40), font=dict(family=FONT_FAMILY, color=TEXT_SECONDARY),
         )
         return fig
     except Exception: return None
@@ -442,6 +420,4 @@ def create_bullet_chart(actual: float, target: float, title: str, unit: str = ""
         fig.add_trace(go.Bar(x=[max_val], y=[title], orientation='h', marker=dict(color='rgba(255, 255, 255, 0.02)'), hoverinfo='skip', showlegend=False))
         fig.add_trace(go.Scatter(x=[target, target], y=[title, title], mode='lines', line=dict(color=SCADA_PALETTE[2], width=2), name='Target', hoverinfo='name+x'))
         fig.add_trace(go.Bar(x=[actual], y=[title], orientation='h', marker=dict(color=SCADA_PALETTE[0], opacity=0.8), name='Actual'))
-        fig.update_layout(barmode='overlay', title={"text": title, "font": {"size": 12, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.9, "x": 0.5, "xanchor": "center", "yanchor": "top"}, xaxis=dict(range=[0, max_val], gridcolor=GRID_COLOR, zerolinecolor=ZERO_COLOR, tickfont=dict(size=10, color=TEXT_MUTED)), yaxis=dict(showticklabels=False, showgrid=False, zeroline=False), showlegend=False, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin=dict(l=20, r=20, t=40, b=20), font=dict(family=FONT_FAMILY, color=TEXT_SECONDARY))
-        return fig
-    except Exception: return None
+        fig.update_layout(barmode='overlay', title={"text": title, "font": {"size": 10, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.9, "x": 0.5, "xanchor": "center", "yanchor": "top"}, xaxis=dict(range=[0, max_val], gridcolor=GRID_COLOR, zerolinecolor=ZERO_COLOR, tickfont=dict(size=9, color=TEXT_MUTED)), yaxis=dict(showticklabels=False, showgrid=False, zeroline=False), showlegend=False, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin=dict(l=20, r=20, t=35, b
