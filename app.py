@@ -8,6 +8,7 @@ domain logic services to render an enterprise dark SCADA interface.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from typing import Any, Final
 
 import pandas as pd
@@ -83,6 +84,72 @@ EXEC_TILE_ICONS: Final[dict[str, str]] = {
     "Ammonia Refrigeration": "❄️",
 }
 
+# ------------------------------------------------------------------
+# Dynamic subsection discovery.
+#
+# The parsed workbook (dashboard_data.py) only carries three header rows
+# (Department / Meter / Unit) — there is no explicit "subsection" row in
+# the source data, and dashboard_data.py / the parser are off-limits.
+# Subsections are therefore *derived* at display time from each
+# department's real, workbook-provided meter names — never hardcoded per
+# department — by matching engineering keyword patterns. A department
+# only ever gets the buckets its actual meters produce.
+# ------------------------------------------------------------------
+SUBSECTION_RULES: Final[list[tuple[str, list[str]]]] = [
+    ("Power & Demand", ["power", "kva", "demand", "load", "kw"]),
+    ("Energy & Consumption", ["energy", "kwh", "consumption", "unit"]),
+    ("Pressure", ["pressure", "bar", "psi"]),
+    ("Flow & Volume", ["flow", "m3", "nm3", "lpm", "volume", "air", "png", "gas", "steam", "water"]),
+    ("Temperature & Cooling", ["temp", "°c", "cop", "chill", "cool", "refrigerat"]),
+    ("Electrical Parameters", ["voltage", "current", "volt", "amp", "hz", "freq", "pf", "factor"]),
+    ("Runtime & Hours", ["hr", "hour", "run", "rpm"]),
+]
+OTHER_BUCKET_LABEL: Final[str] = "Other Channels"
+
+
+def _bucket_meters_dynamically(meters: list[str]) -> "dict[str, list[str]]":
+    """Group a department's real meter names into engineering subsections.
+
+    Purely a display-time grouping over data already produced by the
+    (untouched) backend — no new engineering values are computed here.
+    """
+    buckets: dict[str, list[str]] = {label: [] for label, _ in SUBSECTION_RULES}
+    buckets[OTHER_BUCKET_LABEL] = []
+
+    for meter in meters:
+        lower_name = meter.lower()
+        placed = False
+        for label, keywords in SUBSECTION_RULES:
+            if any(kw in lower_name for kw in keywords):
+                buckets[label].append(meter)
+                placed = True
+                break
+        if not placed:
+            buckets[OTHER_BUCKET_LABEL].append(meter)
+
+    # Preserve rule order, drop empty buckets.
+    return {label: meters_in_bucket for label, meters_in_bucket in buckets.items() if meters_in_bucket}
+
+
+def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
+    """Resolve a meter's display unit, tolerating within-department name collisions.
+
+    dashboard_data.py keys its internal units_map by the *raw* (pre-dedup)
+    meter label, so a deduplicated column name like "Flow_1" has no direct
+    entry. This falls back to the base name (stripping the "_<n>" suffix)
+    so the unit at least renders instead of going blank. This does not
+    resolve which of the colliding columns the unit truly belongs to —
+    that ambiguity lives in the backend's units_map construction and can't
+    be corrected here without touching dashboard_data.py.
+    """
+    units_map = dept_obj.get("units", {})
+    val = units_map.get(meter)
+    if val and str(val).strip():
+        return str(val).strip()
+    base = re.sub(r"_\d+$", "", meter)
+    val2 = units_map.get(base)
+    return str(val2).strip() if val2 and str(val2).strip() else ""
+
 
 # ==================================================================
 # Data access (untouched logic, only cached in session_state)
@@ -123,11 +190,11 @@ def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) 
 
 
 def _format_exec_value(value: float) -> str:
-    """Format a numeric value for the executive tiles.
+    """Format a numeric value for tiles/KPIs.
 
     Whole (or near-whole) numbers render without decimals; otherwise up to
-    two decimal places are shown. This is purely a display formatting
-    helper — it does not alter the underlying value.
+    two decimal places are shown. Purely display formatting — does not
+    alter the underlying value.
     """
     rounded = round(float(value), 2)
     if abs(rounded - round(rounded)) < 0.005:
@@ -136,7 +203,7 @@ def _format_exec_value(value: float) -> str:
 
 
 def _exec_trend_chip(latest_val: float, avg_val: Any) -> tuple[str, str]:
-    """Return (arrow_class, label) for a lightweight visual trend chip.
+    """Return (css_class, label) for a lightweight visual trend chip.
 
     Purely cosmetic — derived only from already-computed latest/average
     values, no new engineering calculation is introduced.
@@ -327,14 +394,19 @@ def inject_global_styles() -> None:
             .kpi-cell-value {{ font-size: 17px; font-weight: 700; color: #F3F4F6; font-family: 'JetBrains Mono', monospace; }}
             .kpi-cell-unit {{ font-size: 9.5px; color: #6B7280; margin-left: 3px; font-family: 'Inter', sans-serif; }}
 
-            /* ---------- Workspace / control room ---------- */
-            .workspace {{
-                background: #10131A; border: 1px solid #1C212B; border-radius: 3px; padding: 12px;
-                border-top: 2px solid var(--accent, #3B82F6); margin-bottom: 10px;
+            /* ---------- Workspace / dedicated department view ---------- */
+            @keyframes fadeSlideIn {{
+                0% {{ opacity: 0; transform: translateY(6px); }}
+                100% {{ opacity: 1; transform: translateY(0); }}
             }}
-            .workspace-header {{ display: flex; justify-content: space-between; align-items: baseline; padding: 4px 6px 10px 6px; border-bottom: 1px solid #171B24; margin-bottom: 10px; }}
-            .workspace-title {{ font-size: 15px; font-weight: 800; color: #F3F4F6; margin: 0; letter-spacing: 0.3px; }}
-            .workspace-label {{ font-size: 9px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.7px; font-weight: 700; }}
+            .workspace {{
+                background: #10131A; border: 1px solid #1C212B; border-radius: 3px; padding: 16px;
+                border-top: 2px solid var(--accent, #3B82F6); margin-bottom: 10px;
+                animation: fadeSlideIn 0.28s ease;
+            }}
+            .workspace-header {{ display: flex; justify-content: space-between; align-items: baseline; padding: 4px 6px 12px 6px; border-bottom: 1px solid #171B24; margin-bottom: 4px; }}
+            .workspace-title {{ font-size: 20px; font-weight: 800; color: #F3F4F6; margin: 0; letter-spacing: 0.3px; }}
+            .workspace-label {{ font-size: 10px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.7px; font-weight: 700; }}
 
             .subsection-label {{
                 font-size: 9px; font-weight: 800; color: #4B5563; text-transform: uppercase;
@@ -349,6 +421,15 @@ def inject_global_styles() -> None:
             .chart-label {{
                 font-size: 9px; font-weight: 800; color: #6B7280; text-transform: uppercase;
                 letter-spacing: 0.7px; margin-bottom: 5px; padding: 0 2px;
+            }}
+
+            /* Tabs inside the dedicated department workspace */
+            .workspace div[data-testid="stTabs"] button[data-baseweb="tab"] {{
+                font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+                color: #6B7280; padding: 8px 12px;
+            }}
+            .workspace div[data-testid="stTabs"] button[aria-selected="true"] {{
+                color: #F3F4F6;
             }}
 
             /* ---------- DataFrames (registers) ---------- */
@@ -516,7 +597,7 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
         rep_m = select_representative_meter(dept_obj)
         latest_val = dept_obj.get("latest_values", {}).get(rep_m)
         avg_val = dept_obj.get("average_values", {}).get(rep_m)
-        unit = dept_obj.get("units", {}).get(rep_m, "")
+        unit = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
         accent = DEPT_CONFIGS.get(sys_name, DEFAULT_CONFIG)["accent"]
         icon = EXEC_TILE_ICONS.get(sys_name, "◆")
         fixed_label = EXEC_TILE_LABELS.get(sys_name, DEPT_CONFIGS.get(sys_name, DEFAULT_CONFIG)["category"])
@@ -531,8 +612,6 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
             status_class, status_text = "status-offline", "OFFLINE"
             trend_class, trend_text, trend_arrow = "trend-flat", "No Data", "○"
 
-        unit_str = str(unit).strip() if unit else ""
-
         tiles_html += f"""
         <div class="exec-tile" style="--accent:{accent};">
             <div class="exec-tile-top">
@@ -543,7 +622,7 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
             </div>
             <div class="exec-label">{fixed_label}</div>
             <div class="exec-value-row">
-                <span class="exec-value">{val_str}</span><span class="exec-unit">{unit_str}</span>
+                <span class="exec-value">{val_str}</span><span class="exec-unit">{unit}</span>
             </div>
             <div class="exec-bottom-row">
                 <span class="exec-trend-chip {trend_class}">{trend_arrow} {trend_text}</span>
@@ -592,8 +671,7 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         total_val = dept_obj.get("total_values", {}).get(rep_m)
         avg_val = dept_obj.get("average_values", {}).get(rep_m)
         latest_val = dept_obj.get("latest_values", {}).get(rep_m)
-        unit = dept_obj.get("units", {}).get(rep_m, "")
-        unit_str = str(unit).strip() if unit else ""
+        unit_str = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
 
         total_str = f"{total_val:,.0f}" if isinstance(total_val, (int, float)) else "—"
         avg_str = f"{avg_val:,.1f}" if isinstance(avg_val, (int, float)) else "—"
@@ -626,11 +704,10 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
 def _top_metrics_for(dept_obj: dict[str, Any], meters: list[str], n: int = 3) -> list[tuple[str, str]]:
     """Pull up to n (meter_name, formatted latest value + unit) pairs for a card."""
     latest_vals = dept_obj.get("latest_values", {})
-    units = dept_obj.get("units", {})
     out: list[tuple[str, str]] = []
     for m in meters[:n]:
         v = latest_vals.get(m)
-        u = str(units.get(m, "") or "").strip()
+        u = resolve_meter_unit(dept_obj, m)
         v_str = f"{v:,.1f}" if isinstance(v, (int, float)) else "—"
         out.append((m, f"{v_str} {u}".strip()))
     return out
@@ -689,63 +766,164 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
 
 
 # ==================================================================
-# Section 4 — Workspace / control room, per-department layouts
+# Section 4 — Dedicated department workspace (single active department)
 # ==================================================================
 
 def _chart_box(label: str, fig) -> None:
     st.markdown(f'<div class="chart-box"><div class="chart-label">{label}</div>', unsafe_allow_html=True)
     if fig:
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    else:
+        st.markdown(
+            '<div style="font-size:10px;color:#4B5563;padding:10px 2px;">No plottable data for this channel.</div>',
+            unsafe_allow_html=True,
+        )
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _render_kpi_strip(dept_obj: dict[str, Any], meters: list[str], rep_m: str | None) -> None:
-    """Dense top-of-workspace KPI row: representative meter + up to 3 more."""
+def _render_meter_kpi_strip(dept_obj: dict[str, Any], meters: list[str]) -> None:
     latest_vals = dept_obj.get("latest_values", {})
-    avg_vals = dept_obj.get("average_values", {})
-    total_vals = dept_obj.get("total_values", {})
-    units = dept_obj.get("units", {})
-
-    strip_meters: list[str] = []
-    if rep_m:
-        strip_meters.append(rep_m)
-    for m in meters:
-        if m not in strip_meters:
-            strip_meters.append(m)
-        if len(strip_meters) >= 4:
-            break
-
     cells_html = ""
-    labels = [("Latest", latest_vals), ("Average", avg_vals), ("Total", total_vals)]
-    for m in strip_meters:
-        unit_str = str(units.get(m, "") or "").strip()
+    for m in meters[:6]:
+        unit_str = resolve_meter_unit(dept_obj, m)
         v = latest_vals.get(m)
-        v_str = f"{v:,.1f}" if isinstance(v, (int, float)) else "—"
+        v_str = _format_exec_value(v) if isinstance(v, (int, float)) else "—"
         cells_html += f"""
         <div class="kpi-cell">
             <div class="kpi-cell-label">{m}</div>
             <div class="kpi-cell-value">{v_str}<span class="kpi-cell-unit">{unit_str}</span></div>
         </div>"""
-
     if cells_html:
         st.markdown(f'<div class="kpi-strip">{cells_html}</div>', unsafe_allow_html=True)
 
 
-def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
+def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj: dict[str, Any]) -> None:
+    overview_df = dashboard.get("overview", pd.DataFrame())
+    meters = dept_obj.get("meters", [])
+    df_block = dept_obj.get("dataframe", pd.DataFrame())
+    rep_m = select_representative_meter(dept_obj)
+    unit_lbl = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
+    latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0) or 0.0 if rep_m else 0.0
+    max_ceiling = get_gauge_max(df_block, rep_m, dept_obj) if rep_m else 100.0
+
+    _render_meter_kpi_strip(dept_obj, meters)
+
+    if process_name == "NPCL":
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Load Trend", fig)
+        with col2:
+            fig = chart_service.create_gauge_chart(latest_val, "Demand", maximum=max_ceiling, unit=unit_lbl)
+            _chart_box("Demand Gauge", fig)
+    elif process_name == "Air compressor":
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            fig = chart_service.create_gauge_chart(latest_val, "Pressure", maximum=max_ceiling, unit=unit_lbl)
+            _chart_box("Pressure Gauge", fig)
+        with col2:
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Flow Trend / Stability", fig)
+    elif process_name in ("Freon Refrigeration", "Ammonia Refrigeration"):
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fig = chart_service.create_heatmap(df_block, meters[: min(len(meters), 8)], "Temperature Heatmap")
+            _chart_box("Temperature Heatmap", fig)
+        with col2:
+            fig = chart_service.create_gauge_chart(latest_val, "COP", maximum=max_ceiling, unit=unit_lbl)
+            _chart_box("COP", fig)
+    elif process_name in ("DG", "GG"):
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            target_val = dept_obj.get("average_values", {}).get(rep_m, latest_val) or latest_val
+            fig = chart_service.create_bullet_chart(latest_val, target_val, "Generation vs Target", unit=unit_lbl)
+            _chart_box("Generation", fig)
+        with col2:
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Output Trend", fig)
+    else:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            _chart_box("Primary Telemetry", fig)
+        with col2:
+            if rep_m:
+                fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
+                _chart_box("Current Status", fig)
+
+
+def _render_subsection_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any], subsection_meters: list[str]) -> None:
+    """Render KPI cells + a multi-channel trend chart for one dynamically-derived subsection."""
+    overview_df = dashboard.get("overview", pd.DataFrame())
+    _render_meter_kpi_strip(dept_obj, subsection_meters)
+
+    if len(subsection_meters) >= 1:
+        sub_section_obj = dict(dept_obj)
+        sub_section_obj["meters"] = subsection_meters
+        fig = chart_service.create_department_multi_line_chart(
+            overview_dataframe=overview_df, section=sub_section_obj, title="Channel Trend"
+        )
+        _chart_box("Channel Trend", fig)
+
+
+def _render_history_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any]) -> None:
+    overview_df = dashboard.get("overview", pd.DataFrame())
+    fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+    _chart_box("Representative Channel History", fig)
+    fig2 = chart_service.create_department_multi_line_chart(
+        overview_dataframe=overview_df, section=dept_obj, title="All Channels — Full History"
+    )
+    _chart_box("Multi-Channel History", fig2)
+
+
+def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
+    meters = dept_obj.get("meters", [])
+    df_block = dept_obj.get("dataframe", pd.DataFrame())
+
+    if len(meters) >= 3:
+        fig = chart_service.create_radar_chart(df_block, meters[:6], "Channel Profile")
+        _chart_box("Channel Profile", fig)
+
+    units_map = dept_obj.get("units", {})
+    latest_vals = dept_obj.get("latest_values", {})
+    avg_vals = dept_obj.get("average_values", {})
+    total_vals = dept_obj.get("total_values", {})
+
+    ledger_records = []
+    for m in meters:
+        l_v = latest_vals.get(m)
+        a_v = avg_vals.get(m)
+        t_v = total_vals.get(m)
+        ledger_records.append(
+            {
+                "Channel": m,
+                "Unit": resolve_meter_unit(dept_obj, m) or "N/A",
+                "Latest": round(l_v, 2) if isinstance(l_v, (int, float)) else "N/A",
+                "Mean": round(a_v, 2) if isinstance(a_v, (int, float)) else "N/A",
+                "Total": round(t_v, 2) if isinstance(t_v, (int, float)) else "N/A",
+                "Status": "Active" if l_v is not None else "Idle",
+            }
+        )
+    if ledger_records:
+        st.markdown('<div class="subsection-label">Channel Register</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chart-box">', unsafe_allow_html=True)
+        st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_department_workspace(dashboard: dict[str, Any], process_name: str) -> None:
+    """Render ONLY the selected department's dedicated workspace.
+
+    No other department's charts, tables, or data are built or rendered —
+    the workspace is fully replaced on each selection, not stacked.
+    """
     departments = dashboard.get("departments", {})
     dept_obj = departments.get(process_name, {})
-    overview_df = dashboard.get("overview", pd.DataFrame())
-
     if not dept_obj:
         return
 
     config = DEPT_CONFIGS.get(process_name, DEFAULT_CONFIG)
     meters = dept_obj.get("meters", [])
-    df_block = dept_obj.get("dataframe", pd.DataFrame())
-    rep_m = select_representative_meter(dept_obj)
-    unit_lbl = dept_obj.get("units", {}).get(rep_m, "") if rep_m else ""
-    latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0) or 0.0 if rep_m else 0.0
-    max_ceiling = get_gauge_max(df_block, rep_m, dept_obj) if rep_m else 100.0
 
     st.markdown(
         f"""
@@ -758,136 +936,24 @@ def render_workspace(dashboard: dict[str, Any], process_name: str) -> None:
         unsafe_allow_html=True,
     )
 
-    # ---------------- 1. KPI strip (always first) ----------------
-    _render_kpi_strip(dept_obj, meters, rep_m)
+    # Dynamic subsections derived purely from this department's real meter names.
+    dynamic_buckets = _bucket_meters_dynamically(meters)
 
-    # ---------------- 2. Primary charts (department-specific) ----------------
-    st.markdown('<div class="subsection-label">Primary Telemetry</div>', unsafe_allow_html=True)
+    tab_labels = ["Overview", *dynamic_buckets.keys(), "History", "Diagnostics"]
+    tabs = st.tabs(tab_labels)
 
-    if process_name == "NPCL":
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Load Trend", fig)
-            if len(meters) >= 2:
-                fig = chart_service.create_area_chart(df_block, x_column=df_block.columns[0] if not df_block.empty else "", y_columns=meters[:3], title="Power Factor / Load Area") if not df_block.empty else None
-                if fig:
-                    _chart_box("Power Distribution", fig)
-        with col2:
-            fig = chart_service.create_gauge_chart(latest_val, "Demand", maximum=max_ceiling, unit=unit_lbl)
-            _chart_box("Demand Gauge", fig)
-            if len(meters) >= 2:
-                vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:5]}
-                bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
-                fig = chart_service.create_donut_chart(bar_df, "Meter", "Value", "Energy Distribution")
-                _chart_box("Energy Distribution", fig)
+    with tabs[0]:
+        _render_overview_tab(dashboard, process_name, dept_obj)
 
-    elif process_name == "Air compressor":
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col1:
-            fig = chart_service.create_gauge_chart(latest_val, "Pressure", maximum=max_ceiling, unit=unit_lbl)
-            _chart_box("Pressure Gauge", fig)
-        with col2:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Flow Trend / Stability", fig)
-        with col3:
-            if len(meters) >= 2:
-                vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:5]}
-                bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
-                fig = chart_service.create_horizontal_bar_chart(bar_df, "Meter", "Value", "Runtime")
-                _chart_box("Runtime", fig)
-        if len(meters) >= 3:
-            st.markdown('<div class="subsection-label">Diagnostics</div>', unsafe_allow_html=True)
-            fig = chart_service.create_radar_chart(df_block, meters[:6], "Efficiency Profile")
-            _chart_box("Efficiency", fig)
+    for tab, (bucket_label, bucket_meters) in zip(tabs[1:-2], dynamic_buckets.items()):
+        with tab:
+            _render_subsection_tab(dashboard, dept_obj, bucket_meters)
 
-    elif process_name in ("Freon Refrigeration", "Ammonia Refrigeration"):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = chart_service.create_heatmap(df_block, meters[: min(len(meters), 8)], "Temperature Heatmap")
-            _chart_box("Temperature Heatmap", fig)
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Cooling Trend", fig)
-        with col2:
-            fig = chart_service.create_gauge_chart(latest_val, "COP", maximum=max_ceiling, unit=unit_lbl)
-            _chart_box("COP", fig)
-            if len(meters) >= 2:
-                fig = chart_service.create_histogram(df_block, meters[0], "Temperature Distribution")
-                _chart_box("Temperature Distribution", fig)
+    with tabs[-2]:
+        _render_history_tab(dashboard, dept_obj)
 
-    elif process_name in ("DG", "GG"):
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            target_val = dept_obj.get("average_values", {}).get(rep_m, latest_val) or latest_val
-            fig = chart_service.create_bullet_chart(latest_val, target_val, "Generation vs Target", unit=unit_lbl)
-            _chart_box("Generation", fig)
-            fig = chart_service.create_gauge_chart(latest_val, "Runtime Load", maximum=100, unit="%")
-            _chart_box("Runtime", fig)
-        with col2:
-            vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:6]}
-            bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
-            fig = chart_service.create_bar_chart(bar_df, "Meter", "Value", "Fuel Consumption")
-            _chart_box("Fuel Consumption", fig)
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Output Trend", fig)
-
-    elif process_name == "Traywasher":
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            vals = {m: dept_obj["total_values"].get(m, 0) or 0 for m in meters[:5]}
-            bar_df = pd.DataFrame(list(vals.items()), columns=["Meter", "Value"])
-            fig = chart_service.create_horizontal_bar_chart(bar_df, "Meter", "Value", "Water Usage")
-            _chart_box("Water Usage", fig)
-        with col2:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Thermal Trend", fig)
-        if len(meters) >= 3:
-            st.markdown('<div class="subsection-label">Diagnostics</div>', unsafe_allow_html=True)
-            fig = chart_service.create_radar_chart(df_block, meters[:6], "Cycle Efficiency")
-            _chart_box("Efficiency", fig)
-
-    else:
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Primary Telemetry", fig)
-            if len(meters) > 1:
-                fig = chart_service.create_department_multi_line_chart(
-                    overview_dataframe=overview_df, section=dept_obj, title="Load Profiles"
-                )
-                _chart_box("Multi-Channel Analysis", fig)
-        with col2:
-            if rep_m:
-                fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
-                _chart_box("Current Status", fig)
-
-    # ---------------- 3. Channel Registry (always last) ----------------
-    units_map = dept_obj.get("units", {})
-    latest_vals = dept_obj.get("latest_values", {})
-    avg_vals = dept_obj.get("average_values", {})
-    total_vals = dept_obj.get("total_values", {})
-
-    ledger_records = []
-    for m in meters:
-        lbl = units_map.get(m)
-        l_v = latest_vals.get(m)
-        a_v = avg_vals.get(m)
-        t_v = total_vals.get(m)
-        ledger_records.append(
-            {
-                "Channel": m,
-                "Unit": lbl if (lbl and str(lbl).strip()) else "N/A",
-                "Latest": round(l_v, 2) if isinstance(l_v, (int, float)) else "N/A",
-                "Mean": round(a_v, 2) if isinstance(a_v, (int, float)) else "N/A",
-                "Total": round(t_v, 2) if isinstance(t_v, (int, float)) else "N/A",
-                "Status": "Active" if l_v is not None else "Idle",
-            }
-        )
-    if ledger_records:
-        st.markdown('<div class="subsection-label">Channel Register</div>', unsafe_allow_html=True)
-        st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-        st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+    with tabs[-1]:
+        _render_diagnostics_tab(dept_obj)
 
 
 # ==================================================================
@@ -934,7 +1000,7 @@ def main() -> None:
 
     if selected_process:
         st.markdown('<div class="section-title">Engineering Workspace</div>', unsafe_allow_html=True)
-        render_workspace(dashboard, selected_process)
+        render_department_workspace(dashboard, selected_process)
 
     render_footer(dashboard)
 
