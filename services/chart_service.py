@@ -18,11 +18,23 @@ Grafana / Ignition / WinCC style industrial HMI instead of default Plotly:
   - each metric type gets the *right* chart (gauge for status, bullet for
     target-vs-actual, heatmap for multi-channel intensity, donut for share,
     ranked horizontal bars for comparison, histogram for distribution)
+  - automatic y-axis padding so trend lines never hug the plot edges
+  - explicit date-aware x-axis tick formatting on time-series charts
 
 Nothing here touches data loading, alignment, or business logic — those
 helpers (validate_columns, prepare_numeric_columns, find_first_numeric_column,
 align_dates_with_meter, _align_dates_with_multiple_meters,
 build_section_trend_data) are preserved byte-for-byte in behavior.
+
+PERFORMANCE NOTE: whenever a caller already has a "ready" DataFrame (a Date
+column plus one column per meter — exactly what the business layer's
+department ``dataframe`` payload provides), prefer the direct-dataframe
+helpers below (`create_department_line_chart`,
+`create_department_multi_meter_chart`) over the data-rebuilding path
+(`build_section_trend_chart` / `create_department_multi_line_chart`), which
+re-derives alignment via `align_dates_with_meter` /
+`_align_dates_with_multiple_meters` even when it isn't necessary. Both paths
+are kept for backward compatibility.
 """
 from __future__ import annotations
 
@@ -83,6 +95,10 @@ BAD_COLOR = "#EF4444"
 FONT_FAMILY: Final[str] = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
 MONO_FAMILY: Final[str] = "'JetBrains Mono', 'SF Mono', 'Roboto Mono', monospace"
 
+# Fraction of the observed data range added above/below a trend line so it
+# never touches the plot edges.
+Y_AXIS_PADDING_RATIO: Final[float] = 0.12
+
 
 def _hex_to_rgba(hex_color: str, alpha: float) -> str:
     """Convert a #RRGGBB color into an rgba() string with the given alpha."""
@@ -101,6 +117,34 @@ def _status_color(ratio: float) -> str:
     if ratio >= 0.65:
         return WARN_COLOR
     return GOOD_COLOR
+
+
+def _padded_y_range(*series: pd.Series) -> list[float] | None:
+    """Compute a y-axis range padded by ``Y_AXIS_PADDING_RATIO`` so trend
+    lines/markers never hug the top or bottom of the plot area.
+
+    Args:
+        *series: One or more numeric Series to consider together.
+
+    Returns:
+        A ``[low, high]`` list, or ``None`` if no numeric data is available.
+    """
+    values = pd.concat([pd.to_numeric(s, errors="coerce") for s in series if s is not None])
+    values = values.dropna()
+    if values.empty:
+        return None
+
+    lo, hi = float(values.min()), float(values.max())
+    span = hi - lo
+    if span <= 0:
+        # Flat series — pad by a fixed proportion of the value itself (or a
+        # small absolute amount if the value is zero) so it isn't a flat
+        # line glued to the axis.
+        pad = abs(hi) * Y_AXIS_PADDING_RATIO if hi != 0 else 1.0
+        return [lo - pad, hi + pad]
+
+    pad = span * Y_AXIS_PADDING_RATIO
+    return [lo - pad, hi + pad]
 
 
 class _HMI:
@@ -130,6 +174,8 @@ class _HMI:
         subtitle: str | None = None,
         show_legend: bool = True,
         hovermode: str = DEFAULT_HOVER_MODE,
+        x_is_date: bool = False,
+        y_range: list[float] | None = None,
     ) -> go.Figure:
         figure.update_layout(
             title=_HMI.title_block(title, subtitle),
@@ -140,6 +186,7 @@ class _HMI:
                 "bordercolor": BORDER_SUBTLE,
                 "font": {"family": MONO_FAMILY, "size": 11, "color": TEXT_PRIMARY},
                 "namelength": -1,
+                "align": "left",
             },
             showlegend=show_legend,
             autosize=True,
@@ -151,6 +198,7 @@ class _HMI:
                 "orientation": "h", "yanchor": "bottom", "y": 1.05, "xanchor": "left", "x": 0.0,
                 "bgcolor": "rgba(0,0,0,0)", "font": {"size": 10, "color": TEXT_SECONDARY, "family": FONT_FAMILY},
                 "itemwidth": 40, "traceorder": "normal",
+                "bordercolor": "rgba(0,0,0,0)",
             },
             xaxis={
                 "gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE,
@@ -160,6 +208,7 @@ class _HMI:
                 "showspikes": True, "spikemode": "across", "spikesnap": "cursor",
                 "spikecolor": SPIKE_COLOR, "spikethickness": 1, "spikedash": "dot",
                 "rangeslider": {"visible": False},
+                **({"tickformat": "%d %b", "hoverformat": "%d %b %Y"} if x_is_date else {}),
             },
             yaxis={
                 "gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE,
@@ -167,6 +216,7 @@ class _HMI:
                 "tickfont": {"size": 10, "color": TEXT_MUTED, "family": MONO_FAMILY},
                 "title_font": {"size": 11, "color": TEXT_SECONDARY},
                 "showspikes": True, "spikemode": "across", "spikecolor": SPIKE_COLOR, "spikethickness": 1,
+                **({"range": y_range} if y_range is not None else {}),
             },
             colorway=SCADA_PALETTE,
             transition={"duration": 350, "easing": "cubic-in-out"},
@@ -429,6 +479,141 @@ def build_section_trend_data(
 
 
 # ==================================================================
+# DIRECT-DATAFRAME HELPERS (preferred, avoid rebuilding chart data)
+# ==================================================================
+#
+# The business layer's department payload already provides a ready-to-plot
+# DataFrame with a "Date" column plus one column per meter (see
+# `build_dashboard` in dashboard_data.py). These helpers plot that
+# DataFrame directly — no re-derivation of dates, no `find_first_numeric_column`
+# guessing, no realignment. Callers choose *which* meter to plot (e.g. via a
+# Streamlit selectbox) instead of the chart layer silently picking one.
+
+def has_ready_department_dataframe(section: dict[str, Any]) -> bool:
+    """Check whether a section already carries a plot-ready DataFrame.
+
+    A "ready" DataFrame has a ``Date`` column plus at least one meter
+    column, meaning no realignment via `align_dates_with_meter` is needed.
+
+    Args:
+        section: A department/section dict as produced by the business layer.
+
+    Returns:
+        True if `section["dataframe"]` can be plotted directly.
+    """
+    df = section.get("dataframe") if section else None
+    return (
+        isinstance(df, pd.DataFrame)
+        and not df.empty
+        and DEFAULT_DATE_COLUMN_LABEL in df.columns
+        and df.shape[1] > 1
+    )
+
+
+def get_department_meters(section: dict[str, Any]) -> list[str]:
+    """Return the list of meter column names available for a section.
+
+    Prefers the explicit ``section["meters"]`` list (authoritative, in
+    business-layer order); falls back to every non-Date column of the
+    section's DataFrame.
+
+    Args:
+        section: A department/section dict as produced by the business layer.
+
+    Returns:
+        A list of meter names available to plot for this section.
+    """
+    if not section:
+        return []
+
+    meters = section.get("meters")
+    if meters:
+        return list(meters)
+
+    df = section.get("dataframe")
+    if isinstance(df, pd.DataFrame):
+        return [c for c in df.columns if c != DEFAULT_DATE_COLUMN_LABEL]
+
+    return []
+
+
+def create_department_line_chart(
+    section: dict[str, Any], meter: str, title: str | None = None,
+) -> go.Figure | None:
+    """Plot a single meter directly from a section's ready DataFrame.
+
+    This is the preferred path for department trend charts: it uses the
+    ``Date`` + meter columns already assembled by the business layer
+    instead of rebuilding alignment via `align_dates_with_meter`.
+
+    Args:
+        section: A department/section dict with a ready ``dataframe``.
+        meter: The meter/column name to plot.
+        title: Optional chart title; defaults to "{meter} Trend".
+
+    Returns:
+        A Plotly Figure, or None if the section/meter has no plottable data.
+    """
+    if not has_ready_department_dataframe(section):
+        return None
+
+    df = section["dataframe"]
+    if meter not in df.columns:
+        return None
+
+    unit = ""
+    units_map = section.get("units")
+    if isinstance(units_map, dict):
+        unit = units_map.get(meter, "")
+
+    y_label = f"{meter} ({unit})" if unit else meter
+    chart_title = title or f"{meter} Trend"
+
+    return create_line_chart(
+        df, x_column=DEFAULT_DATE_COLUMN_LABEL, y_column=meter,
+        title=chart_title, x_label=DEFAULT_DATE_COLUMN_LABEL, y_label=y_label,
+    )
+
+
+def create_department_multi_meter_chart(
+    section: dict[str, Any], meters: list[str] | None, title: str,
+    x_label: str | None = None, y_label: str | None = None,
+) -> go.Figure | None:
+    """Plot several meters directly from a section's ready DataFrame.
+
+    Args:
+        section: A department/section dict with a ready ``dataframe``.
+        meters: Meter names to plot; defaults to every meter in the section.
+        title: Chart title.
+        x_label: Optional x-axis label override.
+        y_label: Optional y-axis label override.
+
+    Returns:
+        A Plotly Figure (multi-line, or a heatmap if there are many
+        channels), or None if there's no plottable data.
+    """
+    if not has_ready_department_dataframe(section):
+        return None
+
+    df = section["dataframe"]
+    candidate_meters = meters or get_department_meters(section)
+    numeric_meters = [m for m in candidate_meters if m in df.columns]
+    if not numeric_meters:
+        return None
+
+    if len(numeric_meters) > 8:
+        return create_heatmap(
+            df, columns=numeric_meters, title=title,
+            x_label=x_label or DEFAULT_DATE_COLUMN_LABEL, y_label=y_label or "Channel",
+        )
+
+    return create_multi_line_chart(
+        df, x_column=DEFAULT_DATE_COLUMN_LABEL, y_columns=numeric_meters,
+        title=title, x_label=x_label, y_label=y_label,
+    )
+
+
+# ==================================================================
 # CHART BUILDERS — the redesigned visualization layer
 # ==================================================================
 
@@ -436,7 +621,12 @@ def build_section_trend_chart(
     overview_dataframe: pd.DataFrame, section: dict[str, Any],
     date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
 ) -> go.Figure | None:
-    """Build a trend chart for a specific section (spline area, annotated)."""
+    """Build a trend chart for a specific section (spline area, annotated).
+
+    Kept for backward compatibility. When the section already carries a
+    ready DataFrame, prefer `create_department_line_chart` with an
+    explicit, user-chosen meter instead of this auto-selecting path.
+    """
     try:
         trend_data = build_section_trend_data(overview_dataframe, section, date_column_label=date_column_label)
         if trend_data is None:
@@ -464,8 +654,19 @@ def create_department_multi_line_chart(
     overview_dataframe: pd.DataFrame, section: dict[str, Any], title: str,
     x_label: str | None = None, y_label: str | None = None,
 ) -> go.Figure | None:
-    """Create an interactive multiline chart for all meters in a department."""
+    """Create an interactive multiline chart for all meters in a department.
+
+    Kept for backward compatibility with callers that only have the
+    overview dataframe. When the section already carries a ready
+    DataFrame (Date + meter columns), prefer
+    `create_department_multi_meter_chart`, which skips realignment.
+    """
     try:
+        if has_ready_department_dataframe(section):
+            return create_department_multi_meter_chart(
+                section, section.get("meters"), title, x_label=x_label, y_label=y_label,
+            )
+
         if not section or "dataframe" not in section or "meters" not in section:
             logger.warning("Section is invalid or missing required keys.")
             return None
@@ -552,11 +753,11 @@ def create_line_chart(
         accent = SCADA_PALETTE[0]
         figure = go.Figure()
 
-        # Soft gradient area under a smooth spline
+        # Soft gradient area under a thick smooth spline
         figure.add_trace(go.Scatter(
             x=prepared[x_column], y=prepared[y_column],
             mode="lines", name=str(y_column),
-            line={"color": accent, "width": 2.5, "shape": "spline", "smoothing": 0.6},
+            line={"color": accent, "width": 3, "shape": "spline", "smoothing": 0.65},
             fill="tozeroy", fillcolor=_hex_to_rgba(accent, 0.16),
             hovertemplate=f"<b>%{{x|%d %b, %H:%M}}</b><br>{y_column}: <b>%{{y:,.2f}}</b><extra></extra>",
         ))
@@ -588,8 +789,12 @@ def create_line_chart(
             showlegend=False,
         ))
 
+        is_date_axis = pd.api.types.is_datetime64_any_dtype(prepared[x_column]) or "date" in str(x_column).lower()
+        y_range = _padded_y_range(prepared[y_column])
+
         figure = _HMI.apply(
             figure, title=title, x_label=x_label or str(x_column), y_label=y_label or str(y_column),
+            x_is_date=is_date_axis, y_range=y_range,
         )
         figure.update_xaxes(rangeslider_visible=False)
         figure.update_layout(dragmode="zoom")
@@ -611,6 +816,7 @@ def create_multi_line_chart(
         prepared = prepare_numeric_columns(dataframe, y_columns)
 
         figure = go.Figure()
+        plotted_series: list[pd.Series] = []
         for i, col in enumerate(y_columns):
             if prepared[col].dropna().empty:
                 continue
@@ -619,16 +825,21 @@ def create_multi_line_chart(
             figure.add_trace(go.Scatter(
                 x=prepared[x_column], y=prepared[col],
                 mode="lines", name=str(col),
-                line={"color": color, "width": 2, "shape": "spline", "smoothing": 0.55},
+                line={"color": color, "width": 2.5, "shape": "spline", "smoothing": 0.55},
                 hovertemplate=f"<b>{col}</b>: %{{y:,.2f}}<extra></extra>",
             ))
+            plotted_series.append(prepared[col])
 
         if not figure.data:
             logger.warning("No data traces added to multi-line chart.")
             return None
 
+        is_date_axis = pd.api.types.is_datetime64_any_dtype(prepared[x_column]) or "date" in str(x_column).lower()
+        y_range = _padded_y_range(*plotted_series)
+
         figure = _HMI.apply(
             figure, title=title, x_label=x_label or str(x_column), y_label=y_label or "Readings",
+            x_is_date=is_date_axis, y_range=y_range,
         )
         figure.update_layout(dragmode="zoom")
         return figure
@@ -716,7 +927,7 @@ def create_area_chart(
             color = SCADA_PALETTE[i % len(SCADA_PALETTE)]
             figure.add_trace(go.Scatter(
                 x=prepared[x_column], y=prepared[col], mode="lines", name=str(col),
-                line={"color": color, "width": 1.8, "shape": "spline", "smoothing": 0.5},
+                line={"color": color, "width": 2, "shape": "spline", "smoothing": 0.5},
                 stackgroup="one" if len(cols_list) > 1 else None,
                 fill="tonexty" if len(cols_list) > 1 else "tozeroy",
                 fillcolor=_hex_to_rgba(color, 0.22),
@@ -1199,7 +1410,7 @@ def create_daily_trend_chart(
         fig.add_trace(go.Scatter(
             x=prepared[date_column], y=prepared[meter_column], mode="lines",
             name=str(meter_column),
-            line={"color": accent, "width": 2.4, "shape": "spline", "smoothing": 0.6},
+            line={"color": accent, "width": 3, "shape": "spline", "smoothing": 0.65},
             fill="tozeroy", fillcolor=_hex_to_rgba(accent, 0.15),
             hovertemplate=f"<b>%{{x|%d %b, %H:%M}}</b><br>{meter_column}: <b>%{{y:,.2f}}</b><extra></extra>",
         ))
@@ -1212,7 +1423,13 @@ def create_daily_trend_chart(
             hovertemplate=f"<b>Current</b>: %{{y:,.2f}}<extra></extra>",
         ))
 
-        return _HMI.apply(fig, title=title, x_label="Date", y_label=str(meter_column))
+        is_date_axis = pd.api.types.is_datetime64_any_dtype(prepared[date_column]) or "date" in str(date_column).lower()
+        y_range = _padded_y_range(prepared[meter_column])
+
+        return _HMI.apply(
+            fig, title=title, x_label="Date", y_label=str(meter_column),
+            x_is_date=is_date_axis, y_range=y_range,
+        )
     except Exception as e:
         logger.error(f"Error in create_daily_trend_chart: {e}", exc_info=True)
         return None
