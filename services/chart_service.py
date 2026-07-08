@@ -22,7 +22,6 @@ from config import (
 )
 from dashboard_data import get_date_columns
 
-# Updated Theme Constants for Dark Mode Charts
 DEFAULT_TEMPLATE: str = "plotly_dark"
 DEFAULT_HOVER_MODE: str = "x unified"
 DEFAULT_DATE_COLUMN_LABEL: str = "Date"
@@ -206,15 +205,15 @@ def apply_default_layout(
 ) -> go.Figure:
     """Apply the default dark SCADA layout to a Plotly figure."""
     figure.update_layout(
-        title={"text": title, "font": {"size": 14, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "x": 0.01, "y": 0.98, "xanchor": "left", "yanchor": "top"},
+        title={"text": title, "font": {"size": 12, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "x": 0.01, "y": 0.98, "xanchor": "left", "yanchor": "top"},
         template=DEFAULT_TEMPLATE, hovermode=DEFAULT_HOVER_MODE,
-        hoverlabel={"bgcolor": BG_HOVER, "bordercolor": BORDER_SUBTLE, "font": {"family": FONT_FAMILY, "size": 11, "color": TEXT_PRIMARY}},
+        hoverlabel={"bgcolor": BG_HOVER, "bordercolor": BORDER_SUBTLE, "font": {"family": FONT_FAMILY, "size": 10, "color": TEXT_PRIMARY}},
         showlegend=True, autosize=True, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD,
-        margin={"l": 40, "r": 20, "t": 50, "b": 40},
-        font={"family": FONT_FAMILY, "color": TEXT_SECONDARY, "size": 11},
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0, "bgcolor": "rgba(0,0,0,0)", "font": {"size": 10, "color": TEXT_SECONDARY, "family": FONT_FAMILY}},
-        xaxis={"gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE, "linewidth": 1, "showline": True, "showgrid": True, "tickfont": {"size": 10, "color": TEXT_MUTED}, "title_font": {"size": 11, "color": TEXT_SECONDARY}},
-        yaxis={"gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE, "linewidth": 1, "showline": True, "showgrid": True, "tickfont": {"size": 10, "color": TEXT_MUTED}, "title_font": {"size": 11, "color": TEXT_SECONDARY}},
+        margin={"l": 30, "r": 20, "t": 30, "b": 30},
+        font={"family": FONT_FAMILY, "color": TEXT_SECONDARY, "size": 10},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0, "bgcolor": "rgba(0,0,0,0)", "font": {"size": 9, "color": TEXT_SECONDARY, "family": FONT_FAMILY}},
+        xaxis={"gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE, "linewidth": 1, "showline": True, "showgrid": True, "tickfont": {"size": 9, "color": TEXT_MUTED}, "title_font": {"size": 10, "color": TEXT_SECONDARY}},
+        yaxis={"gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE, "linewidth": 1, "showline": True, "showgrid": True, "tickfont": {"size": 9, "color": TEXT_MUTED}, "title_font": {"size": 10, "color": TEXT_SECONDARY}},
         colorway=SCADA_PALETTE,
     )
     if x_label is not None: figure.update_xaxes(title_text=x_label)
@@ -240,7 +239,7 @@ def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, tit
         prepared = prepare_numeric_columns(dataframe, [y_column]).dropna(subset=[y_column])
         if prepared.empty: return None
         figure = go.Figure()
-        figure.add_trace(go.Scatter(x=prepared[x_column], y=prepared[y_column], mode="lines", name=y_column, line={"color": SCADA_PALETTE[0], "width": 2.5}, fill="tozeroy", fillcolor="rgba(59, 130, 246, 0.1)", hovertemplate=f"<b>%{{x}}</b><br>{y_column}: %{{y:,.2f}}<extra></extra>"))
+        figure.add_trace(go.Scatter(x=prepared[x_column], y=prepared[y_column], mode="lines", name=y_column, line={"color": SCADA_PALETTE[0], "width": 2}, fill="tozeroy", fillcolor="rgba(59, 130, 246, 0.05)", hovertemplate=f"<b>%{{x}}</b><br>{y_column}: %{{y:,.2f}}<extra></extra>"))
         return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or y_column)
     except Exception: return None
 
@@ -254,7 +253,7 @@ def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: l
         figure = go.Figure()
         for i, col in enumerate(y_columns):
             color = SCADA_PALETTE[i % len(SCADA_PALETTE)]
-            figure.add_trace(go.Scatter(x=prepared[x_column], y=prepared[col], mode="lines", name=col, line={"color": color, "width": 2}, hovertemplate=f"<b>%{{x}}</b><br>{col}: %{{y:,.2f}}<extra></extra>"))
+            figure.add_trace(go.Scatter(x=prepared[x_column], y=prepared[col], mode="lines", name=col, line={"color": color, "width": 1.5}, hovertemplate=f"<b>%{{x}}</b><br>{col}: %{{y:,.2f}}<extra></extra>"))
         return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or "Readings")
     except Exception: return None
 
@@ -339,7 +338,7 @@ def create_gauge_chart(value: float, title: str, minimum: float = 0.0, maximum: 
         unit_suffix = f" {unit}".strip() if unit else ""
         figure = go.Figure(go.Indicator(
             mode="gauge+number", value=value,
-            number={"suffix": f" {unit_suffix}" if unit_suffix else "", "font": {"size": 20, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "valueformat": ",.1f"},
+            number={"suffix": f" {unit_suffix}" if unit_suffix else "", "font": {"size": 18, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "valueformat": ",.1f"},
             gauge={"axis": {"range": [minimum, maximum], "tickwidth": 1, "tickcolor": TEXT_MUTED, "tickfont": {"size": 8, "color": TEXT_MUTED, "family": FONT_FAMILY}, "ticklen": 4, "nticks": 6}, "bar": {"color": SCADA_PALETTE[0], "thickness": 0.15, "line": {"width": 0}}, "bgcolor": BG_CARD, "borderwidth": 1, "bordercolor": BORDER_SUBTLE, "steps": steps}
         ))
         figure.update_layout(title={"text": title, "font": {"size": 10, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "y": 0.85, "x": 0.5, "xanchor": "center", "yanchor": "top"}, template=DEFAULT_TEMPLATE, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin={"l": 20, "r": 20, "t": 35, "b": 20}, autosize=True, font={"family": FONT_FAMILY})
@@ -390,7 +389,7 @@ def create_sparkline(values: pd.Series, line_color: str = THEME_PRIMARY_COLOR) -
         numeric_values = pd.to_numeric(values, errors="coerce").dropna()
         if numeric_values.empty: return None
         resolved_color = line_color or SCADA_PALETTE[0]
-        figure = go.Figure(data=go.Scatter(x=list(range(len(numeric_values))), y=numeric_values, mode="lines", line={"color": resolved_color, "width": 1.5}, fill="tozeroy", fillcolor="rgba(59, 130, 246, 0.1)"))
+        figure = go.Figure(data=go.Scatter(x=list(range(len(numeric_values))), y=numeric_values, mode="lines", line={"color": resolved_color, "width": 1.5}, fill="tozeroy", fillcolor="rgba(59, 130, 246, 0.05)"))
         return apply_minimal_layout(figure)
     except Exception: return None
 
@@ -443,7 +442,7 @@ def create_combined_line_area_chart(dataframe: pd.DataFrame, x_column: str, area
         prepared = prepare_numeric_columns(dataframe, [area_column, line_column]).dropna(subset=[x_column])
         if prepared.empty: return None
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=prepared[x_column], y=prepared[area_column], fill='tozeroy', mode='lines', name=area_column, line=dict(color=SCADA_PALETTE[0], width=1), fillcolor='rgba(59, 130, 246, 0.1)'))
+        fig.add_trace(go.Scatter(x=prepared[x_column], y=prepared[area_column], fill='tozeroy', mode='lines', name=area_column, line=dict(color=SCADA_PALETTE[0], width=1), fillcolor='rgba(59, 130, 246, 0.05)'))
         fig.add_trace(go.Scatter(x=prepared[x_column], y=prepared[line_column], mode='lines', name=line_column, line=dict(color=SCADA_PALETTE[1], width=2)))
         return apply_default_layout(fig, title=title, x_label=x_column)
     except Exception: return None
@@ -512,13 +511,13 @@ def create_daily_trend_chart(
         ))
         
         fig.update_layout(
-            title={"text": title, "font": {"size": 14, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "x": 0.02, "y": 0.95},
+            title={"text": title, "font": {"size": 12, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "x": 0.02, "y": 0.95},
             template=DEFAULT_TEMPLATE,
             hovermode="x unified",
             showlegend=True,
             xaxis={"title": "Date", "gridcolor": GRID_COLOR, "showgrid": True},
             yaxis={"title": meter_column, "gridcolor": GRID_COLOR, "showgrid": True},
-            margin={"l": 40, "r": 20, "t": 50, "b": 40},
+            margin={"l": 30, "r": 20, "t": 30, "b": 30},
             paper_bgcolor=BG_CARD,
             plot_bgcolor=BG_CARD,
         )
