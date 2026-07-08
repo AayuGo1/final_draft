@@ -352,13 +352,11 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
 # Section 2 — Operations Overview
 # ==================================================================
 def render_operations_overview(dashboard: dict[str, Any]) -> None:
-    """Render the executive Plant Operations Overview table."""
+    """Render the executive Plant Operations Overview."""
 
     departments = dashboard.get("departments", {})
-    rows_html = ""
 
-    # Only display major production/process areas in the Operations Overview
-    OVERVIEW_DEPARTMENTS = [
+    overview_departments = [
         "NPCL",
         "Overall PNG",
         "Dough",
@@ -369,85 +367,36 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         "Donut",
     ]
 
-    for dept_name in OVERVIEW_DEPARTMENTS:
+    rows = []
+
+    for dept_name in overview_departments:
         if dept_name not in departments:
             continue
 
         dept_obj = departments[dept_name]
-
         rep_m = select_representative_meter(dept_obj)
 
-        total_val = dept_obj.get("total_values", {}).get(rep_m)
-        avg_val = dept_obj.get("average_values", {}).get(rep_m)
-        latest_val = dept_obj.get("latest_values", {}).get(rep_m)
-
+        total = dept_obj.get("total_values", {}).get(rep_m)
+        avg = dept_obj.get("average_values", {}).get(rep_m)
+        latest = dept_obj.get("latest_values", {}).get(rep_m)
         unit = dept_obj.get("units", {}).get(rep_m, "")
-        unit_str = str(unit).strip() if unit else ""
 
-        total_str = (
-            f"{total_val:,.0f}"
-            if isinstance(total_val, (int, float))
-            else "—"
+        rows.append(
+            {
+                "Process": dept_name,
+                "Total": f"{total:,.0f} {unit}" if isinstance(total, (int, float)) else "—",
+                "Average": f"{avg:,.1f} {unit}" if isinstance(avg, (int, float)) else "—",
+                "Latest": f"{latest:,.0f} {unit}" if isinstance(latest, (int, float)) else "—",
+                "Status": "🟢 Online" if isinstance(latest, (int, float)) else "⚪ Offline",
+            }
         )
 
-        avg_str = (
-            f"{avg_val:,.1f}"
-            if isinstance(avg_val, (int, float))
-            else "—"
-        )
-
-        latest_str = (
-            f"{latest_val:,.0f}"
-            if isinstance(latest_val, (int, float))
-            else "—"
-        )
-
-        is_online = isinstance(latest_val, (int, float))
-
-        status_html = (
-            '<span style="color:#10B981;">● Online</span>'
-            if is_online
-            else '<span style="color:#4B5563;">○ Offline</span>'
-        )
-
-        rows_html += f"""
-        <tr>
-            <td style="font-weight:600;color:#F3F4F6;">{dept_name}</td>
-            <td>
-                <span class="ops-val">{total_str}</span>
-                <span class="ops-unit">{unit_str}</span>
-            </td>
-            <td>
-                <span class="ops-val">{avg_str}</span>
-                <span class="ops-unit">{unit_str}</span>
-            </td>
-            <td>
-                <span class="ops-val">{latest_str}</span>
-                <span class="ops-unit">{unit_str}</span>
-            </td>
-            <td>{status_html}</td>
-        </tr>
-        """
-
-    if rows_html:
-        st.markdown(
-            f"""
-            <table class="ops-table">
-                <thead>
-                    <tr>
-                        <th>Process</th>
-                        <th>Total</th>
-                        <th>Average</th>
-                        <th>Latest</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows_html}
-                </tbody>
-            </table>
-            """,
-            unsafe_allow_html=True,
+    if rows:
+        df = pd.DataFrame(rows)
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
         )
 # ==================================================================
 # Section 3 — Equipment / Process Selector
