@@ -14,13 +14,17 @@ from parser import read_all_sheets
 from dashboard_data import get_dashboard_data
 
 
-def load_dashboard() -> dict:
+def load_dashboard(start_date: str | None = None, end_date: str | None = None) -> dict:
     """Load the workbook and assemble dashboard-ready data.
 
     Downloads and loads the workbook, reads every worksheet into cleaned
     DataFrames, and assembles the dashboard data dictionary. This is the
     single reusable entry point that all dashboard pages should use
     instead of duplicating the loading pipeline themselves.
+
+    Args:
+        start_date: Optional start date string (YYYY-MM-DD) for filtering.
+        end_date: Optional end date string (YYYY-MM-DD) for filtering.
 
     Returns:
         The dashboard data dictionary produced by
@@ -43,13 +47,18 @@ def load_dashboard() -> dict:
     """
     excel_file = load_excel()
     sheets = read_all_sheets(excel_file)
-    return get_dashboard_data(sheets)
+    return get_dashboard_data(sheets, start_date=start_date, end_date=end_date)
 
 
-def load_dashboard_safe() -> tuple[dict | None, str | None]:
-    """Load dashboard while converting exceptions into friendly messages."""
+def load_dashboard_safe(start_date: str | None = None, end_date: str | None = None) -> tuple[dict | None, str | None]:
+    """Load dashboard while converting exceptions into friendly messages.
+
+    Args:
+        start_date: Optional start date string (YYYY-MM-DD) for filtering.
+        end_date: Optional end date string (YYYY-MM-DD) for filtering.
+    """
     try:
-        return load_dashboard(), None
+        return load_dashboard(start_date, end_date), None
     except ConnectionError:
         return (
             None,
