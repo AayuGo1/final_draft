@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import logging
 import re
 from typing import Any, Final
 
@@ -28,6 +29,10 @@ from config import (
 import services.chart_service as chart_service
 from services.dashboard_loader import load_dashboard_safe
 from dashboard_data import select_representative_meter, get_date_columns
+
+# Setup logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title=PAGE_CONFIG.get("page_title", APP_NAME),
@@ -98,7 +103,7 @@ def _bucket_meters_dynamically(meters: list[str]) -> "dict[str, list[str]]":
     buckets[OTHER_BUCKET_LABEL] = []
 
     for meter in meters:
-        lower_name = meter.lower()
+        lower_name = str(meter).lower()
         placed = False
         for label, keywords in SUBSECTION_RULES:
             if any(kw in lower_name for kw in keywords):
@@ -128,7 +133,7 @@ def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
     if _is_valid_unit(val):
         return str(val).strip()
     
-    base = re.sub(r"_\d+$", "", meter)
+    base = re.sub(r"_\d+$", "", str(meter))
     if base != meter:
         val2 = units_map.get(base)
         if _is_valid_unit(val2):
@@ -717,28 +722,41 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
 
 def render_daily_trend(dashboard: dict[str, Any]) -> None:
     overview_df = dashboard.get("overview", pd.DataFrame())
+    
+    # Debugging: Print dataframe info
+    logger.debug(f"Overview DF Shape: {overview_df.shape}")
+    logger.debug(f"Overview DF Columns: {overview_df.columns.tolist()}")
+    logger.debug(f"Overview DF Head:\n{overview_df.head()}")
+    
     if overview_df.empty:
+        logger.warning("Overview dataframe is empty.")
         return
     
     date_cols = get_date_columns(overview_df)
     if not date_cols:
+        logger.warning("No date columns found in overview.")
         return
     date_col = date_cols[0]
     
     meter_col = chart_service.find_first_numeric_column(overview_df)
     if not meter_col:
+        logger.warning("No numeric column found in overview for daily trend.")
         return
         
-    fig, stats = chart_service.get_daily_trend_figure_and_stats(overview_df, meter_col, date_col)
-    
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Average", stats.get("Average", "—"))
-    col2.metric("Maximum", stats.get("Maximum", "—"))
-    col3.metric("Minimum", stats.get("Minimum", "—"))
-    col4.metric("Latest", stats.get("Latest", "—"))
-    
-    if fig:
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    try:
+        fig, stats = chart_service.get_daily_trend_figure_and_stats(overview_df, meter_col, date_col)
+        
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Average", stats.get("Average", "—"))
+        col2.metric("Maximum", stats.get("Maximum", "—"))
+        col3.metric("Minimum", stats.get("Minimum", "—"))
+        col4.metric("Latest", stats.get("Latest", "—"))
+        
+        if fig:
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    except Exception as e:
+        logger.error(f"Error rendering daily trend: {e}", exc_info=True)
+        st.error(f"Failed to render daily trend: {e}")
 
 
 OPS_CONSOLE_PROCESSES: Final[list[str]] = [
