@@ -88,10 +88,21 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
     start_idx: int = _excel_col_to_index(START_COL_NAME)
     end_idx: int = _excel_col_to_index(END_COL_NAME)
 
-    _validate_boundaries(primary_df, start_idx, end_idx)
+    # Clamp boundaries to prevent IndexError if workbook is smaller than expected
+    max_col_idx = primary_df.shape[1] - 1
+    if start_idx > max_col_idx:
+        raise ValueError(
+            f"Workbook structure error: Start column '{START_COL_NAME}' (index {start_idx}) "
+            f"is beyond the available worksheet width ({primary_df.shape[1]} columns)."
+        )
+    
+    # Safely clamp end index
+    effective_end_idx = min(end_idx, max_col_idx)
+    
+    _validate_boundaries(primary_df, start_idx, effective_end_idx)
 
     # Slice block strictly to targeted layout constraints
-    engineering_block: pd.DataFrame = primary_df.iloc[:, start_idx : end_idx + 1].copy()
+    engineering_block: pd.DataFrame = primary_df.iloc[:, start_idx : effective_end_idx + 1].copy()
     _validate_headers(engineering_block)
 
     # Discover and sanitize dynamic time coordinates (Column B index 1)
@@ -346,25 +357,17 @@ def select_representative_meter(section: dict[str, Any]) -> str:
 
     # 1. Try priority groups
     for keyword_group in REPRESENTATIVE_METER_PRIORITIES:
+        # Find all meters in this group that have valid numeric values
+        valid_matches = []
         for meter in meters:
             if matches_keywords(meter, keyword_group):
-                # Ensure it has a valid numeric value if possible, but prioritize keyword match
-                # If multiple match, take the first one in the list order
                 val = latest_values.get(meter)
                 if isinstance(val, (int, float)):
-                    return meter
-                # If keyword matches but value is missing, we still prefer it over non-keywords? 
-                # Let's stick to: Keyword match + Valid Value is best. 
-                # If Keyword match exists but no value, we continue looking for another keyword match with value.
+                    valid_matches.append(meter)
         
-        # Second pass for this group: if we found keyword matches but they had no values, 
-        # we might want to return one anyway? No, let's look for valid values first.
-        # Actually, let's refine: Find first meter in this keyword group that has a valid value.
-        for meter in meters:
-            if matches_keywords(meter, keyword_group):
-                val = latest_values.get(meter)
-                if isinstance(val, (int, float)):
-                    return meter
+        # Return the first valid match in this priority group
+        if valid_matches:
+            return valid_matches[0]
 
     # 2. Fallback: First meter with valid numeric latest value
     for meter in meters:
@@ -481,6 +484,10 @@ def _validate_workbook(workbook: dict[str, pd.DataFrame]) -> None:
 
 
 def _validate_boundaries(df: pd.DataFrame, start_idx: int, end_idx: int) -> None:
+    """Validate that the sliced engineering block has minimum structural integrity.
+    
+    Note: start_idx and end_idx are already clamped to dataframe bounds before this call.
+    """
     if start_idx < 0 or end_idx >= df.shape[1] or start_idx > end_idx:
         raise ValueError(
             f"Boundary Access Violation: Engineering metrics tracking limit bounds [{START_COL_NAME}:{END_COL_NAME}] "
