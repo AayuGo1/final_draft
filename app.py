@@ -27,6 +27,7 @@ from config import (
 )
 import services.chart_service as chart_service
 from services.dashboard_loader import load_dashboard_safe
+from services.trend_builder import TrendDataBuilder, DataAlignmentError
 from dashboard_data import select_representative_meter, get_date_columns
 
 st.set_page_config(
@@ -35,6 +36,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Initialize Trend Builder (Set debug=False for production)
+trend_builder = TrendDataBuilder(debug=True)
 
 CRITICAL_SYSTEMS = [
     "NPCL", "DG", "GG", "Air compressor", "Traywasher",
@@ -365,6 +369,7 @@ def inject_global_styles() -> None:
             }
             .alarm-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--alarm-color, #22C55E); box-shadow: 0 0 4px var(--alarm-color, #22C55E); }
             .alarm-label { font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; }
+            .alarm-message { font-size: 10px; color: #F8FAFC; }
 
             /* Equipment / Process Cards */
             .equip-card {
@@ -659,7 +664,7 @@ def render_alarm_ribbon(dashboard: dict[str, Any]) -> None:
     <div class="alarm-ribbon" style="--alarm-color:{color};">
         <span class="alarm-dot"></span>
         <span class="alarm-label">{label}</span>
-        <span>{text}</span>
+        <span class="alarm-message">{text}</span>
     </div>""",
         unsafe_allow_html=True,
     )
@@ -719,25 +724,37 @@ def render_daily_trend(dashboard: dict[str, Any]) -> None:
     if overview_df.empty:
         return
     
-    date_cols = get_date_columns(overview_df)
-    if not date_cols:
-        return
-    date_col = date_cols[0]
-    
-    meter_col = chart_service.find_first_numeric_column(overview_df)
-    if not meter_col:
-        return
+    try:
+        # Use TrendDataBuilder to get clean data
+        meter_col = chart_service.find_first_numeric_column(overview_df)
+        if not meter_col:
+            return
+            
+        trend_df = trend_builder.build_single_meter_trend(
+            overview_df=overview_df,
+            dept_df=overview_df, # In this case, overview IS the source
+            meter_col=meter_col,
+            department_name="Overview"
+        )
         
-    fig, stats = chart_service.get_daily_trend_figure_and_stats(overview_df, meter_col, date_col)
-    
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Average", stats.get("Average", "—"))
-    col2.metric("Maximum", stats.get("Maximum", "—"))
-    col3.metric("Minimum", stats.get("Minimum", "—"))
-    col4.metric("Latest", stats.get("Latest", "—"))
-    
-    if fig:
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        if trend_df.empty:
+            return
+            
+        fig, stats = chart_service.get_daily_trend_figure_and_stats(trend_df, meter_col, "Date")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Average", stats.get("Average", "—"))
+        col2.metric("Maximum", stats.get("Maximum", "—"))
+        col3.metric("Minimum", stats.get("Minimum", "—"))
+        col4.metric("Latest", stats.get("Latest", "—"))
+        
+        if fig:
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            
+    except DataAlignmentError as e:
+        st.warning(f"Data Alignment Issue in Daily Trend: {e}")
+    except Exception as e:
+        st.error(f"Failed to render daily trend: {e}")
 
 
 OPS_CONSOLE_PROCESSES: Final[list[str]] = [
@@ -926,8 +943,12 @@ def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj:
     if process_name == "NPCL":
         col1, col2 = st.columns([2, 1])
         with col1:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Load Trend", fig)
+            try:
+                trend_df = trend_builder.build_single_meter_trend(overview_df, df_block, rep_m, process_name)
+                fig = chart_service.create_line_chart(trend_df, "Date", rep_m, f"{rep_m} Trend")
+                _chart_box("Load Trend", fig)
+            except DataAlignmentError as e:
+                st.warning(f"Data Issue: {e}")
         with col2:
             fig = chart_service.create_gauge_chart(latest_val, "Demand", maximum=max_ceiling, unit=unit_lbl)
             _chart_box("Demand Gauge", fig)
@@ -937,8 +958,12 @@ def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj:
             fig = chart_service.create_gauge_chart(latest_val, "Pressure", maximum=max_ceiling, unit=unit_lbl)
             _chart_box("Pressure Gauge", fig)
         with col2:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Flow Trend / Stability", fig)
+            try:
+                trend_df = trend_builder.build_single_meter_trend(overview_df, df_block, rep_m, process_name)
+                fig = chart_service.create_line_chart(trend_df, "Date", rep_m, f"{rep_m} Trend")
+                _chart_box("Flow Trend / Stability", fig)
+            except DataAlignmentError as e:
+                st.warning(f"Data Issue: {e}")
     elif process_name in ("Freon Refrigeration", "Ammonia Refrigeration"):
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -954,13 +979,21 @@ def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj:
             fig = chart_service.create_bullet_chart(latest_val, target_val, "Generation vs Target", unit=unit_lbl)
             _chart_box("Generation", fig)
         with col2:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Output Trend", fig)
+            try:
+                trend_df = trend_builder.build_single_meter_trend(overview_df, df_block, rep_m, process_name)
+                fig = chart_service.create_line_chart(trend_df, "Date", rep_m, f"{rep_m} Trend")
+                _chart_box("Output Trend", fig)
+            except DataAlignmentError as e:
+                st.warning(f"Data Issue: {e}")
     else:
         col1, col2 = st.columns([2, 1])
         with col1:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Primary Telemetry", fig)
+            try:
+                trend_df = trend_builder.build_single_meter_trend(overview_df, df_block, rep_m, process_name)
+                fig = chart_service.create_line_chart(trend_df, "Date", rep_m, f"{rep_m} Trend")
+                _chart_box("Primary Telemetry", fig)
+            except DataAlignmentError as e:
+                st.warning(f"Data Issue: {e}")
         with col2:
             if rep_m:
                 fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
@@ -972,22 +1005,55 @@ def _render_subsection_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any], 
     _render_meter_kpi_strip(dept_obj, subsection_meters)
 
     if len(subsection_meters) >= 1:
-        sub_section_obj = dict(dept_obj)
-        sub_section_obj["meters"] = subsection_meters
-        fig = chart_service.create_department_multi_line_chart(
-            overview_dataframe=overview_df, section=sub_section_obj, title="Channel Trend"
-        )
-        _chart_box("Channel Trend", fig)
+        try:
+            # USE BUILDER FOR MULTI-METER
+            trend_df = trend_builder.build_multi_meter_trend(
+                overview_df=overview_df,
+                dept_df=dept_obj["dataframe"],
+                meter_cols=subsection_meters,
+                department_name="Subsection"
+            )
+            
+            if not trend_df.empty:
+                fig = chart_service.create_multi_line_chart(
+                    dataframe=trend_df,
+                    x_column="Date",
+                    y_columns=subsection_meters,
+                    title="Channel Trend"
+                )
+                _chart_box("Channel Trend", fig)
+        except DataAlignmentError as e:
+            st.warning(f"Data Issue in Subsection: {e}")
 
 
 def _render_history_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any]) -> None:
     overview_df = dashboard.get("overview", pd.DataFrame())
-    fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-    _chart_box("Representative Channel History", fig)
-    fig2 = chart_service.create_department_multi_line_chart(
-        overview_dataframe=overview_df, section=dept_obj, title="All Channels — Full History"
-    )
-    _chart_box("Multi-Channel History", fig2)
+    rep_m = select_representative_meter(dept_obj)
+    
+    try:
+        if rep_m:
+            trend_df = trend_builder.build_single_meter_trend(overview_df, dept_obj["dataframe"], rep_m, "History")
+            fig = chart_service.create_line_chart(trend_df, "Date", rep_m, f"{rep_m} History")
+            _chart_box("Representative Channel History", fig)
+            
+        trend_df_multi = trend_builder.build_multi_meter_trend(
+            overview_df=overview_df,
+            dept_df=dept_obj["dataframe"],
+            meter_cols=dept_obj.get("meters", []),
+            department_name="History"
+        )
+        
+        if not trend_df_multi.empty:
+            fig2 = chart_service.create_multi_line_chart(
+                dataframe=trend_df_multi,
+                x_column="Date",
+                y_columns=dept_obj.get("meters", []),
+                title="All Channels — Full History"
+            )
+            _chart_box("Multi-Channel History", fig2)
+            
+    except DataAlignmentError as e:
+        st.warning(f"Data Issue in History: {e}")
 
 
 def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
