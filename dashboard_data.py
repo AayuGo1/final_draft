@@ -67,6 +67,88 @@ def get_dashboard_data(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
     return build_dashboard(workbook)
 
 
+def _is_valid_date_string(val: Any) -> bool:
+    """Check if a value represents a valid engineering date."""
+    if pd.isna(val) or val is None:
+        return False
+    
+    dt = None
+    try:
+        if isinstance(val, (datetime.datetime, datetime.date)):
+            dt = val
+        else:
+            cleaned_str = str(val).strip().split()[0]
+            for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y"):
+                try:
+                    dt = datetime.datetime.strptime(cleaned_str, fmt)
+                    break
+                except ValueError:
+                    continue
+        
+        if dt and MIN_VALID_YEAR <= dt.year <= MAX_VALID_YEAR:
+            return True
+    except Exception:
+        pass
+    
+    return False
+
+
+def _get_date_string(val: Any) -> str | None:
+    """Extract a standardized date string from a value."""
+    if pd.isna(val) or val is None:
+        return None
+    
+    dt = None
+    try:
+        if isinstance(val, (datetime.datetime, datetime.date)):
+            dt = val
+        else:
+            cleaned_str = str(val).strip().split()[0]
+            for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y"):
+                try:
+                    dt = datetime.datetime.strptime(cleaned_str, fmt)
+                    break
+                except ValueError:
+                    continue
+        
+        if dt and MIN_VALID_YEAR <= dt.year <= MAX_VALID_YEAR:
+            return dt.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    
+    return None
+
+
+def _build_valid_row_mask(primary_df: pd.DataFrame, readings_matrix: pd.DataFrame) -> pd.Series:
+    """Create a boolean mask for telemetry rows based on valid dates in Column B.
+    
+    Args:
+        primary_df: The original dataframe from the parser.
+        readings_matrix: The sliced dataframe containing only telemetry data.
+        
+    Returns:
+        A boolean Series indexed like readings_matrix, True if the corresponding
+        row in primary_df has a valid date in Column B.
+    """
+    # Readings matrix starts at iloc[2] of primary_df (Row 2 is first telemetry row)
+    # We need to map readings_matrix index back to primary_df index.
+    # readings_matrix was created via primary_df.iloc[2:].copy() or similar slicing.
+    # If readings_matrix preserves the original index, we can use it directly.
+    # If it was reset_index(drop=True), we need to offset by 2.
+    
+    # In our current implementation, readings_matrix = engineering_block.iloc[2:]
+    # engineering_block is a slice of primary_df. So readings_matrix retains the original index from primary_df.
+    
+    # Get the date column (Column B, index 1) from primary_df for the relevant rows
+    date_series = primary_df.iloc[readings_matrix.index, 1]
+    
+    # Apply validation to each date
+    mask = date_series.apply(_is_valid_date_string)
+    
+    # Ensure the mask is indexed correctly for readings_matrix
+    return mask
+
+
 def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
     """Orchestrate the extraction, cleaning, validation, and compilation of dashboard data.
 
@@ -105,20 +187,31 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
     engineering_block: pd.DataFrame = primary_df.iloc[:, start_idx : effective_end_idx + 1].copy()
     _validate_headers(engineering_block)
 
-    # Discover and sanitize dynamic time coordinates (Column B index 1)
-    available_dates: list[str] = _extract_validated_dates(primary_df)
-    available_months: list[str] = sorted(list({date_str[:7] for date_str in available_dates}))
-
     # WORKBOOK STRUCTURE (confirmed):
     #   Row 0 → Department headers (merged, forward-filled)
     #   Row 1 → Meter names
     #   Row 2 → First telemetry row (no unit row exists in this workbook)
     dept_headers: pd.Series = engineering_block.iloc[0].ffill()
     meter_headers: pd.Series = engineering_block.iloc[1]
-    readings_matrix: pd.DataFrame = engineering_block.iloc[2:].reset_index(drop=True)
+    
+    # Keep original index by NOT resetting it to preserve row alignment with dates
+    readings_matrix: pd.DataFrame = engineering_block.iloc[2:]
 
-    # Intermediate storage mapping to optimize performance and prevent alignment drift
-    dept_column_collector: dict[str, dict[str, list[Any]]] = {}
+    # Build valid row mask based on actual date content in Column B
+    valid_row_mask = _build_valid_row_mask(primary_df, readings_matrix)
+    
+    # Extract all valid dates for summary/metadata purposes
+    available_dates: list[str] = []
+    date_series_b = primary_df.iloc[readings_matrix.index, 1]
+    for val in date_series_b:
+        d = _get_date_string(val)
+        if d:
+            available_dates.append(d)
+            
+    available_months: list[str] = sorted(list({date_str[:7] for date_str in available_dates}))
+
+    # Intermediate storage mapping to track column positions and deduplicated names
+    dept_columns_map: dict[str, list[tuple[int, str]]] = {}
     dept_metadata_collector: dict[str, dict[str, Any]] = {}
 
     for pos in range(engineering_block.shape[1]):
@@ -131,8 +224,8 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
         if not raw_dept or not raw_meter:
             continue
 
-        if raw_dept not in dept_column_collector:
-            dept_column_collector[raw_dept] = {}
+        if raw_dept not in dept_columns_map:
+            dept_columns_map[raw_dept] = []
             dept_metadata_collector[raw_dept] = {
                 "column_indexes": [],
                 "source_sheet": first_sheet_name,
@@ -146,7 +239,8 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
         # Handle column name deduplication within the same department safely
         base_meter: str = raw_meter
         counter: int = 1
-        while base_meter in dept_column_collector[raw_dept]:
+        existing_meters = {item[1] for item in dept_columns_map[raw_dept]}
+        while base_meter in existing_meters:
             base_meter = f"{raw_meter}_{counter}"
             counter += 1
 
@@ -155,18 +249,22 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
         # as the dataframe columns to prevent mismatched lookups later.
         dept_metadata_collector[raw_dept]["units_map"][base_meter] = raw_unit
 
-        # Direct row array population minimizes structural tracking costs
-        dept_column_collector[raw_dept][base_meter] = readings_matrix.iloc[:, pos].tolist()
+        # Store the relative column position in readings_matrix and the deduplicated meter name
+        dept_columns_map[raw_dept].append((pos, base_meter))
 
     # Construct compiled department models using vectorized operations where appropriate
     departments_payload: dict[str, dict[str, Any]] = {}
-    for dept_name, meters_data in dept_column_collector.items():
+    for dept_name, col_info in dept_columns_map.items():
         meta: dict[str, Any] = dept_metadata_collector[dept_name]
         
-        # Guard column alignment by bulk-instantiating the underlying DataFrame once
-        dept_df = pd.DataFrame(meters_data)
+        positions = [info[0] for info in col_info]
+        new_names = [info[1] for info in col_info]
         
-        meters_list: list[str] = list(meters_data.keys())
+        # Slice directly from readings_matrix to preserve original structure and index
+        dept_df = readings_matrix.iloc[:, positions].copy()
+        dept_df.columns = new_names
+        
+        meters_list: list[str] = new_names
         units_map: dict[str, str] = meta["units_map"]
 
         latest_values: dict[str, Any] = {}
@@ -176,10 +274,18 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
         # NEW HIERARCHICAL CHANNEL STRUCTURE
         channels: dict[str, dict[str, Any]] = {}
 
+        # Apply the valid row mask to filter out non-telemetry rows
+        valid_dept_df = dept_df[valid_row_mask]
+        
+        # Get corresponding valid dates for history alignment
+        # We use the same mask on the date series from primary_df
+        date_series_b = primary_df.iloc[readings_matrix.index, 1]
+        valid_dates_series = date_series_b[valid_row_mask].apply(_get_date_string)
+
         for meter in meters_list:
-            series: pd.Series = dept_df[meter]
+            series: pd.Series = valid_dept_df[meter]
             
-            # Calculate metrics
+            # Calculate metrics directly on the filtered dataframe column
             latest_val = _calculate_latest_valid_value(series)
             total_val = _calculate_sum(series)
             avg_val = _calculate_mean(series)
@@ -189,6 +295,21 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
             total_values[meter] = total_val
             average_values[meter] = avg_val
             
+            # Prepare history DataFrame with date and value
+            # Both come from the same masked subset, ensuring perfect alignment
+            history_df = pd.DataFrame()
+            if not series.empty:
+                # Drop any potential NaNs from the date side just in case
+                clean_mask = valid_dates_series.notna()
+                final_dates = valid_dates_series[clean_mask].values
+                final_vals = series[clean_mask].values
+                
+                if len(final_dates) > 0:
+                    history_df = pd.DataFrame({
+                        "date": final_dates,
+                        "value": final_vals
+                    })
+
             # Store in hierarchical channel structure
             # Every field strictly refers to the exact same engineering channel (meter)
             channels[meter] = {
@@ -197,7 +318,7 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
                 "latest": latest_val,
                 "average": avg_val,
                 "total": total_val,
-                "history": series,
+                "history": history_df,
             }
 
         departments_payload[dept_name] = {
@@ -445,54 +566,36 @@ def _extract_validated_dates(primary_df: pd.DataFrame) -> list[str]:
     validated_dates: list[str] = []
 
     for val in raw_date_series:
-        if pd.isna(val) or val is None:
-            continue
-        try:
-            dt = None
-            if isinstance(val, (datetime.datetime, datetime.date)):
-                dt = val
-            else:
-                cleaned_str = str(val).strip().split()[0]
-                # Match common formats safely without relying on standard implicit timestamp transformations
-                for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y"):
-                    try:
-                        dt = datetime.datetime.strptime(cleaned_str, fmt)
-                        break
-                    except ValueError:
-                        continue
-            
-            if dt and MIN_VALID_YEAR <= dt.year <= MAX_VALID_YEAR:
-                validated_dates.append(dt.strftime("%Y-%m-%d"))
-        except Exception:
-            continue
+        d = _get_date_string(val)
+        if d:
+            validated_dates.append(d)
 
-    return sorted(list(set(validated_dates)))
+    return validated_dates
 
 
 def _calculate_latest_valid_value(series: pd.Series) -> Any:
-    """Iterate backwards to resolve the absolute last authentic telemetry float sample."""
-    for idx in range(len(series) - 1, -1, -1):
-        val = series.iloc[idx]
-        if pd.isna(val) or val is None:
-            continue
-        cleaned = str(val).strip()
-        if not cleaned or cleaned.startswith('#') or any(err in cleaned.upper() for err in ('VALUE!', 'NAME?', 'DIV/0')):
-            continue
-        try:
-            return float(cleaned)
-        except ValueError:
-            continue
-    return None
+    """Resolve the absolute last authentic telemetry float sample."""
+    # Series is already filtered by valid rows.
+    # Convert to numeric to handle any potential string artifacts, then drop NaN.
+    numeric_series = pd.to_numeric(series, errors='coerce').dropna()
+    
+    if numeric_series.empty:
+        return None
+        
+    # Return the last value
+    return float(numeric_series.iloc[-1])
 
 
 def _calculate_sum(series: pd.Series) -> float | None:
     """Compute vectorized calculation sum ignoring string metadata, units, and formula anomalies."""
+    # Series is already filtered by valid rows.
     numeric_series = pd.to_numeric(series, errors='coerce').dropna()
     return float(numeric_series.sum()) if not numeric_series.empty else None
 
 
 def _calculate_mean(series: pd.Series) -> float | None:
     """Compute average metrics checking valid array distributions effectively."""
+    # Series is already filtered by valid rows.
     numeric_series = pd.to_numeric(series, errors='coerce').dropna()
     return float(numeric_series.mean()) if not numeric_series.empty else None
 
