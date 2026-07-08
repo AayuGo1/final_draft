@@ -7,6 +7,7 @@ domain logic services to render an enterprise dark SCADA interface.
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import re
 from typing import Any, Final
@@ -86,14 +87,6 @@ EXEC_TILE_ICONS: Final[dict[str, str]] = {
 
 # ------------------------------------------------------------------
 # Dynamic subsection discovery.
-#
-# The parsed workbook (dashboard_data.py) only carries three header rows
-# (Department / Meter / Unit) — there is no explicit "subsection" row in
-# the source data, and dashboard_data.py / the parser are off-limits.
-# Subsections are therefore *derived* at display time from each
-# department's real, workbook-provided meter names — never hardcoded per
-# department — by matching engineering keyword patterns. A department
-# only ever gets the buckets its actual meters produce.
 # ------------------------------------------------------------------
 SUBSECTION_RULES: Final[list[tuple[str, list[str]]]] = [
     ("Power & Demand", ["power", "kva", "demand", "load", "kw"]),
@@ -106,13 +99,12 @@ SUBSECTION_RULES: Final[list[tuple[str, list[str]]]] = [
 ]
 OTHER_BUCKET_LABEL: Final[str] = "Other Channels"
 
+# Global counter to ensure deterministic unique keys for Plotly charts across reruns
+_chart_counter = 0
+
 
 def _bucket_meters_dynamically(meters: list[str]) -> "dict[str, list[str]]":
-    """Group a department's real meter names into engineering subsections.
-
-    Purely a display-time grouping over data already produced by the
-    (untouched) backend — no new engineering values are computed here.
-    """
+    """Group a department's real meter names into engineering subsections."""
     buckets: dict[str, list[str]] = {label: [] for label, _ in SUBSECTION_RULES}
     buckets[OTHER_BUCKET_LABEL] = []
 
@@ -127,27 +119,16 @@ def _bucket_meters_dynamically(meters: list[str]) -> "dict[str, list[str]]":
         if not placed:
             buckets[OTHER_BUCKET_LABEL].append(meter)
 
-    # Preserve rule order, drop empty buckets.
     return {label: meters_in_bucket for label, meters_in_bucket in buckets.items() if meters_in_bucket}
 
 
 def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
-    """Resolve a meter's display unit, tolerating within-department name collisions.
-
-    dashboard_data.py keys its internal units_map by the *raw* (pre-dedup)
-    meter label, so a deduplicated column name like "Flow_1" has no direct
-    entry. This falls back to the base name (stripping the "_<n>" suffix)
-    so the unit at least renders instead of going blank. This does not
-    resolve which of the colliding columns the unit truly belongs to —
-    that ambiguity lives in the backend's units_map construction and can't
-    be corrected here without touching dashboard_data.py.
-    """
+    """Resolve a meter's display unit, tolerating within-department name collisions."""
     units_map = dept_obj.get("units", {})
     val = units_map.get(meter)
     if val and str(val).strip():
         return str(val).strip()
     
-    # Fallback: Strip numeric suffixes (e.g., "Flow_1" -> "Flow") to find base unit
     base = re.sub(r"_\d+$", "", meter)
     if base != meter:
         val2 = units_map.get(base)
@@ -158,7 +139,7 @@ def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
 
 
 # ==================================================================
-# Data access (untouched logic, only cached in session_state)
+# Data access
 # ==================================================================
 
 def get_dashboard() -> tuple[dict[str, Any] | None, str | None]:
@@ -196,12 +177,6 @@ def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) 
 
 
 def _format_exec_value(value: float) -> str:
-    """Format a numeric value for tiles/KPIs.
-
-    Whole (or near-whole) numbers render without decimals; otherwise up to
-    two decimal places are shown. Purely display formatting — does not
-    alter the underlying value.
-    """
     rounded = round(float(value), 2)
     if abs(rounded - round(rounded)) < 0.005:
         return f"{rounded:,.0f}"
@@ -209,11 +184,6 @@ def _format_exec_value(value: float) -> str:
 
 
 def _exec_trend_chip(latest_val: float, avg_val: Any) -> tuple[str, str]:
-    """Return (css_class, label) for a lightweight visual trend chip.
-
-    Purely cosmetic — derived only from already-computed latest/average
-    values, no new engineering calculation is introduced.
-    """
     if not isinstance(avg_val, (int, float)) or avg_val == 0:
         return "trend-flat", "Stable"
     ratio = latest_val / avg_val
@@ -225,7 +195,7 @@ def _exec_trend_chip(latest_val: float, avg_val: Any) -> tuple[str, str]:
 
 
 # ==================================================================
-# Styles — industrial SCADA theme, 8px grid
+# Styles
 # ==================================================================
 
 def inject_global_styles() -> None:
@@ -243,7 +213,6 @@ def inject_global_styles() -> None:
             * {{ box-sizing: border-box; }}
             .tnum {{ font-family: 'JetBrains Mono', 'Inter', monospace; font-variant-numeric: tabular-nums; }}
 
-            /* ---------- Header ---------- */
             .scada-header {{
                 display: flex; justify-content: space-between; align-items: center;
                 background: linear-gradient(180deg, #12151C 0%, #0F1218 100%);
@@ -269,7 +238,6 @@ def inject_global_styles() -> None:
             .header-stat-value {{ display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: #D1D5DB; font-variant-numeric: tabular-nums; }}
             .status-dot {{ width: 6px; height: 6px; border-radius: 1px; flex-shrink: 0; box-shadow: 0 0 4px currentColor; }}
 
-            /* ---------- Section headers ---------- */
             .section-title {{
                 font-size: 10px; font-weight: 800; color: #566072; text-transform: uppercase;
                 letter-spacing: 1.4px; margin-bottom: 8px; margin-top: 18px;
@@ -278,7 +246,6 @@ def inject_global_styles() -> None:
             .section-title::before {{ content: ""; width: 3px; height: 10px; background: #3B82F6; border-radius: 1px; }}
             .section-title::after {{ content: ""; flex: 1; height: 1px; background: #1C212B; }}
 
-            /* ---------- Executive tiles ---------- */
             .exec-grid {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }}
             .exec-tile {{
                 background: #10131A; border: 1px solid #1C212B; border-top: 2px solid var(--accent, #3B82F6);
@@ -311,7 +278,6 @@ def inject_global_styles() -> None:
             .status-online {{ color: #10B981; }}
             .status-offline {{ color: #EF4444; }}
 
-            /* ---------- Operations console (row-based) ---------- */
             .ops-console {{
                 background: #10131A; border: 1px solid #1C212B; border-radius: 3px; overflow: hidden;
             }}
@@ -333,7 +299,6 @@ def inject_global_styles() -> None:
             .ops-val {{ color: #F3F4F6; font-weight: 700; }}
             .ops-unit {{ color: #566072; font-size: 9px; margin-left: 2px; font-family: 'Inter', sans-serif; }}
 
-            /* ---------- Alarm ribbon ---------- */
             .alarm-ribbon {{
                 display: flex; align-items: center; gap: 8px;
                 background: linear-gradient(90deg, rgba(255,255,255,0.015), transparent);
@@ -344,7 +309,6 @@ def inject_global_styles() -> None:
             .alarm-dot {{ width: 7px; height: 7px; border-radius: 50%; background: var(--alarm-color, #10B981); flex-shrink: 0; box-shadow: 0 0 6px var(--alarm-color, #10B981); }}
             .alarm-label {{ font-size: 8px; font-weight: 800; color: #566072; text-transform: uppercase; letter-spacing: 1px; margin-right: 4px; }}
 
-            /* ---------- Process selector: clickable equipment cards ---------- */
             div[data-testid="column"] {{ transition: transform 0.15s ease; }}
             div[data-testid="column"]:has(button[kind="secondary"]):hover {{ transform: translateY(-2px); cursor: pointer; }}
             div[data-testid="column"]:has(button[kind="secondary"]):hover .equip-card {{
@@ -381,8 +345,6 @@ def inject_global_styles() -> None:
                 color: var(--accent, #8B5CF6); padding-top: 6px; margin-top: 2px; border-top: 1px dashed #1C212B;
             }}
 
-            /* make the underlying streamlit button an invisible full-width click target
-               positioned to overlay the card (illusion of a single clickable unit) */
             div[data-testid="stButton"] {{ margin-top: -34px; position: relative; z-index: 5; }}
             div[data-testid="stButton"] > button {{
                 background: transparent !important; border: none !important; padding: 0 !important;
@@ -391,7 +353,6 @@ def inject_global_styles() -> None:
             }}
             div[data-testid="stButton"] > button:focus {{ box-shadow: none !important; }}
 
-            /* ---------- KPI strip (workspace) ---------- */
             .kpi-strip {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin-bottom: 8px; }}
             .kpi-cell {{
                 background: #0D0F14; border: 1px solid #171B24; border-radius: 3px; padding: 8px 12px;
@@ -400,7 +361,6 @@ def inject_global_styles() -> None:
             .kpi-cell-value {{ font-size: 17px; font-weight: 700; color: #F3F4F6; font-family: 'JetBrains Mono', monospace; }}
             .kpi-cell-unit {{ font-size: 9.5px; color: #6B7280; margin-left: 3px; font-family: 'Inter', sans-serif; }}
 
-            /* ---------- Workspace / dedicated department view ---------- */
             @keyframes fadeSlideIn {{
                 0% {{ opacity: 0; transform: translateY(6px); }}
                 100% {{ opacity: 1; transform: translateY(0); }}
@@ -429,7 +389,6 @@ def inject_global_styles() -> None:
                 letter-spacing: 0.7px; margin-bottom: 5px; padding: 0 2px;
             }}
 
-            /* Tabs inside the dedicated department workspace */
             .workspace div[data-testid="stTabs"] button[data-baseweb="tab"] {{
                 font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
                 color: #6B7280; padding: 8px 12px;
@@ -438,7 +397,6 @@ def inject_global_styles() -> None:
                 color: #F3F4F6;
             }}
 
-            /* ---------- DataFrames (registers) ---------- */
             div[data-testid="stDataFrame"] {{
                 border: 1px solid #1C212B !important; border-radius: 3px !important; overflow: hidden !important;
             }}
@@ -454,7 +412,6 @@ def inject_global_styles() -> None:
             }}
             div[data-testid="stDataFrame"] tr:hover td {{ background: #1A1F29 !important; }}
 
-            /* ---------- Footer ---------- */
             .app-footer {{
                 margin-top: 18px; padding: 7px 16px; border-radius: 3px; background: #10131A;
                 border: 1px solid #1C212B; font-size: 9px; color: #4B5563; text-align: center;
@@ -530,10 +487,8 @@ def render_header(dashboard: dict[str, Any] | None) -> None:
 # Alarm Ribbon
 # ==================================================================
 
-# Soft, non-authoritative thresholds used only to color the ribbon.
-# These do NOT alter any engineering calculation — display hint only.
 ALARM_WATCHLIST: Final[dict[str, float]] = {
-    "Air compressor": 0.90,   # latest / gauge-ceiling ratio
+    "Air compressor": 0.90,
     "DG": 0.90,
     "GG": 0.90,
 }
@@ -541,7 +496,7 @@ ALARM_WATCHLIST: Final[dict[str, float]] = {
 
 def render_alarm_ribbon(dashboard: dict[str, Any]) -> None:
     departments = dashboard.get("departments", {})
-    alarms: list[tuple[str, str]] = []  # (severity, message)
+    alarms: list[tuple[str, str]] = []
 
     for dept_name, threshold_ratio in ALARM_WATCHLIST.items():
         dept_obj = departments.get(dept_name)
@@ -708,7 +663,6 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
 # ==================================================================
 
 def _top_metrics_for(dept_obj: dict[str, Any], meters: list[str], n: int = 3) -> list[tuple[str, str]]:
-    """Pull up to n (meter_name, formatted latest value + unit) pairs for a card."""
     latest_vals = dept_obj.get("latest_values", {})
     out: list[tuple[str, str]] = []
     for m in meters[:n]:
@@ -772,13 +726,29 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
 
 
 # ==================================================================
-# Section 4 — Dedicated department workspace (single active department)
+# Section 4 — Dedicated department workspace
 # ==================================================================
 
 def _chart_box(label: str, fig) -> None:
+    """Render a chart inside a styled container with a guaranteed unique Streamlit element ID.
+    
+    Clones the Plotly figure to prevent issues with cached figure reuse, 
+    shared references, or duplicate rendering of the same object.
+    """
+    global _chart_counter
+    _chart_counter += 1
+    unique_key = f"chart_box_{_chart_counter}"
+    
     st.markdown(f'<div class="chart-box"><div class="chart-label">{label}</div>', unsafe_allow_html=True)
     if fig:
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        # Create a fresh independent Figure instance to prevent StreamlitDuplicateElementId
+        # when the same cached figure object is rendered multiple times across tabs.
+        try:
+            fig_to_render = copy.deepcopy(fig)
+        except Exception:
+            fig_to_render = fig
+            
+        st.plotly_chart(fig_to_render, use_container_width=True, config={"displayModeBar": False}, key=unique_key)
     else:
         st.markdown(
             '<div style="font-size:10px;color:#4B5563;padding:10px 2px;">No plottable data for this channel.</div>',
@@ -859,7 +829,6 @@ def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj:
 
 
 def _render_subsection_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any], subsection_meters: list[str]) -> None:
-    """Render KPI cells + a multi-channel trend chart for one dynamically-derived subsection."""
     overview_df = dashboard.get("overview", pd.DataFrame())
     _render_meter_kpi_strip(dept_obj, subsection_meters)
 
@@ -918,11 +887,6 @@ def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
 
 
 def render_department_workspace(dashboard: dict[str, Any], process_name: str) -> None:
-    """Render ONLY the selected department's dedicated workspace.
-
-    No other department's charts, tables, or data are built or rendered —
-    the workspace is fully replaced on each selection, not stacked.
-    """
     departments = dashboard.get("departments", {})
     dept_obj = departments.get(process_name, {})
     if not dept_obj:
@@ -942,7 +906,6 @@ def render_department_workspace(dashboard: dict[str, Any], process_name: str) ->
         unsafe_allow_html=True,
     )
 
-    # Dynamic subsections derived purely from this department's real meter names.
     dynamic_buckets = _bucket_meters_dynamically(meters)
 
     tab_labels = ["Overview", *dynamic_buckets.keys(), "History", "Diagnostics"]
@@ -983,6 +946,9 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
 # ==================================================================
 
 def main() -> None:
+    global _chart_counter
+    _chart_counter = 0  # Reset counter to ensure deterministic unique keys on every rerun
+    
     inject_global_styles()
     dashboard, error_msg = get_dashboard()
 
