@@ -50,12 +50,14 @@ ZERO_COLOR = "rgba(255,255,255,0.08)"
 
 FONT_FAMILY: Final[str] = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
 
+
 def validate_columns(dataframe: pd.DataFrame, columns: list[str]) -> None:
     if not isinstance(dataframe, pd.DataFrame):
         raise ValueError(f"Expected pandas.DataFrame, got {type(dataframe).__name__}.")
     missing = [col for col in columns if col not in dataframe.columns]
     if missing:
         raise ValueError(f"Columns not found in the matrix workspace: {missing}.")
+
 
 def prepare_numeric_columns(dataframe: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     validate_columns(dataframe, columns)
@@ -64,6 +66,7 @@ def prepare_numeric_columns(dataframe: pd.DataFrame, columns: list[str]) -> pd.D
         prepared[column] = pd.to_numeric(prepared[column], errors="coerce")
     return prepared
 
+
 def find_first_numeric_column(dataframe: pd.DataFrame) -> str | None:
     if not isinstance(dataframe, pd.DataFrame) or dataframe.empty:
         return None
@@ -71,6 +74,7 @@ def find_first_numeric_column(dataframe: pd.DataFrame) -> str | None:
         if pd.to_numeric(dataframe[column], errors="coerce").notna().any():
             return column
     return None
+
 
 def align_dates_with_meter(
     overview_dataframe: pd.DataFrame, meter_series: pd.Series,
@@ -100,6 +104,7 @@ def align_dates_with_meter(
     trend_df = trend_df.dropna(subset=[date_column_label, meter_name])
     return trend_df if not trend_df.empty else None
 
+
 def _align_dates_with_multiple_meters(
     overview_dataframe: pd.DataFrame, dataframe_block: pd.DataFrame,
     columns: list[str], date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
@@ -127,6 +132,7 @@ def _align_dates_with_multiple_meters(
     compiled_df = compiled_df.dropna(subset=[date_column_label])
     return compiled_df if not compiled_df.empty else None
 
+
 def build_section_trend_data(
     overview_dataframe: pd.DataFrame, section: dict[str, Any],
     date_column_label: str = DEFAULT_DATE_COLUMN_LABEL,
@@ -143,6 +149,7 @@ def build_section_trend_data(
         overview_dataframe, meters_df[meter_col], date_column_label=date_column_label,
     )
     return (trend_df, date_column_label, meter_col) if trend_df is not None else None
+
 
 def build_section_trend_chart(
     overview_dataframe: pd.DataFrame, section: dict[str, Any],
@@ -162,6 +169,7 @@ def build_section_trend_chart(
         )
     except Exception:
         return None
+
 
 def create_department_multi_line_chart(
     overview_dataframe: pd.DataFrame, section: dict[str, Any], title: str,
@@ -190,6 +198,7 @@ def create_department_multi_line_chart(
         y_columns=numeric_meters, title=title, x_label=x_label, y_label=y_label,
     )
 
+
 def apply_default_layout(
     figure: go.Figure, title: str, x_label: str | None = None, y_label: str | None = None,
 ) -> go.Figure:
@@ -209,6 +218,7 @@ def apply_default_layout(
     if y_label is not None: figure.update_yaxes(title_text=y_label)
     return figure
 
+
 def apply_minimal_layout(figure: go.Figure) -> go.Figure:
     figure.update_layout(
         template=DEFAULT_TEMPLATE, showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -217,6 +227,7 @@ def apply_minimal_layout(figure: go.Figure) -> go.Figure:
         yaxis={"visible": False, "showgrid": False, "fixedrange": True}, autosize=True,
     )
     return figure
+
 
 def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     try:
@@ -227,6 +238,7 @@ def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, tit
         figure.add_trace(go.Scatter(x=prepared[x_column], y=prepared[y_column], mode="lines", name=y_column, line={"color": SCADA_PALETTE[0], "width": 2}, fill="tozeroy", fillcolor="rgba(59, 130, 246, 0.05)", hovertemplate=f"<b>%{{x}}</b><br>{y_column}: %{{y:,.2f}}<extra></extra>"))
         return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or y_column)
     except Exception: return None
+
 
 def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     try:
@@ -240,6 +252,7 @@ def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: l
         return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or "Readings")
     except Exception: return None
 
+
 def create_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: str | list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     try:
         cols_list = [y_columns] if isinstance(y_columns, str) else y_columns
@@ -251,6 +264,7 @@ def create_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: str | li
         return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or (cols_list[0] if len(cols_list) == 1 else "Value"))
     except Exception: return None
 
+
 def create_stacked_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     try:
         if not y_columns: return None
@@ -260,6 +274,7 @@ def create_stacked_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: 
         figure.update_traces(marker_line_width=0, opacity=0.85)
         return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or "Total Load")
     except Exception: return None
+
 
 def create_area_chart(dataframe: pd.DataFrame, x_column: str, y_columns: str | list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     try:
@@ -272,6 +287,7 @@ def create_area_chart(dataframe: pd.DataFrame, x_column: str, y_columns: str | l
         return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or "Accumulated Value")
     except Exception: return None
 
+
 def create_pie_chart(dataframe: pd.DataFrame, names_column: str, values_column: str, title: str) -> go.Figure | None:
     try:
         validate_columns(dataframe, [names_column, values_column])
@@ -282,6 +298,7 @@ def create_pie_chart(dataframe: pd.DataFrame, names_column: str, values_column: 
         return apply_default_layout(figure, title=title)
     except Exception: return None
 
+
 def create_donut_chart(dataframe: pd.DataFrame, names_column: str, values_column: str, title: str, hole_size: float = 0.6) -> go.Figure | None:
     try:
         validate_columns(dataframe, [names_column, values_column])
@@ -291,6 +308,7 @@ def create_donut_chart(dataframe: pd.DataFrame, names_column: str, values_column
         figure.update_traces(textposition="inside", textinfo="percent+label", marker={"line": {"color": BG_CARD, "width": 1}})
         return apply_default_layout(figure, title=title)
     except Exception: return None
+
 
 def create_gauge_chart(value: float, title: str, minimum: float = 0.0, maximum: float = 100.0, warning_threshold: float | None = None, danger_threshold: float | None = None, unit: str = "") -> go.Figure | None:
     try:
@@ -316,6 +334,7 @@ def create_gauge_chart(value: float, title: str, minimum: float = 0.0, maximum: 
         return figure
     except Exception: return None
 
+
 def create_scatter_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     try:
         validate_columns(dataframe, [x_column, y_column])
@@ -324,6 +343,7 @@ def create_scatter_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, 
         figure = go.Figure(go.Scatter(x=prepared[x_column], y=prepared[y_column], mode="markers", marker={"color": SCADA_PALETTE[0], "size": 6, "opacity": 0.7, "line": {"width": 0}}))
         return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or y_column)
     except Exception: return None
+
 
 def create_histogram(dataframe: pd.DataFrame, x_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     try:
@@ -336,6 +356,7 @@ def create_histogram(dataframe: pd.DataFrame, x_column: str, title: str, x_label
         return apply_default_layout(figure, title=title, x_label=x_label or x_column, y_label=y_label or "Count")
     except Exception: return None
 
+
 def create_heatmap(dataframe: pd.DataFrame, columns: list[str] | None = None, title: str = "Heatmap", x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     try:
         if not isinstance(dataframe, pd.DataFrame): return None
@@ -345,6 +366,7 @@ def create_heatmap(dataframe: pd.DataFrame, columns: list[str] | None = None, ti
         figure = go.Figure(data=go.Heatmap(z=prepared[columns].to_numpy().T, x=list(range(len(prepared))), y=columns, colorscale=[[0.0, BG_CARD], [0.5, "#1E3A8A"], [1.0, SCADA_PALETTE[0]]], showscale=True, colorbar={"tickfont": {"size": 8, "color": TEXT_MUTED}, "outlinewidth": 0, "thickness": 10, "len": 0.8}))
         return apply_default_layout(figure, title=title, x_label=x_label or "Observation Index", y_label=y_label or "Meter Channel")
     except Exception: return None
+
 
 def create_sparkline(values: pd.Series, line_color: str = THEME_PRIMARY_COLOR) -> go.Figure | None:
     try:
@@ -356,8 +378,10 @@ def create_sparkline(values: pd.Series, line_color: str = THEME_PRIMARY_COLOR) -
         return apply_minimal_layout(figure)
     except Exception: return None
 
+
 def create_kpi_trend(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
     return create_line_chart(dataframe, x_column, y_column, title, x_label, y_label)
+
 
 def create_radar_chart(dataframe: pd.DataFrame, columns: list[str], title: str) -> go.Figure | None:
     try:
@@ -382,6 +406,7 @@ def create_radar_chart(dataframe: pd.DataFrame, columns: list[str], title: str) 
         return fig
     except Exception: return None
 
+
 def create_waterfall_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str) -> go.Figure | None:
     try:
         validate_columns(dataframe, [x_column, y_column])
@@ -390,6 +415,7 @@ def create_waterfall_chart(dataframe: pd.DataFrame, x_column: str, y_column: str
         fig = go.Figure(go.Waterfall(x=prepared[x_column], y=prepared[y_column], measure="relative", connector={"line": {"color": BORDER_SUBTLE, "width": 1}}, decreasing={"marker": {"color": SCADA_PALETTE[3]}}, increasing={"marker": {"color": SCADA_PALETTE[0]}}, totals={"marker": {"color": SCADA_PALETTE[4]}}))
         return apply_default_layout(fig, title=title, x_label=x_column, y_label=y_column)
     except Exception: return None
+
 
 def create_combined_line_area_chart(dataframe: pd.DataFrame, x_column: str, area_column: str, line_column: str, title: str) -> go.Figure | None:
     try:
@@ -402,6 +428,7 @@ def create_combined_line_area_chart(dataframe: pd.DataFrame, x_column: str, area
         return apply_default_layout(fig, title=title, x_label=x_column)
     except Exception: return None
 
+
 def create_horizontal_bar_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str) -> go.Figure | None:
     try:
         validate_columns(dataframe, [x_column, y_column])
@@ -411,6 +438,7 @@ def create_horizontal_bar_chart(dataframe: pd.DataFrame, x_column: str, y_column
         fig.update_traces(marker_line_width=0, opacity=0.8)
         return apply_default_layout(fig, title=title, x_label=y_column, y_label=x_column)
     except Exception: return None
+
 
 def create_bullet_chart(actual: float, target: float, title: str, unit: str = "") -> go.Figure | None:
     try:
