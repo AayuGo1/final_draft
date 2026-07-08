@@ -120,7 +120,7 @@ def inject_global_styles() -> None:
             .scada-header {{
                 display: flex; justify-content: space-between; align-items: center;
                 background: #10131A; border: 1px solid #1C212B;
-                padding: 8px 16px; margin-bottom: 8px; border-radius: 2px;
+                padding: 6px 12px; margin-bottom: 6px; border-radius: 2px;
             }}
             .header-left {{ display: flex; align-items: center; gap: 10px; }}
             .app-logo {{
@@ -132,8 +132,8 @@ def inject_global_styles() -> None:
 
             .header-status-group {{ display: flex; align-items: center; gap: 0; border-left: 1px solid #1C212B; }}
             .header-stat {{
-                display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-                padding: 0 16px; border-right: 1px solid #1C212B;
+                display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+                padding: 0 12px; border-right: 1px solid #1C212B;
             }}
             .header-stat:last-child {{ border-right: none; }}
             .header-stat-label {{ font-size: 8px; font-weight: 700; color: #4B5563; text-transform: uppercase; letter-spacing: 0.8px; }}
@@ -182,6 +182,38 @@ def inject_global_styles() -> None:
             .ops-table tr:hover td {{ background: #1C212B; }}
             .ops-val {{ color: #F3F4F6; font-weight: 600; }}
             .ops-unit {{ color: #4B5563; font-size: 9px; margin-left: 2px; }}
+
+            /* ---------- Operations console (row-based, no table/dataframe) ---------- */
+            .ops-console {{
+                background: #10131A; border: 1px solid #1C212B; border-radius: 2px; overflow: hidden;
+            }}
+            .console-row {{
+                display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr 0.9fr;
+                align-items: center; padding: 5px 12px; border-bottom: 1px solid #171B24;
+                transition: background 0.1s ease;
+            }}
+            .console-row:last-child {{ border-bottom: none; }}
+            .console-row-head {{
+                background: #171B24; padding: 6px 12px;
+            }}
+            .console-row-head .console-col {{
+                font-size: 9px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.6px;
+            }}
+            .console-row-alt {{ background: #0D0F14; }}
+            .console-row:not(.console-row-head):hover {{ background: #1C212B; }}
+            .console-col-name {{ font-size: 11px; font-weight: 600; color: #F3F4F6; }}
+            .console-col-num {{ font-size: 10.5px; font-variant-numeric: tabular-nums; }}
+            .console-col-status {{ font-size: 9.5px; font-weight: 700; letter-spacing: 0.4px; }}
+
+            /* ---------- Alarm ribbon ---------- */
+            .alarm-ribbon {{
+                display: flex; align-items: center; gap: 8px;
+                background: #10131A; border: 1px solid #1C212B; border-left: 3px solid var(--alarm-color, #10B981);
+                border-radius: 2px; padding: 6px 12px; margin-bottom: 8px;
+                font-size: 10.5px; font-weight: 600; color: #D1D5DB; letter-spacing: 0.2px;
+            }}
+            .alarm-dot {{ width: 7px; height: 7px; border-radius: 50%; background: var(--alarm-color, #10B981); flex-shrink: 0; }}
+            .alarm-label {{ font-size: 8px; font-weight: 700; color: #4B5563; text-transform: uppercase; letter-spacing: 0.8px; margin-right: 4px; }}
 
             /* ---------- Equipment selector cards ---------- */
             .equip-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }}
@@ -308,6 +340,67 @@ def render_header(dashboard: dict[str, Any] | None) -> None:
 
 
 # ==================================================================
+# Alarm Ribbon
+# ==================================================================
+
+# Soft, non-authoritative thresholds used only to color the ribbon.
+# These do NOT alter any engineering calculation — display hint only.
+ALARM_WATCHLIST: Final[dict[str, float]] = {
+    "Air compressor": 0.90,   # latest / gauge-ceiling ratio
+    "DG": 0.90,
+    "GG": 0.90,
+}
+
+
+def render_alarm_ribbon(dashboard: dict[str, Any]) -> None:
+    departments = dashboard.get("departments", {})
+    alarms: list[tuple[str, str]] = []  # (severity, message)
+
+    for dept_name, threshold_ratio in ALARM_WATCHLIST.items():
+        dept_obj = departments.get(dept_name)
+        if not dept_obj:
+            continue
+        rep_m = select_representative_meter(dept_obj)
+        if not rep_m:
+            continue
+        latest_val = dept_obj.get("latest_values", {}).get(rep_m)
+        df_block = dept_obj.get("dataframe", pd.DataFrame())
+        if not isinstance(latest_val, (int, float)):
+            continue
+        ceiling = get_gauge_max(df_block, rep_m, dept_obj)
+        if ceiling <= 0:
+            continue
+        ratio = latest_val / ceiling
+        if ratio >= 1.0:
+            alarms.append(("red", f"{dept_name} {rep_m} Exceeded"))
+        elif ratio >= threshold_ratio:
+            alarms.append(("amber", f"{dept_name} {rep_m} High"))
+
+    if not alarms:
+        color, label, text = "#10B981", "STATUS", "No Active Alarms"
+    else:
+        severities = [a[0] for a in alarms]
+        if "red" in severities:
+            color, label = "#EF4444", "ALARM"
+            text = next(msg for sev, msg in alarms if sev == "red")
+        else:
+            color, label = "#F59E0B", "WARNING"
+            text = alarms[0][1]
+        if len(alarms) > 1:
+            text += f" (+{len(alarms) - 1} more)"
+
+    st.markdown(
+        f"""
+    <div class="alarm-ribbon" style="--alarm-color:{color};">
+        <span class="alarm-dot"></span>
+        <span class="alarm-label">{label}</span>
+        <span>{text}</span>
+    </div>""",
+        unsafe_allow_html=True,
+    )
+
+
+# ==================================================================
 # Section 1 — Executive Summary
 # ==================================================================
 
@@ -321,25 +414,26 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
 
         dept_obj = departments[sys_name]
         rep_m = select_representative_meter(dept_obj)
-        total_val = dept_obj.get("total_values", {}).get(rep_m)
+        latest_val = dept_obj.get("latest_values", {}).get(rep_m)
         unit = dept_obj.get("units", {}).get(rep_m, "")
         accent = DEPT_CONFIGS.get(sys_name, DEFAULT_CONFIG)["accent"]
 
-        if isinstance(total_val, (int, float)):
-            val_str = f"{total_val:,.0f}"
+        if isinstance(latest_val, (int, float)):
+            val_str = f"{latest_val:,.0f}"
             status_class, status_text = "status-online", "ONLINE"
         else:
             val_str = "—"
             status_class, status_text = "status-offline", "OFFLINE"
 
         unit_str = str(unit).strip() if unit else ""
+        metric_label = str(rep_m) if rep_m else "No Meter"
 
         tiles_html += f"""
         <div class="exec-tile" style="--accent:{accent};">
             <div class="exec-tile-top">
                 <div class="exec-name">{sys_name}</div>
-                <div class="exec-label">TOTAL</div>
             </div>
+            <div class="exec-label">{metric_label}</div>
             <div class="exec-value">{val_str}<span class="exec-unit">{unit_str}</span></div>
             <div class="exec-status {status_class}">{status_text}</div>
         </div>"""
@@ -351,53 +445,67 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
 # ==================================================================
 # Section 2 — Operations Overview
 # ==================================================================
+
+OPS_CONSOLE_PROCESSES: Final[list[str]] = [
+    "NPCL",
+    "Overall PNG",
+    "Dough",
+    "Traywasher",
+    "Freon Refrigeration",
+    "Ammonia Refrigeration",
+    "Bread",
+    "Donut",
+]
+
+
 def render_operations_overview(dashboard: dict[str, Any]) -> None:
-    """Render the executive Plant Operations Overview."""
-
     departments = dashboard.get("departments", {})
+    rows_html = ""
 
-    overview_departments = [
-        "NPCL",
-        "Overall PNG",
-        "Dough",
-        "Traywasher",
-        "Freon Refrigeration",
-        "Ammonia Refrigeration",
-        "Bread",
-        "Donut",
-    ]
+    header_html = """
+    <div class="console-row console-row-head">
+        <div class="console-col console-col-name">Process</div>
+        <div class="console-col console-col-num">Total</div>
+        <div class="console-col console-col-num">Average</div>
+        <div class="console-col console-col-num">Latest</div>
+        <div class="console-col console-col-status">Status</div>
+    </div>"""
 
-    rows = []
-
-    for dept_name in overview_departments:
+    for idx, dept_name in enumerate(OPS_CONSOLE_PROCESSES):
         if dept_name not in departments:
             continue
-
         dept_obj = departments[dept_name]
         rep_m = select_representative_meter(dept_obj)
-
-        total = dept_obj.get("total_values", {}).get(rep_m)
-        avg = dept_obj.get("average_values", {}).get(rep_m)
-        latest = dept_obj.get("latest_values", {}).get(rep_m)
+        total_val = dept_obj.get("total_values", {}).get(rep_m)
+        avg_val = dept_obj.get("average_values", {}).get(rep_m)
+        latest_val = dept_obj.get("latest_values", {}).get(rep_m)
         unit = dept_obj.get("units", {}).get(rep_m, "")
+        unit_str = str(unit).strip() if unit else ""
 
-        rows.append(
-            {
-                "Process": dept_name,
-                "Total": f"{total:,.0f} {unit}" if isinstance(total, (int, float)) else "—",
-                "Average": f"{avg:,.1f} {unit}" if isinstance(avg, (int, float)) else "—",
-                "Latest": f"{latest:,.0f} {unit}" if isinstance(latest, (int, float)) else "—",
-                "Status": "🟢 Online" if isinstance(latest, (int, float)) else "⚪ Offline",
-            }
-        )
+        total_str = f"{total_val:,.0f}" if isinstance(total_val, (int, float)) else "—"
+        avg_str = f"{avg_val:,.1f}" if isinstance(avg_val, (int, float)) else "—"
+        latest_str = f"{latest_val:,.0f}" if isinstance(latest_val, (int, float)) else "—"
 
-    if rows:
-        df = pd.DataFrame(rows)
-        st.dataframe(
-            df,
-            use_container_width=True,
-            hide_index=True,
+        is_online = isinstance(latest_val, (int, float))
+        status_html = (
+            '<span class="status-online">● ONLINE</span>' if is_online
+            else '<span class="status-offline">○ OFFLINE</span>'
         )
+        row_shade = "console-row-alt" if idx % 2 else ""
+
+        rows_html += f"""
+        <div class="console-row {row_shade}">
+            <div class="console-col console-col-name">{dept_name}</div>
+            <div class="console-col console-col-num"><span class="ops-val">{total_str}</span><span class="ops-unit">{unit_str}</span></div>
+            <div class="console-col console-col-num"><span class="ops-val">{avg_str}</span><span class="ops-unit">{unit_str}</span></div>
+            <div class="console-col console-col-num"><span class="ops-val">{latest_str}</span><span class="ops-unit">{unit_str}</span></div>
+            <div class="console-col console-col-status">{status_html}</div>
+        </div>"""
+
+    if rows_html:
+        st.markdown(f'<div class="ops-console">{header_html}{rows_html}</div>', unsafe_allow_html=True)
+
+
 # ==================================================================
 # Section 3 — Equipment / Process Selector
 # ==================================================================
@@ -658,6 +766,8 @@ def main() -> None:
         st.error(error_msg or "Critical Infrastructure Alert: Analytical context dictionary failed initialization.")
         render_footer(dashboard)
         return
+
+    render_alarm_ribbon(dashboard)
 
     st.markdown('<div class="section-title">Executive Summary</div>', unsafe_allow_html=True)
     render_executive_summary(dashboard)
