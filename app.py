@@ -90,22 +90,71 @@ def inject_global_styles() -> None:
             .kpi-divider {{ width: 1px; height: 40px; background: #222631; margin: 0 12px; }}
 
             /* ── Department Navigation ─────────────────────────────────── */
-            .dept-list {{
-                display: flex; flex-direction: column; gap: 4px; background: #151820;
-                border: 1px solid #222631; border-radius: 6px; padding: 8px; margin-bottom: 24px;
+            #dept-nav-container {{
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
             }}
-            div[data-testid="stButton"] > button {{
-                display: flex; justify-content: space-between; align-items: center;
-                background: #151820 !important; border: 1px solid #222631 !important;
-                border-radius: 4px !important; padding: 12px 16px !important; text-align: left !important;
-                color: #F1F5F9 !important; font-weight: 500 !important; font-size: 13px !important;
-                transition: all 0.15s !important; margin-bottom: 4px !important; box-shadow: none !important;
+            #dept-nav-container div[data-testid="stButton"] > button {{
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                justify-content: center !important;
+                text-align: left !important;
+                background: #151820 !important;
+                border: 1px solid #222631 !important;
+                border-radius: 6px !important;
+                padding: 12px 16px !important;
+                margin: 0 !important;
+                height: auto !important;
+                min-height: 90px !important;
+                box-shadow: none !important;
+                transition: all 0.2s ease !important;
+                width: 100% !important;
+                cursor: pointer !important;
             }}
-            div[data-testid="stButton"] > button:hover {{
-                background: #1E293B !important; border-color: #334155 !important;
+            #dept-nav-container div[data-testid="stButton"] > button:hover {{
+                background: #1E293B !important;
+                border-color: #334155 !important;
             }}
-            div[data-testid="stButton"] > button[kind="primary"] {{
-                background: #1E293B !important; border-left: 3px solid #3B82F6 !important; color: #F1F5F9 !important;
+            #dept-nav-container div[data-testid="stButton"] > button p {{
+                margin: 0 !important;
+                line-height: 1.3 !important;
+                color: #F1F5F9 !important;
+            }}
+            #dept-nav-container div[data-testid="stButton"] > button p:nth-child(1) {{
+                font-size: 14px !important;
+                font-weight: 700 !important;
+                color: #F8FAFC !important;
+            }}
+            #dept-nav-container div[data-testid="stButton"] > button p:nth-child(2) {{
+                font-size: 11px !important;
+                color: #64748B !important;
+                font-style: italic !important;
+                margin-top: 2px !important;
+            }}
+            #dept-nav-container div[data-testid="stButton"] > button p:nth-child(3) {{
+                font-size: 18px !important;
+                font-weight: 700 !important;
+                color: #F1F5F9 !important;
+                font-variant-numeric: tabular-nums !important;
+                margin-top: 8px !important;
+            }}
+            #dept-nav-container div[data-testid="stButton"] > button p:nth-child(4) {{
+                font-size: 10px !important;
+                color: #10B981 !important;
+                font-weight: 600 !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.5px !important;
+                margin-top: 4px !important;
+            }}
+            #dept-nav-container div[data-testid="stButton"] > button[kind="primary"] {{
+                background: #1E293B !important;
+                border: 1px solid #3B82F6 !important;
+                border-left: 4px solid #3B82F6 !important;
+            }}
+            #dept-nav-container div[data-testid="stButton"] > button[kind="primary"] p:nth-child(4) {{
+                color: #3B82F6 !important;
             }}
 
             /* ── Workspace Container ───────────────────────────────────── */
@@ -117,9 +166,16 @@ def inject_global_styles() -> None:
             }}
             .workspace-header h2 {{ margin: 0; font-size: 18px; font-weight: 700; color: #F1F5F9; }}
             .workspace-header span {{ font-size: 12px; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }}
-            .workspace-grid {{ display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px; }}
-            .workspace-main, .workspace-side {{ display: flex; flex-direction: column; gap: 16px; }}
-            .workspace-tables {{ display: flex; flex-direction: column; gap: 16px; }}
+            
+            .chart-title {{
+                font-size: 12px;
+                font-weight: 600;
+                color: #94A3B8;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 8px;
+                padding-left: 4px;
+            }}
 
             /* ── Data Tables ───────────────────────────────────────────── */
             div[data-testid="stDataFrame"] {{
@@ -143,7 +199,6 @@ def inject_global_styles() -> None:
                 border: 1px solid #222631; font-size: 12px; color: #64748B; text-align: center;
             }}
 
-            /* ── Scrollbar ─────────────────────────────────────────────── */
             ::-webkit-scrollbar {{ width: 6px; height: 6px; }}
             ::-webkit-scrollbar-track {{ background: #0B0D12; }}
             ::-webkit-scrollbar-thumb {{ background: #334155; border-radius: 3px; }}
@@ -218,103 +273,86 @@ def _get_representative_meter(dept_obj: dict[str, Any]) -> str:
     return select_representative_meter(dept_obj)
 
 def render_department_grid(dashboard: dict[str, Any]) -> str:
-    """Render the department navigation panel."""
     departments: dict[str, dict[str, Any]] = dashboard.get("departments", {})
-
-    critical_assets = [
-        "NPCL",
-        "Dough",
-        "Traywasher",
-        "Air compressor",
-        "Freon Refrigeration",
-        "DG",
-        "GG",
-    ]
-
+    critical_assets = ["NPCL", "Dough", "Traywasher", "Air compressor", "Freon Refrigeration", "DG", "GG"]
     dept_names = [name for name in critical_assets if name in departments]
-
-    st.markdown(
-        """
-        <div style="
-            font-size:12px;
-            font-weight:600;
-            color:#64748B;
-            text-transform:uppercase;
-            letter-spacing:0.5px;
-            margin-bottom:8px;
-        ">
-            Critical Plant Assets
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if not dept_names:
+    
+    st.markdown('<div style="font-size: 12px; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Critical Plant Assets</div>', unsafe_allow_html=True)
+    
+    if not dept_names: 
         return ""
-
-    if (
-        "selected_department" not in st.session_state
-        or st.session_state["selected_department"] not in dept_names
-    ):
+        
+    if "selected_department" not in st.session_state or st.session_state["selected_department"] not in dept_names: 
         st.session_state["selected_department"] = dept_names[0]
-
+        
     current_selection = st.session_state["selected_department"]
 
+    st.markdown('<div id="dept-nav-container">', unsafe_allow_html=True)
     for d_name in dept_names:
-
         dept_obj = departments[d_name]
-
         rep_m = _get_representative_meter(dept_obj)
-
-        latest_value = (
-            dept_obj.get("latest_values", {}).get(rep_m)
-            if rep_m
-            else None
-        )
-
-        unit_label = (
-            dept_obj.get("units", {}).get(rep_m, "")
-            if rep_m
-            else ""
-        )
-
-        latest_display = (
-            f"{latest_value:,.2f}"
-            if isinstance(latest_value, (int, float))
-            else "N/A"
-        )
-
+        
+        val = dept_obj.get("latest_values", {}).get(rep_m)
+        unit = dept_obj.get("units", {}).get(rep_m, "")
+        
+        if isinstance(val, (int, float)):
+            val_str = f"{val:,.2f}"
+        else:
+            val_str = "N/A"
+            
+        unit_str = str(unit).strip() if unit else ""
+        display_str = f"{val_str} {unit_str}".strip()
+        
         config = DEPT_CONFIGS.get(d_name, DEFAULT_CONFIG)
         category = config["label"]
-
-        status = (
-            "ONLINE"
-            if isinstance(latest_value, (int, float))
-            else "OFFLINE"
-        )
-
-        label = (
-            f"**{d_name}**\n\n"
-            f"{category}\n\n"
-            f"**{latest_display}** {unit_label}\n\n"
-            f"{status}"
-        )
-
-        is_active = d_name == current_selection
-
+        
+        is_online = val is not None and isinstance(val, (int, float))
+        status_text = "ONLINE" if is_online else "OFFLINE"
+        
+        is_active = (d_name == current_selection)
+        
+        label = f"{d_name}\n\n{category}\n\n{display_str}\n\n{status_text}"
+        
         if st.button(
-            label,
-            key=f"nav_{d_name}",
-            type="primary" if is_active else "secondary",
-            use_container_width=True,
+            label, 
+            key=f"nav_{d_name}", 
+            type="primary" if is_active else "secondary", 
+            use_container_width=True
         ):
             st.session_state["selected_department"] = d_name
             st.rerun()
-
+    st.markdown('</div>', unsafe_allow_html=True)
+            
     return st.session_state["selected_department"]
 
+def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) -> float:
+    if rep_m and rep_m in df_block.columns:
+        numeric_series = pd.to_numeric(df_block[rep_m], errors='coerce').dropna()
+        if len(numeric_series) >= 5:
+            return float(numeric_series.quantile(0.95)) * 1.15
+        elif not numeric_series.empty:
+            return float(numeric_series.max()) * 1.15
+    
+    total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0) or 500.0
+    avg_val = dept_obj.get("average_values", {}).get(rep_m, 100.0) or 100.0
+    latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0) or 0.0
+    
+    for potential_max in (total_val, avg_val, latest_val):
+        if isinstance(potential_max, (int, float)) and potential_max > 0:
+            return float(potential_max) * 1.15
+    return 100.0
+
+def render_mini_table(dept_obj: dict[str, Any], meters: list[str]) -> None:
+    mini_records = []
+    for m in meters[:min(len(meters), 5)]:
+        v = dept_obj.get("latest_values", {}).get(m)
+        u = dept_obj.get("units", {}).get(m, "N/A")
+        mini_records.append({"Channel": m[:15], "Value": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline", "Unit": u if (u and str(u).strip()) else "N/A"})
+    if mini_records: 
+        st.dataframe(pd.DataFrame(mini_records), use_container_width=True, hide_index=True)
+
 def render_tables(dept_obj: dict[str, Any], meters: list[str]) -> None:
-    st.markdown("<div style='font-size: 13px; font-weight: 600; color: #F1F5F9; margin-bottom: 8px;'>Channel Registry</div>", unsafe_allow_html=True)
+    st.markdown("<div class='chart-title' style='margin-top:24px;'>Channel Registry</div>", unsafe_allow_html=True)
     units_map = dept_obj.get("units", {}); latest_vals = dept_obj.get("latest_values", {}); avg_vals = dept_obj.get("average_values", {}); total_vals = dept_obj.get("total_values", {})
     ledger_records = []
     for m in meters:
@@ -322,6 +360,89 @@ def render_tables(dept_obj: dict[str, Any], meters: list[str]) -> None:
         status_string = "Active" if l_v is not None else "Idle"
         ledger_records.append({"Channel": m, "Unit": lbl if (lbl and str(lbl).strip()) else "N/A", "Latest": round(l_v, 2) if isinstance(l_v, (int, float)) else "N/A", "Mean": round(a_v, 2) if isinstance(a_v, (int, float)) else "N/A", "Total": round(t_v, 2) if isinstance(t_v, (int, float)) else "N/A", "Status": status_string})
     if ledger_records: st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
+
+def render_npcl_workspace(dept_obj, overview_df, rep_m, df_block, meters):
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown("<div class='chart-title'>Power & Energy Profile</div>", unsafe_allow_html=True)
+        fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+        if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    with col2:
+        st.markdown("<div class='chart-title'>Current Load</div>", unsafe_allow_html=True)
+        if rep_m:
+            latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0) or 0.0
+            unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
+            max_ceiling = get_gauge_max(df_block, rep_m, dept_obj)
+            fig = chart_service.create_gauge_chart(latest_val, "Load", maximum=max_ceiling, unit=unit_lbl)
+            if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.markdown("<div class='chart-title' style='margin-top:16px;'>Channel Snapshots</div>", unsafe_allow_html=True)
+        render_mini_table(dept_obj, meters)
+
+def render_air_compressor_workspace(dept_obj, overview_df, rep_m, df_block, meters):
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.markdown("<div class='chart-title'>Pressure & Flow Dynamics</div>", unsafe_allow_html=True)
+        if len(meters) >= 2:
+            fig = chart_service.create_combined_line_area_chart(df_block.reset_index(), 'index', meters[0], meters[1], "Pressure vs Flow")
+            if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        else:
+            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+            if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    with col2:
+        st.markdown("<div class='chart-title'>Runtime & Health</div>", unsafe_allow_html=True)
+        vals = {m: dept_obj['total_values'].get(m, 0) or 0 for m in meters[:5]}
+        bar_df = pd.DataFrame(list(vals.items()), columns=['Meter', 'Value'])
+        fig = chart_service.create_horizontal_bar_chart(bar_df, 'Meter', 'Value', "Runtime Metrics")
+        if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+def render_freon_workspace(dept_obj, overview_df, rep_m, df_block, meters):
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown("<div class='chart-title'>Temperature Zones</div>", unsafe_allow_html=True)
+        fig = chart_service.create_heatmap(df_block, meters[:min(len(meters), 8)], "Thermal Map")
+        if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    with col2:
+        st.markdown("<div class='chart-title'>Cooling Load</div>", unsafe_allow_html=True)
+        fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+        if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+def render_dg_workspace(dept_obj, overview_df, rep_m, df_block, meters):
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.markdown("<div class='chart-title'>Current Load</div>", unsafe_allow_html=True)
+        if rep_m:
+            latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0) or 0.0
+            unit_lbl = dept_obj.get("units", {}).get(rep_m, "%")
+            fig = chart_service.create_gauge_chart(latest_val, "Load", maximum=100, unit=unit_lbl)
+            if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    with col2:
+        st.markdown("<div class='chart-title'>Generation & Fuel</div>", unsafe_allow_html=True)
+        vals = {m: dept_obj['total_values'].get(m, 0) or 0 for m in meters[:6]}
+        bar_df = pd.DataFrame(list(vals.items()), columns=['Meter', 'Value'])
+        fig = chart_service.create_bar_chart(bar_df, 'Meter', 'Value', "Fuel / Generation")
+        if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+def render_default_workspace(dept_obj, overview_df, rep_m, df_block, meters):
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown("<div class='chart-title'>Primary Telemetry Profile</div>", unsafe_allow_html=True)
+        fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
+        if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        
+        if len(meters) > 1:
+            st.markdown("<div class='chart-title' style='margin-top:16px;'>Cross-Channel Analysis</div>", unsafe_allow_html=True)
+            fig_compare = chart_service.create_department_multi_line_chart(overview_dataframe=overview_df, section=dept_obj, title="Parallel Operations Diagnostic Load Profiles")
+            if fig_compare: st.plotly_chart(fig_compare, use_container_width=True, config={"displayModeBar": False})
+    with col2:
+        st.markdown("<div class='chart-title'>Instrumentation Gauge</div>", unsafe_allow_html=True)
+        if rep_m:
+            latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0)
+            unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
+            max_ceiling = get_gauge_max(df_block, rep_m, dept_obj)
+            fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
+            if fig: st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.markdown("<div class='chart-title' style='margin-top:16px;'>Vector Snapshots</div>", unsafe_allow_html=True)
+        render_mini_table(dept_obj, meters)
 
 def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> None:
     dept_obj: dict[str, Any] = dashboard.get("departments", {}).get(active_dept, {})
@@ -337,72 +458,18 @@ def render_subsystem_workspace(dashboard: dict[str, Any], active_dept: str) -> N
             <h2>{active_dept}</h2>
             <span>{config['label']}</span>
         </div>
-        <div class="workspace-grid">
-            <div class="workspace-main" id="main-charts"></div>
-            <div class="workspace-side" id="side-charts"></div>
-        </div>
-        <div class="workspace-tables" id="tables"></div>
     </div>""", unsafe_allow_html=True)
 
     meters = dept_obj.get("meters", [])
     df_block = dept_obj.get("dataframe", pd.DataFrame())
     rep_m = _get_representative_meter(dept_obj)
 
-    # We use Streamlit columns to populate the grid areas defined above
-    # Since Streamlit renders top-to-bottom, we simulate the grid by using columns
-    # But to keep it simple and robust, we'll just render them in a clean layout
-    
-    col_main, col_side = st.columns([2, 1])
-    
-    with col_main:
-        st.markdown("<div style='font-size: 13px; font-weight: 600; color: #F1F5F9; margin-bottom: 8px;'>Primary Telemetry Profile</div>", unsafe_allow_html=True)
-        fig_primary = chart_service.build_section_trend_chart(overview_df, dept_obj)
-        if fig_primary: 
-            st.plotly_chart(fig_primary, use_container_width=True, config={"displayModeBar": False})
-        else: 
-            st.caption("Primary chronological metric profile logs absent or structurally misaligned.")
-            
-        if len(meters) > 1:
-            st.markdown("<div style='font-size: 13px; font-weight: 600; color: #F1F5F9; margin-top: 16px; margin-bottom: 8px;'>Cross-Channel Analysis</div>", unsafe_allow_html=True)
-            fig_compare = chart_service.create_department_multi_line_chart(overview_dataframe=overview_df, section=dept_obj, title="Parallel Operations Diagnostic Load Profiles")
-            if fig_compare: 
-                st.plotly_chart(fig_compare, use_container_width=True, config={"displayModeBar": False})
+    if active_dept == "NPCL": render_npcl_workspace(dept_obj, overview_df, rep_m, df_block, meters)
+    elif active_dept == "Air compressor": render_air_compressor_workspace(dept_obj, overview_df, rep_m, df_block, meters)
+    elif active_dept == "Freon Refrigeration": render_freon_workspace(dept_obj, overview_df, rep_m, df_block, meters)
+    elif active_dept == "DG": render_dg_workspace(dept_obj, overview_df, rep_m, df_block, meters)
+    else: render_default_workspace(dept_obj, overview_df, rep_m, df_block, meters)
 
-    with col_side:
-        st.markdown("<div style='font-size: 13px; font-weight: 600; color: #F1F5F9; margin-bottom: 8px;'>Instrumentation Gauge</div>", unsafe_allow_html=True)
-        if rep_m:
-            latest_val = dept_obj.get("latest_values", {}).get(rep_m, 0.0)
-            avg_val = dept_obj.get("average_values", {}).get(rep_m, 100.0)
-            total_val = dept_obj.get("total_values", {}).get(rep_m, 500.0)
-            unit_lbl = dept_obj.get("units", {}).get(rep_m, "")
-            max_ceiling = 100.0
-            if rep_m and rep_m in df_block.columns:
-                numeric_series = pd.to_numeric(df_block[rep_m], errors='coerce').dropna()
-                if len(numeric_series) >= 5: base_max = float(numeric_series.quantile(0.95))
-                elif not numeric_series.empty: base_max = float(numeric_series.max())
-                else: base_max = 0.0
-                if base_max > 0: max_ceiling = base_max * 1.15
-                else:
-                    for potential_max in (total_val, avg_val, latest_val):
-                        if isinstance(potential_max, (int, float)) and potential_max > 0: max_ceiling = float(potential_max) * 1.15; break
-            else:
-                for potential_max in (total_val, avg_val, latest_val):
-                    if isinstance(potential_max, (int, float)) and potential_max > 0: max_ceiling = float(potential_max) * 1.15; break
-                    
-            fig_gauge = chart_service.create_gauge_chart(value=float(latest_val) if isinstance(latest_val, (int, float)) else 0.0, title=f"{rep_m}", maximum=max_ceiling if max_ceiling > float(latest_val or 0) else float((latest_val or 0) * 1.5), unit=str(unit_lbl))
-            if fig_gauge: 
-                st.plotly_chart(fig_gauge, use_container_width=True, config={"displayModeBar": False})
-            else: 
-                st.caption("Gauge visualization failed.")
-                
-        st.markdown("<div style='font-size: 13px; font-weight: 600; color: #F1F5F9; margin-top: 16px; margin-bottom: 8px;'>Vector Snapshots</div>", unsafe_allow_html=True)
-        mini_records = []
-        for m in meters[:min(len(meters), 5)]:
-            v = dept_obj.get("latest_values", {}).get(m); u = dept_obj.get("units", {}).get(m, "N/A")
-            mini_records.append({"Channel": m[:15], "Value": f"{v:,.2f}" if isinstance(v, (int, float)) else "Offline", "Unit": u if (u and str(u).strip()) else "N/A"})
-        if mini_records: st.dataframe(pd.DataFrame(mini_records), use_container_width=True, hide_index=True)
-
-    st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
     render_tables(dept_obj, meters)
 
 def render_footer(dashboard: dict[str, Any] | None) -> None:
