@@ -200,278 +200,292 @@ def _exec_trend_chip(latest_val: float, avg_val: Any) -> tuple[str, str]:
 
 
 def inject_global_styles() -> None:
+    """Inject global CSS for the compact dark SCADA theme."""
     st.markdown(
         """
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
+            /* Global Resets & Theme */
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header[data-testid="stHeader"] {background: transparent;}
             .stApp { 
-                background: #F9FAFB !important; 
-                color: #111827 !important;
+                background: #0F172A !important; 
+                color: #F8FAFC !important;
                 font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
             }
-            .block-container { padding-top: 16px; padding-bottom: 20px; max-width: 1600px; }
+            .block-container { padding-top: 10px; padding-bottom: 12px; max-width: 100%; }
             * { box-sizing: border-box; }
             .tnum { font-variant-numeric: tabular-nums; }
 
-            /* Sidebar Styling */
+            /* Sidebar */
             section[data-testid="stSidebar"] div[data-testid="stSidebarNav"],
             section[data-testid="stSidebar"] ul[data-testid="stSidebarNav"],
             section[data-testid="stSidebar"] nav[data-testid="stSidebarNav"] {
                 display: none !important;
             }
-
             section[data-testid="stSidebar"] {
-                background: #FFFFFF !important;
-                border-right: 1px solid #E5E7EB !important;
-                width: 245px !important;
-                min-width: 245px !important;
+                background: #0F172A !important;
+                border-right: 1px solid #334155 !important;
+                width: 200px !important;
+                min-width: 200px !important;
             }
             section[data-testid="stSidebar"] > div {
-                padding-top: 16px !important;
+                padding: 10px 8px !important;
             }
             section[data-testid="stSidebar"] h1, 
             section[data-testid="stSidebar"] h2, 
             section[data-testid="stSidebar"] h3, 
             section[data-testid="stSidebar"] h4 {
-                color: #111827 !important;
-                font-weight: 700 !important;
-                font-size: 14px !important;
+                color: #F8FAFC !important;
+                font-weight: 600 !important;
+                font-size: 11px !important;
+                margin-bottom: 4px !important;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            section[data-testid="stSidebar"] label {
+                color: #94A3B8 !important;
+                font-size: 10px !important;
+                font-weight: 500 !important;
+            }
+            section[data-testid="stSidebar"] div[data-baseweb="select"] > div,
+            section[data-testid="stSidebar"] div[data-baseweb="datepicker"] > div {
+                background-color: #1E293B !important;
+                border: 1px solid #334155 !important;
+                color: #F8FAFC !important;
+                border-radius: 4px !important;
+                font-size: 10px !important;
+            }
+            section[data-testid="stSidebar"] input {
+                color: #F8FAFC !important;
+                font-size: 10px !important;
             }
 
-            /* Main Theme Elements */
-            .section-title {
-                font-size: 14px; font-weight: 700; color: #111827; text-transform: uppercase;
-                letter-spacing: 0.5px; margin-bottom: 12px; margin-top: 24px;
-                display: flex; align-items: center; gap: 10px;
+            /* Buttons */
+            div[data-testid="stButton"] > button {
+                background: #1E293B !important;
+                border: 1px solid #334155 !important;
+                color: #F8FAFC !important;
+                font-weight: 500 !important;
+                font-size: 10px !important;
+                border-radius: 4px !important;
+                padding: 3px 6px !important;
+                transition: all 0.2s ease !important;
+                min-height: 0 !important;
+                line-height: 1.2 !important;
             }
-            .section-title::before { content: ""; width: 3px; height: 18px; background: #005DAA; border-radius: 2px; }
+            div[data-testid="stButton"] > button:hover {
+                background: #005DAA !important;
+                color: #FFFFFF !important;
+                border-color: #005DAA !important;
+            }
+
+            /* Section Titles */
+            .section-title {
+                font-size: 12px; font-weight: 600; color: #F8FAFC; text-transform: uppercase;
+                letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 12px;
+                display: flex; align-items: center; gap: 6px;
+            }
+            .section-title::before { content: ""; width: 3px; height: 12px; background: #005DAA; border-radius: 2px; }
 
             /* Executive Summary / KPI Tiles */
-            .exec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+            .exec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; margin-bottom: 10px; }
             .exec-tile {
-                background: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                border-left: 5px solid var(--accent, #005DAA);
-                border-radius: 10px;
-                padding: 14px;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-                transition: all 0.3s ease;
+                background: #1E293B;
+                border: 1px solid #334155;
+                border-left: 3px solid var(--accent, #005DAA);
+                border-radius: 4px;
+                padding: 6px;
+                transition: all 0.2s ease;
                 height: 100%;
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
             }
             .exec-tile:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 8px 12px -3px rgba(0, 0, 0, 0.08);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
             }
-            .exec-tile-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+            .exec-tile-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px; }
             .exec-icon { 
-                width: 28px; height: 28px; background: rgba(0, 93, 170, 0.1); 
-                border-radius: 6px; display: flex; align-items: center; justify-content: center; 
-                font-size: 14px; color: var(--accent, #005DAA);
+                width: 18px; height: 18px; background: rgba(0, 93, 170, 0.2); 
+                border-radius: 3px; display: flex; align-items: center; justify-content: center; 
+                font-size: 9px; color: var(--accent, #005DAA);
             }
-            .exec-name { font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
-            .exec-label { font-size: 10px; color: #9CA3AF; margin-top: 2px; }
-            .exec-value-row { display: flex; align-items: baseline; margin-top: 8px; }
-            .exec-value { font-size: 22px; font-weight: 800; color: #111827; line-height: 1.2; }
-            .exec-unit { font-size: 11px; color: #6B7280; margin-left: 4px; }
-            .exec-bottom-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid #F3F4F6; }
+            .exec-name { font-size: 10px; font-weight: 600; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.3px; }
+            .exec-label { font-size: 9px; color: #64748B; margin-top: 1px; }
+            .exec-value-row { display: flex; align-items: baseline; margin-top: 3px; }
+            .exec-value { font-size: 14px; font-weight: 700; color: #F8FAFC; line-height: 1.2; }
+            .exec-unit { font-size: 9px; color: #94A3B8; margin-left: 2px; }
+            .exec-bottom-row { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; padding-top: 3px; border-top: 1px solid #334155; }
             .exec-trend-chip {
-                display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600;
-                padding: 3px 8px; border-radius: 12px;
+                display: inline-flex; align-items: center; gap: 2px; font-size: 8px; font-weight: 600;
+                padding: 1px 3px; border-radius: 3px;
             }
-            .trend-up { color: #22C55E; background: rgba(34, 197, 94, 0.1); }
-            .trend-down { color: #E31E24; background: rgba(227, 30, 36, 0.1); }
-            .trend-flat { color: #F59E0B; background: rgba(245, 158, 11, 0.1); }
-            .exec-status { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+            .trend-up { color: #22C55E; background: rgba(34, 197, 94, 0.15); }
+            .trend-down { color: #E31E24; background: rgba(227, 30, 36, 0.15); }
+            .trend-flat { color: #F59E0B; background: rgba(245, 158, 11, 0.15); }
+            .exec-status { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
             .status-online { color: #22C55E; }
             .status-offline { color: #E31E24; }
 
             /* Operations Console Table */
             .ops-console {
-                background: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                border-radius: 10px;
+                background: #1E293B;
+                border: 1px solid #334155;
+                border-radius: 4px;
                 overflow: hidden;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
             }
             .console-row {
                 display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
-                align-items: center; padding: 8px 16px; border-bottom: 1px solid #F3F4F6;
+                align-items: center; padding: 4px 8px; border-bottom: 1px solid #334155;
                 transition: background 0.2s ease;
             }
             .console-row:last-child { border-bottom: none; }
-            .console-row-head { background: #F9FAFB; padding: 10px 16px; border-bottom: 2px solid #E5E7EB; }
+            .console-row-head { background: #273449; padding: 5px 8px; }
             .console-row-head .console-col {
-                font-size: 10px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px;
+                font-size: 9px; font-weight: 600; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.3px;
             }
-            .console-row-alt { background: #F9FAFB; }
-            .console-row:not(.console-row-head):hover { background: #EFF6FF; }
-            .console-col-name { font-size: 12px; font-weight: 600; color: #111827; }
-            .console-col-num { font-size: 12px; font-variant-numeric: tabular-nums; color: #4B5563; }
-            .ops-val { font-weight: 600; color: #111827; }
-            .ops-unit { color: #9CA3AF; font-size: 10px; margin-left: 3px; }
+            .console-row-alt { background: #162032; }
+            .console-row:not(.console-row-head):hover { background: #273449; }
+            .console-col-name { font-size: 11px; font-weight: 600; color: #F8FAFC; }
+            .console-col-num { font-size: 10px; font-variant-numeric: tabular-nums; color: #F8FAFC; }
+            .ops-val { font-weight: 600; color: #F8FAFC; }
+            .ops-unit { color: #94A3B8; font-size: 9px; margin-left: 2px; }
 
             /* Alarm Ribbon */
             .alarm-ribbon {
-                display: flex; align-items: center; gap: 10px;
-                background: #FFFFFF;
-                border: 1px solid #E5E7EB; border-left: 4px solid var(--alarm-color, #22C55E);
-                border-radius: 8px; padding: 10px 14px; margin-bottom: 16px;
-                font-size: 12px; font-weight: 500; color: #111827;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                display: flex; align-items: center; gap: 6px;
+                background: #1E293B;
+                border: 1px solid #334155; border-left: 3px solid var(--alarm-color, #22C55E);
+                border-radius: 4px; padding: 6px 8px; margin-bottom: 10px;
+                font-size: 11px; font-weight: 500; color: #F8FAFC;
             }
-            .alarm-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--alarm-color, #22C55E); box-shadow: 0 0 6px var(--alarm-color, #22C55E); }
-            .alarm-label { font-size: 10px; font-weight: 800; color: #6B7280; text-transform: uppercase; letter-spacing: 1px; }
+            .alarm-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--alarm-color, #22C55E); box-shadow: 0 0 4px var(--alarm-color, #22C55E); }
+            .alarm-label { font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; }
 
             /* Equipment / Process Cards */
             .equip-card {
-                background: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                border-left: 5px solid var(--accent, #005DAA);
-                border-radius: 10px;
-                padding: 12px;
-                transition: all 0.3s ease;
+                background: #1E293B;
+                border: 1px solid #334155;
+                border-left: 3px solid var(--accent, #005DAA);
+                border-radius: 4px;
+                padding: 6px;
+                transition: all 0.2s ease;
                 height: 100%;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             }
             .equip-card.active {
                 border-color: #005DAA;
-                background: #EFF6FF;
-                box-shadow: 0 0 0 2px #005DAA inset;
+                background: #273449;
             }
             .equip-card:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 8px 12px -3px rgba(0, 0, 0, 0.08);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
             }
-            .equip-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-            .equip-name { font-size: 13px; font-weight: 700; color: #111827; }
-            .equip-category { font-size: 10px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
-            .equip-metrics { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; padding: 8px 0; border-top: 1px solid #F3F4F6; border-bottom: 1px solid #F3F4F6; }
-            .equip-metric-row { display: flex; justify-content: space-between; font-size: 11px; color: #6B7280; }
-            .equip-metric-row span:last-child { color: #111827; font-weight: 600; }
-            .equip-activate { font-size: 10px; font-weight: 700; color: var(--accent, #005DAA); text-align: center; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+            .equip-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px; }
+            .equip-name { font-size: 11px; font-weight: 600; color: #F8FAFC; }
+            .equip-category { font-size: 9px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
+            .equip-metrics { display: flex; flex-direction: column; gap: 2px; margin: 3px 0; padding: 3px 0; border-top: 1px solid #334155; border-bottom: 1px solid #334155; }
+            .equip-metric-row { display: flex; justify-content: space-between; font-size: 9px; color: #94A3B8; }
+            .equip-metric-row span:last-child { color: #F8FAFC; font-weight: 600; }
+            .equip-activate { font-size: 9px; font-weight: 600; color: var(--accent, #005DAA); text-align: center; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
 
             /* KPI Strip */
-            .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+            .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 4px; margin-bottom: 8px; }
             .kpi-cell {
-                background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                background: #1E293B; border: 1px solid #334155; border-radius: 4px; padding: 4px 6px;
             }
-            .kpi-cell-label { font-size: 9px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-            .kpi-cell-value { font-size: 16px; font-weight: 700; color: #111827; }
-            .kpi-cell-unit { font-size: 11px; color: #9CA3AF; margin-left: 3px; }
+            .kpi-cell-label { font-size: 9px; font-weight: 600; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px; }
+            .kpi-cell-value { font-size: 13px; font-weight: 700; color: #F8FAFC; }
+            .kpi-cell-unit { font-size: 9px; color: #94A3B8; margin-left: 2px; }
 
             /* Workspace */
             .workspace {
-                background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; padding: 16px;
-                margin-bottom: 16px;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-                animation: fadeSlideIn 0.4s ease;
+                background: #1E293B; border: 1px solid #334155; border-radius: 4px; padding: 10px;
+                margin-bottom: 10px;
             }
-            .workspace-header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid #F3F4F6; margin-bottom: 16px; }
-            .workspace-title { font-size: 18px; font-weight: 800; color: #111827; margin: 0; }
-            .workspace-label { font-size: 10px; color: #005DAA; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+            .workspace-header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 1px solid #334155; margin-bottom: 8px; }
+            .workspace-title { font-size: 14px; font-weight: 700; color: #F8FAFC; margin: 0; }
+            .workspace-label { font-size: 10px; color: #005DAA; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
 
             /* Chart Box */
             .chart-box {
-                background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; padding: 12px; margin-bottom: 12px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-                transition: all 0.3s ease;
+                background: #1E293B; border: 1px solid #334155; border-radius: 4px; padding: 6px; margin-bottom: 6px;
             }
-            .chart-box:hover { box-shadow: 0 8px 12px -3px rgba(0, 0, 0, 0.05); }
             .chart-label {
-                font-size: 12px; font-weight: 600; color: #4B5563;
-                margin-bottom: 10px; padding: 0 4px;
+                font-size: 10px; font-weight: 600; color: #94A3B8;
+                margin-bottom: 4px; padding: 0 2px; text-transform: uppercase; letter-spacing: 0.3px;
+            }
+            /* Constrain Plotly Chart Height & Hide Toolbar */
+            .chart-box .stPlotlyChart, 
+            .chart-box [data-testid="stPlotlyChart"],
+            .chart-box .js-plotly-plot,
+            .chart-box .plotly {
+                height: 220px !important;
+                min-height: 220px !important;
+                max-height: 220px !important;
+            }
+            .chart-box .modebar-container {
+                display: none !important;
             }
 
-            /* Dataframes */
+            /* Dataframes / Tables */
             div[data-testid="stDataFrame"] {
-                border: 1px solid #E5E7EB !important; border-radius: 8px !important; overflow: hidden !important;
-                background: #FFFFFF !important;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+                border: 1px solid #334155 !important; border-radius: 4px !important; overflow: hidden !important;
+                background: #1E293B !important;
             }
             div[data-testid="stDataFrame"] th {
-                background: #F9FAFB !important; color: #4B5563 !important; font-weight: 700 !important;
-                text-transform: uppercase !important; font-size: 10px !important; letter-spacing: 0.5px !important;
-                border-bottom: 2px solid #E5E7EB !important; padding: 8px 12px !important;
+                background: #273449 !important; color: #94A3B8 !important; font-weight: 600 !important;
+                text-transform: uppercase !important; font-size: 9px !important; letter-spacing: 0.3px !important;
+                border-bottom: 1px solid #334155 !important; padding: 4px 6px !important;
                 position: sticky !important; top: 0 !important; z-index: 1 !important;
             }
             div[data-testid="stDataFrame"] td {
-                background: #FFFFFF !important; color: #111827 !important; border-bottom: 1px solid #F3F4F6 !important;
-                padding: 6px 12px !important; font-size: 12px !important;
+                background: #1E293B !important; color: #F8FAFC !important; border-bottom: 1px solid #334155 !important;
+                padding: 2px 6px !important; font-size: 10px !important;
             }
             div[data-testid="stDataFrame"] tr:nth-child(even) td {
-                background: #F9FAFB !important;
+                background: #162032 !important;
             }
-            div[data-testid="stDataFrame"] tr:hover td { background: #EFF6FF !important; }
+            div[data-testid="stDataFrame"] tr:hover td { background: #273449 !important; }
 
             /* Tabs */
             .workspace div[data-testid="stTabs"] {
-                border-bottom: 1px solid #E5E7EB;
+                border-bottom: 1px solid #334155;
             }
             .workspace div[data-testid="stTabs"] button[data-baseweb="tab"] {
-                font-size: 12px; font-weight: 600; color: #6B7280; padding: 8px 16px;
-                border-radius: 6px 6px 0 0;
+                font-size: 10px; font-weight: 600; color: #94A3B8; padding: 4px 10px;
+                border-radius: 4px 4px 0 0;
             }
             .workspace div[data-testid="stTabs"] button[aria-selected="true"] {
-                color: #005DAA; background: #EFF6FF; border-bottom: 3px solid #005DAA;
-            }
-
-            /* Buttons */
-            div[data-testid="stButton"] > button {
-                background: #FFFFFF !important;
-                border: 1px solid #E5E7EB !important;
-                color: #374151 !important;
-                font-weight: 600 !important;
-                font-size: 12px !important;
-                border-radius: 6px !important;
-                padding: 6px 12px !important;
-                transition: all 0.2s ease !important;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-            }
-            div[data-testid="stButton"] > button:hover {
-                background: #005DAA !important;
-                color: #FFFFFF !important;
-                border-color: #005DAA !important;
-                transform: translateY(-1px);
-                box-shadow: 0 4px 6px rgba(0, 93, 170, 0.2) !important;
+                color: #F8FAFC; background: #273449; border-bottom: 2px solid #005DAA;
             }
 
             /* Metrics */
             div[data-testid="stMetric"] {
-                background: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                border-radius: 8px;
-                padding: 10px;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                background: #1E293B;
+                border: 1px solid #334155;
+                border-radius: 4px;
+                padding: 6px;
             }
             div[data-testid="stMetric"] label {
-                color: #6B7280 !important;
-                font-size: 11px !important;
+                color: #94A3B8 !important;
+                font-size: 10px !important;
                 font-weight: 600 !important;
             }
             div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
-                color: #111827 !important;
-                font-size: 18px !important;
+                color: #F8FAFC !important;
+                font-size: 14px !important;
                 font-weight: 700 !important;
             }
 
             /* Scrollbar */
-            ::-webkit-scrollbar { width: 6px; height: 6px; }
-            ::-webkit-scrollbar-track { background: #F9FAFB; }
-            ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
-            ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
-
-            @keyframes fadeSlideIn {
-                0% { opacity: 0; transform: translateY(8px); }
-                100% { opacity: 1; transform: translateY(0); }
-            }
+            ::-webkit-scrollbar { width: 4px; height: 4px; }
+            ::-webkit-scrollbar-track { background: #0F172A; }
+            ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+            ::-webkit-scrollbar-thumb:hover { background: #475569; }
         </style>""",
         unsafe_allow_html=True,
     )
@@ -479,17 +493,14 @@ def inject_global_styles() -> None:
 
 def render_sidebar_filters() -> tuple[str | None, str | None]:
     """Render the custom compact sidebar with filters."""
-    
-    # Company Logo / Title
     st.sidebar.markdown("""
-    <div style="text-align: center; margin-bottom: 16px; padding: 12px 0; border-bottom: 1px solid #E5E7EB;">
-        <div style="font-size: 28px; font-weight: 800; color: #005DAA; letter-spacing: -1px;">JFL</div>
-        <div style="font-size: 12px; font-weight: 600; color: #4B5563; margin-top: 4px;">Jubilant FoodWorks</div>
-        <div style="font-size: 14px; font-weight: 700; color: #111827; margin-top: 8px;">Engineering Dashboard</div>
+    <div style="text-align: center; margin-bottom: 10px; padding: 6px 0; border-bottom: 1px solid #334155;">
+        <div style="font-size: 18px; font-weight: 800; color: #005DAA; letter-spacing: -0.5px;">JFL</div>
+        <div style="font-size: 9px; font-weight: 600; color: #94A3B8; margin-top: 2px;">Jubilant FoodWorks</div>
+        <div style="font-size: 10px; font-weight: 700; color: #F8FAFC; margin-top: 3px;">Engineering</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Date Range
     st.sidebar.markdown("#### 📅 Date Range")
     
     if "filter_start_date" not in st.session_state:
@@ -500,7 +511,6 @@ def render_sidebar_filters() -> tuple[str | None, str | None]:
     start_date = st.sidebar.date_input("Start Date", value=st.session_state.filter_start_date, key="start_date_input")
     end_date = st.sidebar.date_input("End Date", value=st.session_state.filter_end_date, key="end_date_input")
     
-    # Quick Filters
     st.sidebar.markdown("#### ⚡ Quick Filters")
     cols = st.sidebar.columns(2)
     
@@ -510,13 +520,13 @@ def render_sidebar_filters() -> tuple[str | None, str | None]:
             st.session_state.filter_start_date = today
             st.session_state.filter_end_date = today
             st.rerun()
-        if st.button("Last 7 Days", use_container_width=True, key="qf_l7d"):
+        if st.button("7 Days", use_container_width=True, key="qf_l7d"):
             end = dt.date.today()
             start = end - dt.timedelta(days=6)
             st.session_state.filter_start_date = start
             st.session_state.filter_end_date = end
             st.rerun()
-        if st.button("This Month", use_container_width=True, key="qf_tm"):
+        if st.button("Month", use_container_width=True, key="qf_tm"):
             today = dt.date.today()
             start = today.replace(day=1)
             st.session_state.filter_start_date = start
@@ -530,18 +540,18 @@ def render_sidebar_filters() -> tuple[str | None, str | None]:
             st.rerun()
             
     with cols[1]:
-        if st.button("Yesterday", use_container_width=True, key="qf_yest"):
+        if st.button("Yest", use_container_width=True, key="qf_yest"):
             yesterday = dt.date.today() - dt.timedelta(days=1)
             st.session_state.filter_start_date = yesterday
             st.session_state.filter_end_date = yesterday
             st.rerun()
-        if st.button("Last 30 Days", use_container_width=True, key="qf_l30d"):
+        if st.button("30 Days", use_container_width=True, key="qf_l30d"):
             end = dt.date.today()
             start = end - dt.timedelta(days=29)
             st.session_state.filter_start_date = start
             st.session_state.filter_end_date = end
             st.rerun()
-        if st.button("Prev Month", use_container_width=True, key="qf_pm"):
+        if st.button("Prev Mo", use_container_width=True, key="qf_pm"):
             today = dt.date.today()
             first_day_of_month = today.replace(day=1)
             last_month_end = first_day_of_month - dt.timedelta(days=1)
@@ -549,14 +559,13 @@ def render_sidebar_filters() -> tuple[str | None, str | None]:
             st.session_state.filter_start_date = last_month_start
             st.session_state.filter_end_date = last_month_end
             st.rerun()
-        if st.button("All Data", use_container_width=True, key="qf_all"):
+        if st.button("All", use_container_width=True, key="qf_all"):
             st.session_state.filter_start_date = None
             st.session_state.filter_end_date = None
             st.rerun()
 
-    # Refresh Button
     st.sidebar.markdown("---")
-    if st.sidebar.button("🔄 Refresh Data", use_container_width=True, key="refresh_btn"):
+    if st.sidebar.button("🔄 Refresh", use_container_width=True, key="refresh_btn"):
         refresh_dashboard()
         st.rerun()
 
@@ -575,27 +584,27 @@ def render_sidebar_status(dashboard: dict[str, Any] | None) -> None:
     gh_ok = dashboard is not None
     
     st.sidebar.markdown(f"""
-    <div style="background: #F9FAFB; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid #E5E7EB;">
-        <div style="font-size: 10px; color: #6B7280; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">System Status</div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
-            <span style="color: #6B7280; font-weight: 500;">Date</span>
-            <span style="font-weight: 600; color: #111827;">{now.strftime("%b %d, %Y")}</span>
+    <div style="background: #1E293B; border-radius: 4px; padding: 6px; margin-bottom: 6px; border: 1px solid #334155;">
+        <div style="font-size: 9px; color: #94A3B8; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.3px;">System Status</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10px;">
+            <span style="color: #94A3B8; font-weight: 500;">Date</span>
+            <span style="font-weight: 600; color: #F8FAFC;">{now.strftime("%b %d")}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
-            <span style="color: #6B7280; font-weight: 500;">Time</span>
-            <span style="font-weight: 600; color: #111827;">{now.strftime("%H:%M:%S")}</span>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10px;">
+            <span style="color: #94A3B8; font-weight: 500;">Time</span>
+            <span style="font-weight: 600; color: #F8FAFC;">{now.strftime("%H:%M")}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
-            <span style="color: #6B7280; font-weight: 500;">Last Refresh</span>
-            <span style="font-weight: 600; color: #111827;">{last_refresh.strftime("%H:%M:%S") if last_refresh else "—"}</span>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10px;">
+            <span style="color: #94A3B8; font-weight: 500;">Refresh</span>
+            <span style="font-weight: 600; color: #F8FAFC;">{last_refresh.strftime("%H:%M") if last_refresh else "—"}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
-            <span style="color: #6B7280; font-weight: 500;">Excel</span>
-            <span style="font-weight: 600; color: {'#22C55E' if wb_ok else '#E31E24'};">{'● Connected' if wb_ok else '● Disconnected'}</span>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10px;">
+            <span style="color: #94A3B8; font-weight: 500;">Excel</span>
+            <span style="font-weight: 600; color: {'#22C55E' if wb_ok else '#E31E24'};">{'● OK' if wb_ok else '● ERR'}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 12px;">
-            <span style="color: #6B7280; font-weight: 500;">GitHub</span>
-            <span style="font-weight: 600; color: {'#22C55E' if gh_ok else '#E31E24'};">{'● Synced' if gh_ok else '● Error'}</span>
+        <div style="display: flex; justify-content: space-between; font-size: 10px;">
+            <span style="color: #94A3B8; font-weight: 500;">GitHub</span>
+            <span style="font-weight: 600; color: {'#22C55E' if gh_ok else '#E31E24'};">{'● OK' if gh_ok else '● ERR'}</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -832,7 +841,7 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
                     <div class="equip-name">{dept_name}</div>
                     <div class="equip-category">{config['category']}</div>
                 </div>
-                <div class="equip-live-dot" style="background:{live_color};box-shadow:0 0 5px {live_color}; width: 8px; height: 8px; border-radius: 50%; margin-top: 4px;"></div>
+                <div class="equip-live-dot" style="background:{live_color};box-shadow:0 0 4px {live_color}; width: 6px; height: 6px; border-radius: 50%; margin-top: 3px;"></div>
             </div>
             <div class="equip-metrics">
                 <div class="equip-metric-row">
@@ -878,7 +887,7 @@ def _chart_box(label: str, fig) -> None:
         st.plotly_chart(fig_to_render, use_container_width=True, config={"displayModeBar": False}, key=unique_key)
     else:
         st.markdown(
-            '<div style="font-size:12px;color:#9CA3AF;padding:16px;text-align:center;">No plottable data for this channel.</div>',
+            '<div style="font-size:10px;color:#64748B;padding:10px;text-align:center;">No plottable data.</div>',
             unsafe_allow_html=True,
         )
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1010,7 +1019,7 @@ def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
             }
         )
     if ledger_records:
-        st.markdown('<div style="font-size: 10px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 1px; margin: 12px 0 6px;">Channel Register</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; margin: 8px 0 4px;">Channel Register</div>', unsafe_allow_html=True)
         st.markdown('<div class="chart-box">', unsafe_allow_html=True)
         st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -1062,7 +1071,7 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
     sheet_names = meta.get("sheet_names", ["Data Source Unlinked"])
     active_workbook = sheet_names[0] if sheet_names else "N/A"
     st.markdown(
-        f"""<div style="margin-top: 20px; padding: 10px; border-radius: 8px; background: #FFFFFF; border: 1px solid #E5E7EB; font-size: 11px; color: #6B7280; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">WORKBOOK: {active_workbook} &nbsp;·&nbsp; REFRESHED: {refresh_text} &nbsp;·&nbsp; v{APP_VERSION}</div>""",
+        f"""<div style="margin-top: 10px; padding: 4px; border-radius: 4px; background: #1E293B; border: 1px solid #334155; font-size: 9px; color: #94A3B8; text-align: center;">WORKBOOK: {active_workbook} &nbsp;·&nbsp; REFRESHED: {refresh_text} &nbsp;·&nbsp; v{APP_VERSION}</div>""",
         unsafe_allow_html=True,
     )
 
