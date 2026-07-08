@@ -146,7 +146,6 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
         # Track mapping configuration coordinates
         global_col_idx: int = start_idx + pos
         dept_metadata_collector[raw_dept]["column_indexes"].append(global_col_idx)
-        dept_metadata_collector[raw_dept]["units_map"][raw_meter] = raw_unit
 
         # Handle column name deduplication within the same department safely
         base_meter: str = raw_meter
@@ -154,6 +153,11 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
         while base_meter in dept_column_collector[raw_dept]:
             base_meter = f"{raw_meter}_{counter}"
             counter += 1
+
+        # CONSISTENCY FIX:
+        # Ensure units_map uses the exact same deduplicated key (base_meter) 
+        # as the dataframe columns to prevent mismatched lookups later.
+        dept_metadata_collector[raw_dept]["units_map"][base_meter] = raw_unit
 
         # Direct row array population minimizes structural tracking costs
         dept_column_collector[raw_dept][base_meter] = readings_matrix.iloc[:, pos].tolist()
@@ -172,12 +176,33 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
         latest_values: dict[str, Any] = {}
         total_values: dict[str, Any] = {}
         average_values: dict[str, Any] = {}
+        
+        # NEW HIERARCHICAL CHANNEL STRUCTURE
+        channels: dict[str, dict[str, Any]] = {}
 
         for meter in meters_list:
             series: pd.Series = dept_df[meter]
-            latest_values[meter] = _calculate_latest_valid_value(series)
-            total_values[meter] = _calculate_sum(series)
-            average_values[meter] = _calculate_mean(series)
+            
+            # Calculate metrics
+            latest_val = _calculate_latest_valid_value(series)
+            total_val = _calculate_sum(series)
+            avg_val = _calculate_mean(series)
+            
+            # Store in flat dictionaries for backward compatibility
+            latest_values[meter] = latest_val
+            total_values[meter] = total_val
+            average_values[meter] = avg_val
+            
+            # Store in hierarchical channel structure
+            # Every field strictly refers to the exact same engineering channel (meter)
+            channels[meter] = {
+                "name": meter,
+                "unit": units_map.get(meter, ""),
+                "latest": latest_val,
+                "average": avg_val,
+                "total": total_val,
+                "history": series,
+            }
 
         departments_payload[dept_name] = {
             "name": dept_name,
@@ -189,6 +214,10 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
             "dataframe": dept_df,
             "totals": total_values,      # Backward compatibility field match
             "averages": average_values,  # Backward compatibility field match
+            
+            # NEW: Hierarchical channel exposure
+            "channels": channels,
+            
             "metadata": {
                 "column_indexes": meta["column_indexes"],
                 "source_sheet": meta["source_sheet"],
