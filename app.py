@@ -224,7 +224,7 @@ def inject_global_styles() -> None:
             * { box-sizing: border-box; }
             .tnum { font-variant-numeric: tabular-nums; }
 
-            /* Sidebar */
+            /* Sidebar - FIXED: No fixed widths or margins to allow native Streamlit collapse/expand */
             section[data-testid="stSidebar"] div[data-testid="stSidebarNav"],
             section[data-testid="stSidebar"] ul[data-testid="stSidebarNav"],
             section[data-testid="stSidebar"] nav[data-testid="stSidebarNav"] {
@@ -233,8 +233,7 @@ def inject_global_styles() -> None:
             section[data-testid="stSidebar"] {
                 background: #0F172A !important;
                 border-right: 1px solid #334155 !important;
-                width: 200px !important;
-                min-width: 200px !important;
+                /* Removed width/min-width to let Streamlit handle it */
             }
             section[data-testid="stSidebar"] > div {
                 padding: 10px 8px !important;
