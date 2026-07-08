@@ -109,11 +109,13 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
     available_dates: list[str] = _extract_validated_dates(primary_df)
     available_months: list[str] = sorted(list({date_str[:7] for date_str in available_dates}))
 
-    # Extract dynamic row headers and forward-fill merged structural boundaries
+    # WORKBOOK STRUCTURE (confirmed):
+    #   Row 0 → Department headers (merged, forward-filled)
+    #   Row 1 → Meter names
+    #   Row 2 → First telemetry row (no unit row exists in this workbook)
     dept_headers: pd.Series = engineering_block.iloc[0].ffill()
     meter_headers: pd.Series = engineering_block.iloc[1]
-    unit_headers: pd.Series = engineering_block.iloc[2]
-    readings_matrix: pd.DataFrame = engineering_block.iloc[3:].reset_index(drop=True)
+    readings_matrix: pd.DataFrame = engineering_block.iloc[2:].reset_index(drop=True)
 
     # Intermediate storage mapping to optimize performance and prevent alignment drift
     dept_column_collector: dict[str, dict[str, list[Any]]] = {}
@@ -122,15 +124,9 @@ def build_dashboard(workbook: dict[str, pd.DataFrame]) -> dict[str, Any]:
     for pos in range(engineering_block.shape[1]):
         raw_dept: str = _clean_label(dept_headers.iloc[pos])
         raw_meter: str = _clean_label(meter_headers.iloc[pos])
-        raw_unit: str = _clean_label(unit_headers.iloc[pos])
 
-        # DATA VALIDATION FIX:
-        # Strictly validate the unit against known engineering tokens.
-        # If the workbook contains numeric data values in the unit row (Row 2),
-        # this prevents them from being misinterpreted as string units and 
-        # subsequently concatenated with metric values in the UI.
-        if raw_unit and raw_unit.lower() not in UNIT_TOKENS:
-            raw_unit = ""
+        # The workbook contains no unit row; default all units to empty string.
+        raw_unit: str = ""
 
         if not raw_dept or not raw_meter:
             continue
@@ -345,14 +341,14 @@ def get_available_months(overview_dataframe: pd.DataFrame) -> list[str]:
 
 
 def get_unit_row(overview_dataframe: pd.DataFrame) -> int | None:
-    return 2
+    return None
 
 
 def get_dashboard_overview(overview_dataframe: pd.DataFrame) -> dict[str, Any]:
     return {
         "departments": sorted(list(EXPECTED_DEPARTMENTS)),
         "date_columns": [1],
-        "unit_row": 2,
+        "unit_row": None,
         "shape": overview_dataframe.shape,
     }
 
@@ -441,8 +437,11 @@ def _extract_validated_dates(primary_df: pd.DataFrame) -> list[str]:
     if primary_df.shape[1] <= 1:
         return []
     
-    # Timeline values reside from row index 3 onwards within column B (Index 1)
-    raw_date_series = primary_df.iloc[3:, 1]
+    # WORKBOOK STRUCTURE (confirmed):
+    #   Row 0 → Department headers
+    #   Row 1 → Meter names
+    #   Row 2 → First telemetry row (dates begin here in Column B)
+    raw_date_series = primary_df.iloc[2:, 1]
     validated_dates: list[str] = []
 
     for val in raw_date_series:
@@ -533,10 +532,10 @@ def _validate_boundaries(df: pd.DataFrame, start_idx: int, end_idx: int) -> None
 
 
 def _validate_headers(engineering_block: pd.DataFrame) -> None:
-    if engineering_block.shape[0] < 4:
+    if engineering_block.shape[0] < 3:
         raise ValueError(
             f"Structural Verification Failure: Target engineering block has inadequate vertical layout height ({engineering_block.shape[0]} rows). "
-            f"Production layout matrices must contain at least a Department row (1), a Meter row (2), a Unit row (3), and a Data row (4)."
+            f"Production layout matrices must contain at least a Department row (1), a Meter row (2), and a Data row (3)."
         )
 
     row1_elements = engineering_block.iloc[0].ffill().dropna().tolist()
