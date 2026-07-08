@@ -213,7 +213,7 @@ def inject_global_styles() -> None:
                 color: #111827 !important;
                 font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
             }
-            .block-container { padding-top: 24px; padding-bottom: 32px; max-width: 1600px; }
+            .block-container { padding-top: 16px; padding-bottom: 20px; max-width: 1600px; }
             * { box-sizing: border-box; }
             .tnum { font-variant-numeric: tabular-nums; }
 
@@ -227,11 +227,11 @@ def inject_global_styles() -> None:
             section[data-testid="stSidebar"] {
                 background: #FFFFFF !important;
                 border-right: 1px solid #E5E7EB !important;
-                width: 300px !important;
-                min-width: 300px !important;
+                width: 245px !important;
+                min-width: 245px !important;
             }
             section[data-testid="stSidebar"] > div {
-                padding-top: 20px !important;
+                padding-top: 16px !important;
             }
             section[data-testid="stSidebar"] h1, 
             section[data-testid="stSidebar"] h2, 
@@ -239,24 +239,25 @@ def inject_global_styles() -> None:
             section[data-testid="stSidebar"] h4 {
                 color: #111827 !important;
                 font-weight: 700 !important;
+                font-size: 14px !important;
             }
 
             /* Main Theme Elements */
             .section-title {
-                font-size: 18px; font-weight: 700; color: #111827; text-transform: uppercase;
-                letter-spacing: 0.5px; margin-bottom: 20px; margin-top: 40px;
-                display: flex; align-items: center; gap: 12px;
+                font-size: 14px; font-weight: 700; color: #111827; text-transform: uppercase;
+                letter-spacing: 0.5px; margin-bottom: 12px; margin-top: 24px;
+                display: flex; align-items: center; gap: 10px;
             }
-            .section-title::before { content: ""; width: 4px; height: 24px; background: #005DAA; border-radius: 2px; }
+            .section-title::before { content: ""; width: 3px; height: 18px; background: #005DAA; border-radius: 2px; }
 
             /* Executive Summary / KPI Tiles */
-            .exec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
+            .exec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
             .exec-tile {
                 background: #FFFFFF;
                 border: 1px solid #E5E7EB;
-                border-left: 6px solid var(--accent, #005DAA);
-                border-radius: 16px;
-                padding: 24px;
+                border-left: 5px solid var(--accent, #005DAA);
+                border-radius: 10px;
+                padding: 14px;
                 box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
                 transition: all 0.3s ease;
                 height: 100%;
@@ -265,29 +266,29 @@ def inject_global_styles() -> None:
                 justify-content: space-between;
             }
             .exec-tile:hover {
-                transform: translateY(-4px);
-                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
+                transform: translateY(-3px);
+                box-shadow: 0 8px 12px -3px rgba(0, 0, 0, 0.08);
             }
-            .exec-tile-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+            .exec-tile-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
             .exec-icon { 
-                width: 40px; height: 40px; background: rgba(0, 93, 170, 0.1); 
-                border-radius: 10px; display: flex; align-items: center; justify-content: center; 
-                font-size: 20px; color: var(--accent, #005DAA);
+                width: 28px; height: 28px; background: rgba(0, 93, 170, 0.1); 
+                border-radius: 6px; display: flex; align-items: center; justify-content: center; 
+                font-size: 14px; color: var(--accent, #005DAA);
             }
-            .exec-name { font-size: 13px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
-            .exec-label { font-size: 12px; color: #9CA3AF; margin-top: 4px; }
-            .exec-value-row { display: flex; align-items: baseline; margin-top: 12px; }
-            .exec-value { font-size: 32px; font-weight: 800; color: #111827; line-height: 1.2; }
-            .exec-unit { font-size: 14px; color: #6B7280; margin-left: 6px; }
-            .exec-bottom-row { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding-top: 12px; border-top: 1px solid #F3F4F6; }
+            .exec-name { font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
+            .exec-label { font-size: 10px; color: #9CA3AF; margin-top: 2px; }
+            .exec-value-row { display: flex; align-items: baseline; margin-top: 8px; }
+            .exec-value { font-size: 22px; font-weight: 800; color: #111827; line-height: 1.2; }
+            .exec-unit { font-size: 11px; color: #6B7280; margin-left: 4px; }
+            .exec-bottom-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid #F3F4F6; }
             .exec-trend-chip {
-                display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600;
-                padding: 4px 10px; border-radius: 20px;
+                display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600;
+                padding: 3px 8px; border-radius: 12px;
             }
             .trend-up { color: #22C55E; background: rgba(34, 197, 94, 0.1); }
             .trend-down { color: #E31E24; background: rgba(227, 30, 36, 0.1); }
             .trend-flat { color: #F59E0B; background: rgba(245, 158, 11, 0.1); }
-            .exec-status { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+            .exec-status { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
             .status-online { color: #22C55E; }
             .status-offline { color: #E31E24; }
 
@@ -295,46 +296,46 @@ def inject_global_styles() -> None:
             .ops-console {
                 background: #FFFFFF;
                 border: 1px solid #E5E7EB;
-                border-radius: 16px;
+                border-radius: 10px;
                 overflow: hidden;
                 box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
             }
             .console-row {
                 display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
-                align-items: center; padding: 14px 24px; border-bottom: 1px solid #F3F4F6;
+                align-items: center; padding: 8px 16px; border-bottom: 1px solid #F3F4F6;
                 transition: background 0.2s ease;
             }
             .console-row:last-child { border-bottom: none; }
-            .console-row-head { background: #F9FAFB; padding: 16px 24px; border-bottom: 2px solid #E5E7EB; }
+            .console-row-head { background: #F9FAFB; padding: 10px 16px; border-bottom: 2px solid #E5E7EB; }
             .console-row-head .console-col {
-                font-size: 12px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px;
+                font-size: 10px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px;
             }
             .console-row-alt { background: #F9FAFB; }
             .console-row:not(.console-row-head):hover { background: #EFF6FF; }
-            .console-col-name { font-size: 14px; font-weight: 600; color: #111827; }
-            .console-col-num { font-size: 14px; font-variant-numeric: tabular-nums; color: #4B5563; }
+            .console-col-name { font-size: 12px; font-weight: 600; color: #111827; }
+            .console-col-num { font-size: 12px; font-variant-numeric: tabular-nums; color: #4B5563; }
             .ops-val { font-weight: 600; color: #111827; }
-            .ops-unit { color: #9CA3AF; font-size: 12px; margin-left: 4px; }
+            .ops-unit { color: #9CA3AF; font-size: 10px; margin-left: 3px; }
 
             /* Alarm Ribbon */
             .alarm-ribbon {
-                display: flex; align-items: center; gap: 12px;
+                display: flex; align-items: center; gap: 10px;
                 background: #FFFFFF;
                 border: 1px solid #E5E7EB; border-left: 4px solid var(--alarm-color, #22C55E);
-                border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;
-                font-size: 14px; font-weight: 500; color: #111827;
+                border-radius: 8px; padding: 10px 14px; margin-bottom: 16px;
+                font-size: 12px; font-weight: 500; color: #111827;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             }
-            .alarm-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--alarm-color, #22C55E); box-shadow: 0 0 8px var(--alarm-color, #22C55E); }
-            .alarm-label { font-size: 12px; font-weight: 800; color: #6B7280; text-transform: uppercase; letter-spacing: 1px; }
+            .alarm-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--alarm-color, #22C55E); box-shadow: 0 0 6px var(--alarm-color, #22C55E); }
+            .alarm-label { font-size: 10px; font-weight: 800; color: #6B7280; text-transform: uppercase; letter-spacing: 1px; }
 
             /* Equipment / Process Cards */
             .equip-card {
                 background: #FFFFFF;
                 border: 1px solid #E5E7EB;
-                border-left: 6px solid var(--accent, #005DAA);
-                border-radius: 16px;
-                padding: 20px;
+                border-left: 5px solid var(--accent, #005DAA);
+                border-radius: 10px;
+                padding: 12px;
                 transition: all 0.3s ease;
                 height: 100%;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.05);
@@ -345,65 +346,65 @@ def inject_global_styles() -> None:
                 box-shadow: 0 0 0 2px #005DAA inset;
             }
             .equip-card:hover {
-                transform: translateY(-4px);
-                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
+                transform: translateY(-3px);
+                box-shadow: 0 8px 12px -3px rgba(0, 0, 0, 0.08);
             }
-            .equip-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-            .equip-name { font-size: 16px; font-weight: 700; color: #111827; }
-            .equip-category { font-size: 12px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
-            .equip-metrics { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; padding: 12px 0; border-top: 1px solid #F3F4F6; border-bottom: 1px solid #F3F4F6; }
-            .equip-metric-row { display: flex; justify-content: space-between; font-size: 13px; color: #6B7280; }
+            .equip-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+            .equip-name { font-size: 13px; font-weight: 700; color: #111827; }
+            .equip-category { font-size: 10px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+            .equip-metrics { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; padding: 8px 0; border-top: 1px solid #F3F4F6; border-bottom: 1px solid #F3F4F6; }
+            .equip-metric-row { display: flex; justify-content: space-between; font-size: 11px; color: #6B7280; }
             .equip-metric-row span:last-child { color: #111827; font-weight: 600; }
-            .equip-activate { font-size: 12px; font-weight: 700; color: var(--accent, #005DAA); text-align: center; margin-top: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+            .equip-activate { font-size: 10px; font-weight: 700; color: var(--accent, #005DAA); text-align: center; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
 
             /* KPI Strip */
-            .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+            .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
             .kpi-cell {
-                background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px;
+                background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px;
                 box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
-            .kpi-cell-label { font-size: 11px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-            .kpi-cell-value { font-size: 22px; font-weight: 700; color: #111827; }
-            .kpi-cell-unit { font-size: 13px; color: #9CA3AF; margin-left: 4px; }
+            .kpi-cell-label { font-size: 9px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+            .kpi-cell-value { font-size: 16px; font-weight: 700; color: #111827; }
+            .kpi-cell-unit { font-size: 11px; color: #9CA3AF; margin-left: 3px; }
 
             /* Workspace */
             .workspace {
-                background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; padding: 24px;
-                margin-bottom: 24px;
+                background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; padding: 16px;
+                margin-bottom: 16px;
                 box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
                 animation: fadeSlideIn 0.4s ease;
             }
-            .workspace-header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 16px; border-bottom: 1px solid #F3F4F6; margin-bottom: 24px; }
-            .workspace-title { font-size: 24px; font-weight: 800; color: #111827; margin: 0; }
-            .workspace-label { font-size: 12px; color: #005DAA; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+            .workspace-header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid #F3F4F6; margin-bottom: 16px; }
+            .workspace-title { font-size: 18px; font-weight: 800; color: #111827; margin: 0; }
+            .workspace-label { font-size: 10px; color: #005DAA; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 
             /* Chart Box */
             .chart-box {
-                background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; padding: 20px; margin-bottom: 20px;
+                background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; padding: 12px; margin-bottom: 12px;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.05);
                 transition: all 0.3s ease;
             }
-            .chart-box:hover { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }
+            .chart-box:hover { box-shadow: 0 8px 12px -3px rgba(0, 0, 0, 0.05); }
             .chart-label {
-                font-size: 14px; font-weight: 600; color: #4B5563;
-                margin-bottom: 16px; padding: 0 4px;
+                font-size: 12px; font-weight: 600; color: #4B5563;
+                margin-bottom: 10px; padding: 0 4px;
             }
 
             /* Dataframes */
             div[data-testid="stDataFrame"] {
-                border: 1px solid #E5E7EB !important; border-radius: 12px !important; overflow: hidden !important;
+                border: 1px solid #E5E7EB !important; border-radius: 8px !important; overflow: hidden !important;
                 background: #FFFFFF !important;
                 box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
             }
             div[data-testid="stDataFrame"] th {
                 background: #F9FAFB !important; color: #4B5563 !important; font-weight: 700 !important;
-                text-transform: uppercase !important; font-size: 12px !important; letter-spacing: 0.5px !important;
-                border-bottom: 2px solid #E5E7EB !important; padding: 12px 16px !important;
+                text-transform: uppercase !important; font-size: 10px !important; letter-spacing: 0.5px !important;
+                border-bottom: 2px solid #E5E7EB !important; padding: 8px 12px !important;
                 position: sticky !important; top: 0 !important; z-index: 1 !important;
             }
             div[data-testid="stDataFrame"] td {
                 background: #FFFFFF !important; color: #111827 !important; border-bottom: 1px solid #F3F4F6 !important;
-                padding: 12px 16px !important; font-size: 14px !important;
+                padding: 6px 12px !important; font-size: 12px !important;
             }
             div[data-testid="stDataFrame"] tr:nth-child(even) td {
                 background: #F9FAFB !important;
@@ -415,8 +416,8 @@ def inject_global_styles() -> None:
                 border-bottom: 1px solid #E5E7EB;
             }
             .workspace div[data-testid="stTabs"] button[data-baseweb="tab"] {
-                font-size: 14px; font-weight: 600; color: #6B7280; padding: 12px 20px;
-                border-radius: 8px 8px 0 0;
+                font-size: 12px; font-weight: 600; color: #6B7280; padding: 8px 16px;
+                border-radius: 6px 6px 0 0;
             }
             .workspace div[data-testid="stTabs"] button[aria-selected="true"] {
                 color: #005DAA; background: #EFF6FF; border-bottom: 3px solid #005DAA;
@@ -428,8 +429,9 @@ def inject_global_styles() -> None:
                 border: 1px solid #E5E7EB !important;
                 color: #374151 !important;
                 font-weight: 600 !important;
-                border-radius: 8px !important;
-                padding: 8px 16px !important;
+                font-size: 12px !important;
+                border-radius: 6px !important;
+                padding: 6px 12px !important;
                 transition: all 0.2s ease !important;
                 box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
             }
@@ -445,29 +447,29 @@ def inject_global_styles() -> None:
             div[data-testid="stMetric"] {
                 background: #FFFFFF;
                 border: 1px solid #E5E7EB;
-                border-radius: 12px;
-                padding: 16px;
+                border-radius: 8px;
+                padding: 10px;
                 box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
             div[data-testid="stMetric"] label {
                 color: #6B7280 !important;
-                font-size: 13px !important;
+                font-size: 11px !important;
                 font-weight: 600 !important;
             }
             div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
                 color: #111827 !important;
-                font-size: 24px !important;
+                font-size: 18px !important;
                 font-weight: 700 !important;
             }
 
             /* Scrollbar */
-            ::-webkit-scrollbar { width: 8px; height: 8px; }
+            ::-webkit-scrollbar { width: 6px; height: 6px; }
             ::-webkit-scrollbar-track { background: #F9FAFB; }
-            ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
+            ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
             ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
 
             @keyframes fadeSlideIn {
-                0% { opacity: 0; transform: translateY(10px); }
+                0% { opacity: 0; transform: translateY(8px); }
                 100% { opacity: 1; transform: translateY(0); }
             }
         </style>""",
@@ -480,10 +482,10 @@ def render_sidebar_filters() -> tuple[str | None, str | None]:
     
     # Company Logo / Title
     st.sidebar.markdown("""
-    <div style="text-align: center; margin-bottom: 24px; padding: 20px 0; border-bottom: 1px solid #E5E7EB;">
-        <div style="font-size: 36px; font-weight: 800; color: #005DAA; letter-spacing: -1px;">JFL</div>
-        <div style="font-size: 14px; font-weight: 600; color: #4B5563; margin-top: 4px;">Jubilant FoodWorks</div>
-        <div style="font-size: 16px; font-weight: 700; color: #111827; margin-top: 12px;">Engineering Dashboard</div>
+    <div style="text-align: center; margin-bottom: 16px; padding: 12px 0; border-bottom: 1px solid #E5E7EB;">
+        <div style="font-size: 28px; font-weight: 800; color: #005DAA; letter-spacing: -1px;">JFL</div>
+        <div style="font-size: 12px; font-weight: 600; color: #4B5563; margin-top: 4px;">Jubilant FoodWorks</div>
+        <div style="font-size: 14px; font-weight: 700; color: #111827; margin-top: 8px;">Engineering Dashboard</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -573,25 +575,25 @@ def render_sidebar_status(dashboard: dict[str, Any] | None) -> None:
     gh_ok = dashboard is not None
     
     st.sidebar.markdown(f"""
-    <div style="background: #F9FAFB; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid #E5E7EB;">
-        <div style="font-size: 12px; color: #6B7280; font-weight: 700; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.5px;">System Status</div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px;">
+    <div style="background: #F9FAFB; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid #E5E7EB;">
+        <div style="font-size: 10px; color: #6B7280; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">System Status</div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
             <span style="color: #6B7280; font-weight: 500;">Date</span>
             <span style="font-weight: 600; color: #111827;">{now.strftime("%b %d, %Y")}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
             <span style="color: #6B7280; font-weight: 500;">Time</span>
             <span style="font-weight: 600; color: #111827;">{now.strftime("%H:%M:%S")}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
             <span style="color: #6B7280; font-weight: 500;">Last Refresh</span>
             <span style="font-weight: 600; color: #111827;">{last_refresh.strftime("%H:%M:%S") if last_refresh else "—"}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
             <span style="color: #6B7280; font-weight: 500;">Excel</span>
             <span style="font-weight: 600; color: {'#22C55E' if wb_ok else '#E31E24'};">{'● Connected' if wb_ok else '● Disconnected'}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 14px;">
+        <div style="display: flex; justify-content: space-between; font-size: 12px;">
             <span style="color: #6B7280; font-weight: 500;">GitHub</span>
             <span style="font-weight: 600; color: {'#22C55E' if gh_ok else '#E31E24'};">{'● Synced' if gh_ok else '● Error'}</span>
         </div>
@@ -830,7 +832,7 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
                     <div class="equip-name">{dept_name}</div>
                     <div class="equip-category">{config['category']}</div>
                 </div>
-                <div class="equip-live-dot" style="background:{live_color};box-shadow:0 0 5px {live_color}; width: 10px; height: 10px; border-radius: 50%; margin-top: 4px;"></div>
+                <div class="equip-live-dot" style="background:{live_color};box-shadow:0 0 5px {live_color}; width: 8px; height: 8px; border-radius: 50%; margin-top: 4px;"></div>
             </div>
             <div class="equip-metrics">
                 <div class="equip-metric-row">
@@ -876,7 +878,7 @@ def _chart_box(label: str, fig) -> None:
         st.plotly_chart(fig_to_render, use_container_width=True, config={"displayModeBar": False}, key=unique_key)
     else:
         st.markdown(
-            '<div style="font-size:13px;color:#9CA3AF;padding:20px;text-align:center;">No plottable data for this channel.</div>',
+            '<div style="font-size:12px;color:#9CA3AF;padding:16px;text-align:center;">No plottable data for this channel.</div>',
             unsafe_allow_html=True,
         )
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1008,7 +1010,7 @@ def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
             }
         )
     if ledger_records:
-        st.markdown('<div style="font-size: 12px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 8px;">Channel Register</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size: 10px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 1px; margin: 12px 0 6px;">Channel Register</div>', unsafe_allow_html=True)
         st.markdown('<div class="chart-box">', unsafe_allow_html=True)
         st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -1060,7 +1062,7 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
     sheet_names = meta.get("sheet_names", ["Data Source Unlinked"])
     active_workbook = sheet_names[0] if sheet_names else "N/A"
     st.markdown(
-        f"""<div style="margin-top: 32px; padding: 16px; border-radius: 12px; background: #FFFFFF; border: 1px solid #E5E7EB; font-size: 12px; color: #6B7280; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">WORKBOOK: {active_workbook} &nbsp;·&nbsp; REFRESHED: {refresh_text} &nbsp;·&nbsp; v{APP_VERSION}</div>""",
+        f"""<div style="margin-top: 20px; padding: 10px; border-radius: 8px; background: #FFFFFF; border: 1px solid #E5E7EB; font-size: 11px; color: #6B7280; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">WORKBOOK: {active_workbook} &nbsp;·&nbsp; REFRESHED: {refresh_text} &nbsp;·&nbsp; v{APP_VERSION}</div>""",
         unsafe_allow_html=True,
     )
 
