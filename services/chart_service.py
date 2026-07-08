@@ -1,6 +1,6 @@
 """Reusable Plotly chart service for the Engineering Monitoring Dashboard.
 ARCHITECTURE NOTE: This service ONLY plots. It assumes input DataFrames are 
-already cleaned, aligned, and validated by the caller (e.g., TrendDataBuilder or direct dataframe access).
+already cleaned, aligned, and validated by the caller.
 """
 from __future__ import annotations
 
