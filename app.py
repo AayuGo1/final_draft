@@ -43,7 +43,6 @@ CRITICAL_SYSTEMS = [
     "Freon Refrigeration", "Ammonia Refrigeration",
 ]
 
-# accent = tile/border color, category = equipment class label
 DEPT_CONFIGS = {
     "NPCL": {"accent": "#3B82F6", "category": "Electrical / Incoming Power"},
     "DG": {"accent": "#F59E0B", "category": "Fuel / Diesel Generation"},
@@ -63,9 +62,6 @@ DEPT_CONFIGS = {
 }
 DEFAULT_CONFIG = {"accent": "#8B5CF6", "category": "Engineering System"}
 
-# Fixed display labels + icons for the Executive Summary tiles only.
-# Display-layer only — does not affect any backend calculation or the
-# representative-meter selection logic used elsewhere in the app.
 EXEC_TILE_LABELS: Final[dict[str, str]] = {
     "NPCL": "Incoming Electrical",
     "DG": "Diesel Generation",
@@ -85,9 +81,6 @@ EXEC_TILE_ICONS: Final[dict[str, str]] = {
     "Ammonia Refrigeration": "❄️",
 }
 
-# ------------------------------------------------------------------
-# Dynamic subsection discovery.
-# ------------------------------------------------------------------
 SUBSECTION_RULES: Final[list[tuple[str, list[str]]]] = [
     ("Power & Demand", ["power", "kva", "demand", "load", "kw"]),
     ("Energy & Consumption", ["energy", "kwh", "consumption", "unit"]),
@@ -99,7 +92,6 @@ SUBSECTION_RULES: Final[list[tuple[str, list[str]]]] = [
 ]
 OTHER_BUCKET_LABEL: Final[str] = "Other Channels"
 
-# Global counter to ensure deterministic unique keys for Plotly charts across reruns
 _chart_counter = 0
 
 
@@ -123,18 +115,13 @@ def _bucket_meters_dynamically(meters: list[str]) -> "dict[str, list[str]]":
 
 
 def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
-    """Resolve a meter's display unit, tolerating within-department name collisions.
-    
-    Rejects numeric strings to prevent raw data values from being misinterpreted 
-    as units and subsequently concatenated with metric values in the UI.
-    """
+    """Resolve a meter's display unit, tolerating within-department name collisions."""
     units_map = dept_obj.get("units", {})
     
     def _is_valid_unit(val: Any) -> bool:
         if not val or not str(val).strip():
             return False
         s = str(val).strip()
-        # If it can be parsed as a float, it's a data value, not a unit
         try:
             float(s)
             return False
@@ -154,18 +141,11 @@ def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
     return ""
 
 
-# ==================================================================
-# Data access
-# ==================================================================
-
 def get_dashboard(start_date: str | None = None, end_date: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
-    # Use a cache key that includes the date range to ensure fresh data when filters change
+    """Load dashboard data with caching based on date filters."""
     cache_key = f"dashboard_data_{start_date}_{end_date}"
     
     if cache_key not in st.session_state:
-        # Clear old cache entries if they exist to prevent memory bloat, 
-        # keeping only the current one and maybe a previous one if needed.
-        # For simplicity, we just clear all dashboard_data keys starting with 'dashboard_data_'
         keys_to_clear = [k for k in st.session_state if k.startswith("dashboard_data_")]
         for k in keys_to_clear:
             if k != cache_key:
@@ -180,9 +160,9 @@ def get_dashboard(start_date: str | None = None, end_date: str | None = None) ->
 
 
 def refresh_dashboard() -> None:
+    """Clear all caches and session state related to dashboard data."""
     st.cache_data.clear()
     st.cache_resource.clear()
-    # Clear all session state keys related to dashboard data
     keys_to_clear = [k for k in st.session_state if k.startswith("dashboard_data")]
     for k in keys_to_clear:
         del st.session_state[k]
@@ -190,6 +170,7 @@ def refresh_dashboard() -> None:
 
 
 def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) -> float:
+    """Calculate the maximum value for a gauge chart."""
     if rep_m and rep_m in df_block.columns:
         numeric_series = pd.to_numeric(df_block[rep_m], errors="coerce").dropna()
         if len(numeric_series) >= 5:
@@ -208,6 +189,7 @@ def get_gauge_max(df_block: pd.DataFrame, rep_m: str, dept_obj: dict[str, Any]) 
 
 
 def _format_exec_value(value: float) -> str:
+    """Format a numeric value for executive summary display."""
     rounded = round(float(value), 2)
     if abs(rounded - round(rounded)) < 0.005:
         return f"{rounded:,.0f}"
@@ -215,6 +197,7 @@ def _format_exec_value(value: float) -> str:
 
 
 def _exec_trend_chip(latest_val: float, avg_val: Any) -> tuple[str, str]:
+    """Determine the trend status chip class and text."""
     if not isinstance(avg_val, (int, float)) or avg_val == 0:
         return "trend-flat", "Stable"
     ratio = latest_val / avg_val
@@ -225,11 +208,8 @@ def _exec_trend_chip(latest_val: float, avg_val: Any) -> tuple[str, str]:
     return "trend-flat", "Stable"
 
 
-# ==================================================================
-# Styles
-# ==================================================================
-
 def inject_global_styles() -> None:
+    """Inject global CSS for the dark SCADA theme and UI improvements."""
     st.markdown(
         f"""
         <style>
@@ -244,15 +224,31 @@ def inject_global_styles() -> None:
             * {{ box-sizing: border-box; }}
             .tnum {{ font-family: 'JetBrains Mono', 'Inter', monospace; font-variant-numeric: tabular-nums; }}
 
-            /* Sidebar Styling for Glassmorphism */
+            /* TASK 1 & 2: Sidebar Styling - Hide default nav, reduce width, compact spacing */
+            section[data-testid="stSidebar"] div[data-testid="stSidebarNav"],
+            section[data-testid="stSidebar"] ul[data-testid="stSidebarNav"],
+            section[data-testid="stSidebar"] nav[data-testid="stSidebarNav"] {{
+                display: none !important;
+            }}
             section[data-testid="stSidebar"] {{
+                width: 240px !important;
+                min-width: 240px !important;
                 background: rgba(16, 19, 26, 0.95) !important;
                 backdrop-filter: blur(10px);
                 border-right: 1px solid #1C212B;
             }}
-            section[data-testid="stSidebar"] .stSelectbox label,
+            section[data-testid="stSidebar"] .stMarkdown {{
+                margin-bottom: 0.2rem !important;
+            }}
+            section[data-testid="stSidebar"] h3, section[data-testid="stSidebar"] h4 {{
+                margin-bottom: 0.2rem !important;
+                margin-top: 0.5rem !important;
+                font-size: 14px !important;
+                font-weight: 700 !important;
+                color: #E5E9F0 !important;
+            }}
             section[data-testid="stSidebar"] .stDateInput label,
-            section[data-testid="stSidebar"] .stMultiSelect label {{
+            section[data-testid="stSidebar"] .stSelectbox label {{
                 color: #E5E9F0 !important;
                 font-weight: 600;
                 font-size: 10px;
@@ -275,10 +271,34 @@ def inject_global_styles() -> None:
                 margin-bottom: 4px;
                 border-radius: 4px;
                 transition: all 0.2s ease;
+                padding: 0.3rem 0.5rem !important;
+                min-height: 0 !important;
+                line-height: 1.2 !important;
             }}
             section[data-testid="stSidebar"] button[kind="secondary"]:hover {{
                 background: #1C212B !important;
                 border-color: #3B82F6 !important;
+                color: #FFF !important;
+            }}
+            section[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"] {{
+                padding: 6px 10px !important;
+                margin-bottom: 2px !important;
+                border-radius: 4px !important;
+                font-size: 12px !important;
+                font-weight: 600 !important;
+                color: #D1D5DB !important;
+                text-decoration: none !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+            }}
+            section[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"]:hover {{
+                background: #1C212B !important;
+                color: #FFF !important;
+            }}
+            section[data-testid="stSidebar"] a[data-testid="stPageLink-NavLink"][aria-current="page"] {{
+                background: #1C212B !important;
+                border-left: 3px solid #3B82F6 !important;
                 color: #FFF !important;
             }}
 
@@ -315,10 +335,11 @@ def inject_global_styles() -> None:
             .section-title::before {{ content: ""; width: 3px; height: 10px; background: #3B82F6; border-radius: 1px; }}
             .section-title::after {{ content: ""; flex: 1; height: 1px; background: #1C212B; }}
 
+            /* TASK 3: Executive Summary Cards - Reduced height/padding, increased number size */
             .exec-grid {{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }}
             .exec-tile {{
                 background: #10131A; border: 1px solid #1C212B; border-top: 2px solid var(--accent, #3B82F6);
-                border-radius: 4px; padding: 12px 13px 10px 13px; min-height: 104px;
+                border-radius: 4px; padding: 8px 10px; min-height: 80px;
                 display: flex; flex-direction: column; justify-content: space-between;
                 transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
             }}
@@ -333,7 +354,7 @@ def inject_global_styles() -> None:
             .exec-name {{ font-size: 10.5px; font-weight: 800; color: #E5E9F0; text-transform: uppercase; letter-spacing: 0.6px; }}
             .exec-label {{ font-size: 8.5px; color: #566072; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; margin-top: 6px; }}
             .exec-value-row {{ display: flex; align-items: baseline; margin-top: 3px; }}
-            .exec-value {{ font-size: 19px; font-weight: 700; color: #F3F4F6; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; letter-spacing: -0.2px; }}
+            .exec-value {{ font-size: 22px; font-weight: 700; color: #F3F4F6; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; letter-spacing: -0.2px; }}
             .exec-unit {{ font-size: 9.5px; color: #6B7280; font-weight: 600; margin-left: 4px; font-family: 'Inter', sans-serif; }}
             .exec-bottom-row {{ display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 7px; border-top: 1px solid #171B24; }}
             .exec-trend-chip {{
@@ -466,18 +487,23 @@ def inject_global_styles() -> None:
                 color: #F3F4F6;
             }}
 
+            /* TASK 4: Tables - Sticky header, alternating rows, rounded borders, better spacing */
             div[data-testid="stDataFrame"] {{
-                border: 1px solid #1C212B !important; border-radius: 3px !important; overflow: hidden !important;
+                border: 1px solid #1C212B !important; border-radius: 6px !important; overflow: hidden !important;
             }}
             div[data-testid="stDataFrame"] th {{
                 background: #14171F !important; color: #566072 !important; font-weight: 800 !important;
                 text-transform: uppercase !important; font-size: 9px !important; letter-spacing: 0.7px !important;
-                border-bottom: 1px solid #262C38 !important; padding: 5px 8px !important;
+                border-bottom: 1px solid #262C38 !important; padding: 8px 12px !important;
+                position: sticky !important; top: 0 !important; z-index: 1 !important;
             }}
             div[data-testid="stDataFrame"] td {{
                 background: #10131A !important; color: #C6CBD3 !important; border-bottom: 1px solid #171B24 !important;
-                padding: 4px 8px !important; font-size: 10.5px !important; font-variant-numeric: tabular-nums;
+                padding: 8px 12px !important; font-size: 10.5px !important; font-variant-numeric: tabular-nums;
                 font-family: 'JetBrains Mono', monospace !important;
+            }}
+            div[data-testid="stDataFrame"] tr:nth-child(even) td {{
+                background: #0D0F14 !important;
             }}
             div[data-testid="stDataFrame"] tr:hover td {{ background: #1A1F29 !important; }}
 
@@ -495,11 +521,8 @@ def inject_global_styles() -> None:
     )
 
 
-# ==================================================================
-# Header
-# ==================================================================
-
 def render_header(dashboard: dict[str, Any] | None) -> None:
+    """Render the top SCADA-style header."""
     now = dt.datetime.now()
     departments = (dashboard or {}).get("departments", {})
     last_refresh = st.session_state.get("last_refresh")
@@ -552,10 +575,6 @@ def render_header(dashboard: dict[str, Any] | None) -> None:
     )
 
 
-# ==================================================================
-# Alarm Ribbon
-# ==================================================================
-
 ALARM_WATCHLIST: Final[dict[str, float]] = {
     "Air compressor": 0.90,
     "DG": 0.90,
@@ -564,6 +583,7 @@ ALARM_WATCHLIST: Final[dict[str, float]] = {
 
 
 def render_alarm_ribbon(dashboard: dict[str, Any]) -> None:
+    """Render the alarm status ribbon."""
     departments = dashboard.get("departments", {})
     alarms: list[tuple[str, str]] = []
 
@@ -611,11 +631,8 @@ def render_alarm_ribbon(dashboard: dict[str, Any]) -> None:
     )
 
 
-# ==================================================================
-# Section 1 — Executive Summary
-# ==================================================================
-
 def render_executive_summary(dashboard: dict[str, Any]) -> None:
+    """Render the executive summary tiles."""
     departments = dashboard.get("departments", {})
     tiles_html = ""
 
@@ -664,10 +681,6 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
         st.markdown(f'<div class="exec-grid">{tiles_html}</div>', unsafe_allow_html=True)
 
 
-# ==================================================================
-# Section 2 — Operations Overview
-# ==================================================================
-
 OPS_CONSOLE_PROCESSES: Final[list[str]] = [
     "NPCL",
     "Overall PNG",
@@ -681,6 +694,7 @@ OPS_CONSOLE_PROCESSES: Final[list[str]] = [
 
 
 def render_operations_overview(dashboard: dict[str, Any]) -> None:
+    """Render the operations overview console."""
     departments = dashboard.get("departments", {})
     rows_html = ""
 
@@ -699,7 +713,6 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         dept_obj = departments[dept_name]
         rep_m = select_representative_meter(dept_obj)
         
-        # Strictly source from respective dictionaries using the representative meter
         total_val = dept_obj.get("total_values", {}).get(rep_m)
         avg_val = dept_obj.get("average_values", {}).get(rep_m)
         latest_val = dept_obj.get("latest_values", {}).get(rep_m)
@@ -729,23 +742,20 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         st.markdown(f'<div class="ops-console">{header_html}{rows_html}</div>', unsafe_allow_html=True)
 
 
-# ==================================================================
-# Section 3 — Equipment / Process Selector
-# ==================================================================
-
 def _top_metrics_for(dept_obj: dict[str, Any], meters: list[str], n: int = 3) -> list[tuple[str, str]]:
+    """Get top metrics for a department card."""
     latest_vals = dept_obj.get("latest_values", {})
     out: list[tuple[str, str]] = []
     for m in meters[:n]:
         v = latest_vals.get(m)
         u = resolve_meter_unit(dept_obj, m)
         v_str = f"{v:,.1f}" if isinstance(v, (int, float)) else "—"
-        # If unit is empty, strip handles the trailing space gracefully
         out.append((m, f"{v_str} {u}".strip()))
     return out
 
 
 def render_process_selector(dashboard: dict[str, Any]) -> str | None:
+    """Render the department selection cards with improved UI (TASK 5)."""
     departments = dashboard.get("departments", {})
 
     if "selected_process" not in st.session_state:
@@ -760,16 +770,27 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
         config = DEPT_CONFIGS.get(dept_name, DEFAULT_CONFIG)
         meters = dept_obj.get("meters", [])
         is_active = (dept_name == selected)
-        metrics = _top_metrics_for(dept_obj, meters, n=3)
-        is_online = any(dept_obj.get("latest_values", {}).get(m) is not None for m in meters)
+        
+        # TASK 5: Get data for the new card layout
+        rep_m = select_representative_meter(dept_obj)
+        latest_val = dept_obj.get("latest_values", {}).get(rep_m)
+        latest_str = f"{latest_val:,.2f}" if isinstance(latest_val, (int, float)) else "—"
+        unit = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
+        
+        is_online = latest_val is not None
         status_class = "status-online" if is_online else "status-offline"
         status_text = "ONLINE" if is_online else "OFFLINE"
         live_color = "#10B981" if is_online else "#EF4444"
-
-        metrics_html = "".join(
-            f'<div class="equip-metric-row"><span>{name}</span><span>{val}</span></div>'
-            for name, val in metrics
-        )
+        
+        # Calculate Trend Indicator
+        avg_val = dept_obj.get("average_values", {}).get(rep_m)
+        trend_class, trend_text, trend_arrow = "trend-flat", "Stable", "●"
+        if isinstance(latest_val, (int, float)) and isinstance(avg_val, (int, float)) and avg_val != 0:
+            ratio = latest_val / avg_val
+            if ratio >= 1.08:
+                trend_class, trend_text, trend_arrow = "trend-up", "Healthy", "▲"
+            elif ratio <= 0.92:
+                trend_class, trend_text, trend_arrow = "trend-down", "Low", "▼"
 
         card_html = f"""
         <div class="equip-card{' active' if is_active else ''}" style="--accent:{config['accent']};">
@@ -780,10 +801,22 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
                 </div>
                 <div class="equip-live-dot" style="background:{live_color};box-shadow:0 0 5px {live_color};"></div>
             </div>
-            <div class="equip-metrics">{metrics_html}</div>
+            <div class="equip-metrics">
+                <div class="equip-metric-row">
+                    <span>Latest Value</span>
+                    <span>{latest_str} {unit}</span>
+                </div>
+                <div class="equip-metric-row">
+                    <span>Status</span>
+                    <span class="exec-status {status_class}">{status_text}</span>
+                </div>
+                <div class="equip-metric-row">
+                    <span>Trend</span>
+                    <span class="exec-trend-chip {trend_class}">{trend_arrow} {trend_text}</span>
+                </div>
+            </div>
             <div class="equip-activate">
                 <span>{'ACTIVE ●' if is_active else 'ACTIVATE'}</span>
-                <span class="exec-status {status_class}">{status_text}</span>
             </div>
         </div>"""
 
@@ -797,24 +830,14 @@ def render_process_selector(dashboard: dict[str, Any]) -> str | None:
     return st.session_state["selected_process"]
 
 
-# ==================================================================
-# Section 4 — Dedicated department workspace
-# ==================================================================
-
 def _chart_box(label: str, fig) -> None:
-    """Render a chart inside a styled container with a guaranteed unique Streamlit element ID.
-    
-    Clones the Plotly figure to prevent issues with cached figure reuse, 
-    shared references, or duplicate rendering of the same object.
-    """
+    """Render a chart inside a styled container."""
     global _chart_counter
     _chart_counter += 1
     unique_key = f"chart_box_{_chart_counter}"
     
     st.markdown(f'<div class="chart-box"><div class="chart-label">{label}</div>', unsafe_allow_html=True)
     if fig:
-        # Create a fresh independent Figure instance to prevent StreamlitDuplicateElementId
-        # when the same cached figure object is rendered multiple times across tabs.
         try:
             fig_to_render = copy.deepcopy(fig)
         except Exception:
@@ -830,6 +853,7 @@ def _chart_box(label: str, fig) -> None:
 
 
 def _render_meter_kpi_strip(dept_obj: dict[str, Any], meters: list[str]) -> None:
+    """Render a strip of KPI cells for the top meters."""
     latest_vals = dept_obj.get("latest_values", {})
     cells_html = ""
     for m in meters[:6]:
@@ -846,13 +870,13 @@ def _render_meter_kpi_strip(dept_obj: dict[str, Any], meters: list[str]) -> None
 
 
 def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj: dict[str, Any]) -> None:
+    """Render the overview tab for a department."""
     overview_df = dashboard.get("overview", pd.DataFrame())
     meters = dept_obj.get("meters", [])
     df_block = dept_obj.get("dataframe", pd.DataFrame())
     rep_m = select_representative_meter(dept_obj)
     unit_lbl = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
     
-    # Strictly source from latest_values using the representative meter
     latest_val = dept_obj.get("latest_values", {}).get(rep_m)
     latest_val = latest_val if isinstance(latest_val, (int, float)) else 0.0
     
@@ -905,6 +929,7 @@ def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj:
 
 
 def _render_subsection_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any], subsection_meters: list[str]) -> None:
+    """Render a subsection tab."""
     overview_df = dashboard.get("overview", pd.DataFrame())
     _render_meter_kpi_strip(dept_obj, subsection_meters)
 
@@ -918,6 +943,7 @@ def _render_subsection_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any], 
 
 
 def _render_history_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any]) -> None:
+    """Render the history tab."""
     overview_df = dashboard.get("overview", pd.DataFrame())
     fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
     _chart_box("Representative Channel History", fig)
@@ -928,6 +954,7 @@ def _render_history_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any]) -> 
 
 
 def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
+    """Render the diagnostics tab."""
     meters = dept_obj.get("meters", [])
     df_block = dept_obj.get("dataframe", pd.DataFrame())
 
@@ -963,6 +990,7 @@ def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
 
 
 def render_department_workspace(dashboard: dict[str, Any], process_name: str) -> None:
+    """Render the dedicated workspace for a selected department."""
     departments = dashboard.get("departments", {})
     dept_obj = departments.get(process_name, {})
     if not dept_obj:
@@ -1001,11 +1029,8 @@ def render_department_workspace(dashboard: dict[str, Any], process_name: str) ->
         _render_diagnostics_tab(dept_obj)
 
 
-# ==================================================================
-# Footer
-# ==================================================================
-
 def render_footer(dashboard: dict[str, Any] | None) -> None:
+    """Render the footer."""
     last_refresh = st.session_state.get("last_refresh")
     refresh_text = last_refresh.strftime("%d %b %Y, %H:%M:%S") if last_refresh else "N/A"
     meta = (dashboard or {}).get("metadata", {})
@@ -1017,51 +1042,46 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
     )
 
 
-# ==================================================================
-# Sidebar Filters
-# ==================================================================
-
-def render_sidebar_filters() -> tuple[str | None, str | None, list[str], str]:
-    """Render the global filter panel in the sidebar."""
+def render_sidebar_filters() -> tuple[str | None, str | None]:
+    """Render the custom compact sidebar with navigation and filters (TASK 1 & 2)."""
     
-    st.sidebar.markdown("### 📅 Date Range")
+    # Dashboard Header
+    st.sidebar.markdown("### ⚙️ Dashboard")
     
-    # Initialize session state for dates if not present
+    # Date Range
+    st.sidebar.markdown("#### 📅 Date Range")
+    
     if "filter_start_date" not in st.session_state:
         st.session_state.filter_start_date = None
     if "filter_end_date" not in st.session_state:
         st.session_state.filter_end_date = None
-    if "filter_depts" not in st.session_state:
-        st.session_state.filter_depts = []
-    if "filter_metric_mode" not in st.session_state:
-        st.session_state.filter_metric_mode = "Latest"
-
-    # Date Input
-    start_date = st.sidebar.date_input("Start Date", value=st.session_state.filter_start_date)
-    end_date = st.sidebar.date_input("End Date", value=st.session_state.filter_end_date)
+        
+    start_date = st.sidebar.date_input("Start Date", value=st.session_state.filter_start_date, key="start_date_input")
+    end_date = st.sidebar.date_input("End Date", value=st.session_state.filter_end_date, key="end_date_input")
     
-    # Quick Presets
-    st.sidebar.markdown("### ⚡ Quick Presets")
+    # Quick Filters
+    st.sidebar.markdown("#### ⚡ Quick Filters")
     cols = st.sidebar.columns(2)
+    
     with cols[0]:
-        if st.button("Today", use_container_width=True):
+        if st.button("Today", use_container_width=True, key="qf_today"):
             today = dt.date.today()
             st.session_state.filter_start_date = today
             st.session_state.filter_end_date = today
             st.rerun()
-        if st.button("Last 7 Days", use_container_width=True):
+        if st.button("Last 7 Days", use_container_width=True, key="qf_l7d"):
             end = dt.date.today()
             start = end - dt.timedelta(days=6)
             st.session_state.filter_start_date = start
             st.session_state.filter_end_date = end
             st.rerun()
-        if st.button("This Month", use_container_width=True):
+        if st.button("This Month", use_container_width=True, key="qf_tm"):
             today = dt.date.today()
             start = today.replace(day=1)
             st.session_state.filter_start_date = start
             st.session_state.filter_end_date = today
             st.rerun()
-        if st.button("YTD", use_container_width=True):
+        if st.button("YTD", use_container_width=True, key="qf_ytd"):
             today = dt.date.today()
             start = today.replace(month=1, day=1)
             st.session_state.filter_start_date = start
@@ -1069,18 +1089,18 @@ def render_sidebar_filters() -> tuple[str | None, str | None, list[str], str]:
             st.rerun()
             
     with cols[1]:
-        if st.button("Yesterday", use_container_width=True):
+        if st.button("Yesterday", use_container_width=True, key="qf_yest"):
             yesterday = dt.date.today() - dt.timedelta(days=1)
             st.session_state.filter_start_date = yesterday
             st.session_state.filter_end_date = yesterday
             st.rerun()
-        if st.button("Last 30 Days", use_container_width=True):
+        if st.button("Last 30 Days", use_container_width=True, key="qf_l30d"):
             end = dt.date.today()
             start = end - dt.timedelta(days=29)
             st.session_state.filter_start_date = start
             st.session_state.filter_end_date = end
             st.rerun()
-        if st.button("Prev Month", use_container_width=True):
+        if st.button("Prev Month", use_container_width=True, key="qf_pm"):
             today = dt.date.today()
             first_day_of_month = today.replace(day=1)
             last_month_end = first_day_of_month - dt.timedelta(days=1)
@@ -1088,66 +1108,35 @@ def render_sidebar_filters() -> tuple[str | None, str | None, list[str], str]:
             st.session_state.filter_start_date = last_month_start
             st.session_state.filter_end_date = last_month_end
             st.rerun()
-        if st.button("All Data", use_container_width=True):
+        if st.button("All Data", use_container_width=True, key="qf_all"):
             st.session_state.filter_start_date = None
             st.session_state.filter_end_date = None
             st.rerun()
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🏭 Department Filter")
+    # Navigation
+    st.sidebar.markdown("#### 🧭 Navigation")
+    st.sidebar.page_link("app.py", label="Dashboard", icon="📊")
+    st.sidebar.page_link("pages/engineering.py", label="Engineering", icon="🏭")
+    st.sidebar.page_link("pages/air_compressor.py", label="Air Compressor", icon="🌀")
+    st.sidebar.page_link("pages/freon_refrigeration.py", label="Freon Refrigeration", icon="❄️")
+    st.sidebar.page_link("pages/ammonia_refrigeration.py", label="Ammonia Refrigeration", icon="🧊")
+    st.sidebar.page_link("pages/utility.py", label="Utility", icon="💧")
     
-    # We need to get the list of departments. Since this runs before dashboard data is loaded,
-    # we might need to load a minimal version or rely on a cached list.
-    # For now, we'll assume the dashboard data is loaded or we use a placeholder.
-    # To make it dynamic, we can try to load the dashboard data here if not already in session state,
-    # but that might be heavy. Instead, we can pass the selected depts to the main logic.
-    
-    # Let's assume we have a way to get department names. 
-    # In a real app, we might load a lightweight metadata file.
-    # For this implementation, we will use a placeholder list if dashboard isn't loaded yet,
-    # or update it once loaded.
-    
-    # To keep it simple and robust, we will let the user select from ALL known departments
-    # defined in DEPT_CONFIGS, and then filter the dashboard data accordingly.
-    
-    all_known_depts = sorted(DEPT_CONFIGS.keys())
-    selected_depts = st.sidebar.multiselect(
-        "Select Departments",
-        options=all_known_depts,
-        default=st.session_state.filter_depts if st.session_state.filter_depts else all_known_depts
-    )
-    st.session_state.filter_depts = selected_depts
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📊 Metric Mode")
-    metric_mode = st.sidebar.selectbox(
-        "View Mode",
-        options=["Latest", "Average", "Total", "Trend"],
-        index=["Latest", "Average", "Total", "Trend"].index(st.session_state.filter_metric_mode)
-    )
-    st.session_state.filter_metric_mode = metric_mode
-    
-    # Convert dates to string for passing to backend
     start_str = start_date.strftime("%Y-%m-%d") if start_date else None
     end_str = end_date.strftime("%Y-%m-%d") if end_date else None
     
-    return start_str, end_str, selected_depts, metric_mode
+    return start_str, end_str
 
-
-# ==================================================================
-# Main
-# ==================================================================
 
 def main() -> None:
+    """Main execution flow."""
     global _chart_counter
-    _chart_counter = 0  # Reset counter to ensure deterministic unique keys on every rerun
+    _chart_counter = 0
     
     inject_global_styles()
     
-    # Render Sidebar Filters
-    start_date, end_date, selected_depts, metric_mode = render_sidebar_filters()
+    start_date, end_date = render_sidebar_filters()
     
-    # Load Dashboard Data with Filters
     dashboard, error_msg = get_dashboard(start_date, end_date)
 
     render_header(dashboard)
@@ -1157,15 +1146,6 @@ def main() -> None:
         render_footer(dashboard)
         return
 
-    # Filter Departments based on selection
-    if selected_depts:
-        # Create a filtered dashboard view
-        filtered_departments = {k: v for k, v in dashboard["departments"].items() if k in selected_depts}
-        dashboard["departments"] = filtered_departments
-        # Also filter other parts of dashboard if necessary, e.g., summary
-        dashboard["summary"]["available_sections"] = list(filtered_departments.keys())
-        dashboard["summary"]["department_count"] = len(filtered_departments)
-        
     render_alarm_ribbon(dashboard)
 
     st.markdown('<div class="section-title">Executive Summary</div>', unsafe_allow_html=True)
