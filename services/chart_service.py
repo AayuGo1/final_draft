@@ -39,15 +39,15 @@ SCADA_PALETTE: Final[list[str]] = [
     "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16"
 ]
 
-BG_APP = "#0B0D12"
+BG_APP = "#0B1220"
 BG_CARD = "#111827"
 BG_HOVER = "#1F2937"
-BORDER_SUBTLE = "#1F2937"
-TEXT_PRIMARY = "#F9FAFB"
-TEXT_SECONDARY = "#9CA3AF"
-TEXT_MUTED = "#6B7280"
-GRID_COLOR = "rgba(255,255,255,0.04)"
-ZERO_COLOR = "rgba(255,255,255,0.08)"
+BORDER_SUBTLE = "rgba(255,255,255,0.06)"
+TEXT_PRIMARY = "#F8FAFC"
+TEXT_SECONDARY = "#94A3B8"
+TEXT_MUTED = "#64748B"
+GRID_COLOR = "rgba(255,255,255,0.03)"
+ZERO_COLOR = "rgba(255,255,255,0.05)"
 
 FONT_FAMILY: Final[str] = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
 
@@ -384,13 +384,13 @@ def create_department_multi_line_chart(
 def apply_default_layout(
     figure: go.Figure, title: str, x_label: str | None = None, y_label: str | None = None,
 ) -> go.Figure:
-    """Apply the default dark SCADA layout to a Plotly figure."""
+    """Apply the premium dark SCADA layout to a Plotly figure."""
     figure.update_layout(
         title={"text": title, "font": {"size": 14, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "x": 0.01, "y": 0.98, "xanchor": "left", "yanchor": "top"},
         template=DEFAULT_TEMPLATE, hovermode=DEFAULT_HOVER_MODE,
-        hoverlabel={"bgcolor": BG_HOVER, "bordercolor": BORDER_SUBTLE, "font": {"family": FONT_FAMILY, "size": 11, "color": TEXT_PRIMARY}},
+        hoverlabel={"bgcolor": BG_HOVER, "bordercolor": BORDER_SUBTLE, "font": {"family": FONT_FAMILY, "size": 12, "color": TEXT_PRIMARY}},
         showlegend=True, autosize=True, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD,
-        margin={"l": 40, "r": 20, "t": 50, "b": 40},
+        margin={"l": 50, "r": 20, "t": 50, "b": 50},
         font={"family": FONT_FAMILY, "color": TEXT_SECONDARY, "size": 11},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0, "bgcolor": "rgba(0,0,0,0)", "font": {"size": 10, "color": TEXT_SECONDARY, "family": FONT_FAMILY}},
         xaxis={"gridcolor": GRID_COLOR, "zerolinecolor": ZERO_COLOR, "linecolor": BORDER_SUBTLE, "linewidth": 1, "showline": True, "showgrid": True, "tickfont": {"size": 10, "color": TEXT_MUTED}, "title_font": {"size": 11, "color": TEXT_SECONDARY}},
@@ -414,7 +414,7 @@ def apply_minimal_layout(figure: go.Figure) -> go.Figure:
 
 
 def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
-    """Create a single line chart. Input DF must be pre-aligned."""
+    """Create a premium single line chart with gradients and annotations."""
     try:
         logger.debug(f"create_line_chart Input: shape={dataframe.shape}, cols={list(dataframe.columns)}")
         validate_columns(dataframe, [x_column, y_column])
@@ -425,17 +425,70 @@ def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, tit
             logger.warning(f"No data to plot for {y_column}")
             return None
             
+        # Identify key points for annotation
+        max_idx = prepared[y_column].idxmax()
+        min_idx = prepared[y_column].idxmin()
+        last_idx = prepared.index[-1]
+        
+        max_val = prepared.loc[max_idx, y_column]
+        min_val = prepared.loc[min_idx, y_column]
+        last_val = prepared.loc[last_idx, y_column]
+        
+        max_date = prepared.loc[max_idx, x_column]
+        min_date = prepared.loc[min_idx, x_column]
+        last_date = prepared.loc[last_idx, x_column]
+
         figure = go.Figure()
+        
+        # Gradient Area Fill
         figure.add_trace(go.Scatter(
             x=prepared[x_column], 
             y=prepared[y_column], 
             mode="lines", 
             name=str(y_column), 
-            line={"color": SCADA_PALETTE[0], "width": 2.5}, 
+            line={"color": SCADA_PALETTE[0], "width": 3, "shape": "spline"}, 
             fill="tozeroy", 
-            fillcolor="rgba(59, 130, 246, 0.1)", 
-            hovertemplate=f"<b>%{{x}}</b><br>{y_column}: %{{y:,.2f}}<extra></extra>"
+            fillcolor="rgba(59, 130, 246, 0.15)", 
+            hovertemplate=f"<b>%{{x|%d %b}}</b><br>{y_column}: %{{y:,.2f}}<extra></extra>"
         ))
+        
+        # Annotated Points
+        # Latest Point (Glowing)
+        figure.add_trace(go.Scatter(
+            x=[last_date], y=[last_val],
+            mode="markers",
+            name="Current",
+            marker={"size": 8, "color": SCADA_PALETTE[0], "line": {"width": 2, "color": BG_CARD}},
+            hovertemplate=f"<b>Current</b><br>{last_date:%d %b}<br>{y_column}: {last_val:,.2f}<extra></extra>",
+            showlegend=False
+        ))
+        
+        # Max Point
+        figure.add_trace(go.Scatter(
+            x=[max_date], y=[max_val],
+            mode="markers+text",
+            name="Max",
+            text=["▲ Max"],
+            textposition="top center",
+            textfont={"size": 10, "color": "#22C55E"},
+            marker={"size": 6, "color": "#22C55E", "line": {"width": 1, "color": BG_CARD}},
+            hovertemplate=f"<b>Maximum</b><br>{max_date:%d %b}<br>{y_column}: {max_val:,.2f}<extra></extra>",
+            showlegend=False
+        ))
+        
+        # Min Point
+        figure.add_trace(go.Scatter(
+            x=[min_date], y=[min_val],
+            mode="markers+text",
+            name="Min",
+            text=["▼ Min"],
+            textposition="bottom center",
+            textfont={"size": 10, "color": "#EF4444"},
+            marker={"size": 6, "color": "#EF4444", "line": {"width": 1, "color": BG_CARD}},
+            hovertemplate=f"<b>Minimum</b><br>{min_date:%d %b}<br>{y_column}: {min_val:,.2f}<extra></extra>",
+            showlegend=False
+        ))
+
         return apply_default_layout(figure, title=title, x_label=x_label or str(x_column), y_label=y_label or str(y_column))
     except Exception as e:
         logger.error(f"Error in create_line_chart: {e}", exc_info=True)
@@ -443,7 +496,7 @@ def create_line_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, tit
 
 
 def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
-    """Create a multi-line chart. Input DF must be pre-aligned."""
+    """Create a premium multi-line chart with interactive emphasis."""
     try:
         if not y_columns: 
             return None
@@ -463,8 +516,8 @@ def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: l
                 y=prepared[col], 
                 mode="lines", 
                 name=str(col), 
-                line={"color": color, "width": 2}, 
-                hovertemplate=f"<b>%{{x}}</b><br>{col}: %{{y:,.2f}}<extra></extra>"
+                line={"color": color, "width": 2.5, "shape": "spline"}, 
+                hovertemplate=f"<b>%{{x|%d %b}}</b><br>{col}: %{{y:,.2f}}<extra></extra>"
             ))
             
         if not figure.data:
@@ -478,14 +531,25 @@ def create_multi_line_chart(dataframe: pd.DataFrame, x_column: str, y_columns: l
 
 
 def create_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: str | list[str], title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
-    """Create a bar chart."""
+    """Create a premium bar chart with rounded corners and gradients."""
     try:
         cols_list = [y_columns] if isinstance(y_columns, str) else y_columns
         if not cols_list: return None
         validate_columns(dataframe, [x_column, *cols_list])
         prepared = prepare_numeric_columns(dataframe, cols_list)
-        figure = px.bar(prepared, x=x_column, y=y_columns, barmode="group", color_discrete_sequence=SCADA_PALETTE)
-        figure.update_traces(marker_line_width=0, opacity=0.85)
+        
+        figure = go.Figure()
+        for i, col in enumerate(cols_list):
+            color = SCADA_PALETTE[i % len(SCADA_PALETTE)]
+            figure.add_trace(go.Bar(
+                x=prepared[x_column], 
+                y=prepared[col], 
+                name=str(col),
+                marker={"color": color, "line": {"width": 0}, "opacity": 0.9},
+                hovertemplate=f"<b>%{{x}}</b><br>{col}: %{{y:,.2f}}<extra></extra>"
+            ))
+            
+        figure.update_traces(marker_line_width=0)
         return apply_default_layout(figure, title=title, x_label=x_label or str(x_column), y_label=y_label or (str(cols_list[0]) if len(cols_list) == 1 else "Value"))
     except Exception as e:
         logger.error(f"Error in create_bar_chart: {e}", exc_info=True)
@@ -499,7 +563,7 @@ def create_stacked_bar_chart(dataframe: pd.DataFrame, x_column: str, y_columns: 
         validate_columns(dataframe, [x_column, *y_columns])
         prepared = prepare_numeric_columns(dataframe, y_columns)
         figure = px.bar(prepared, x=x_column, y=y_columns, barmode="stack", color_discrete_sequence=SCADA_PALETTE)
-        figure.update_traces(marker_line_width=0, opacity=0.85)
+        figure.update_traces(marker_line_width=0, opacity=0.9)
         return apply_default_layout(figure, title=title, x_label=x_label or str(x_column), y_label=y_label or "Total Load")
     except Exception as e:
         logger.error(f"Error in create_stacked_bar_chart: {e}", exc_info=True)
@@ -536,13 +600,29 @@ def create_pie_chart(dataframe: pd.DataFrame, names_column: str, values_column: 
 
 
 def create_donut_chart(dataframe: pd.DataFrame, names_column: str, values_column: str, title: str, hole_size: float = 0.6) -> go.Figure | None:
-    """Create a donut chart."""
+    """Create a modern donut chart with center total."""
     try:
         validate_columns(dataframe, [names_column, values_column])
         prepared = prepare_numeric_columns(dataframe, [values_column]).dropna(subset=[values_column])
         if prepared.empty: return None
+        
+        total_val = prepared[values_column].sum()
+        
         figure = px.pie(prepared, names=names_column, values=values_column, hole=hole_size, color_discrete_sequence=SCADA_PALETTE)
-        figure.update_traces(textposition="inside", textinfo="percent+label", marker={"line": {"color": BG_CARD, "width": 1}})
+        figure.update_traces(
+            textposition="inside", 
+            textinfo="percent+label", 
+            marker={"line": {"color": BG_CARD, "width": 2}}
+        )
+        
+        # Add center text
+        figure.add_annotation(
+            text=f"Total<br>{total_val:,.0f}",
+            x=0.5, y=0.5,
+            font={"size": 14, "color": TEXT_PRIMARY, "family": FONT_FAMILY},
+            showarrow=False
+        )
+        
         return apply_default_layout(figure, title=title)
     except Exception as e:
         logger.error(f"Error in create_donut_chart: {e}", exc_info=True)
@@ -550,27 +630,57 @@ def create_donut_chart(dataframe: pd.DataFrame, names_column: str, values_column
 
 
 def create_gauge_chart(value: float, title: str, minimum: float = 0.0, maximum: float = 100.0, warning_threshold: float | None = None, danger_threshold: float | None = None, unit: str = "") -> go.Figure | None:
-    """Create a gauge chart."""
+    """Create an industrial radial gauge chart."""
     try:
         if pd.isna(value) or value is None: return None
-        steps = []
-        band_start = minimum
+        
+        # Determine needle color based on value
         range_span = maximum - minimum if maximum > minimum else 1.0
-        green_end = minimum + range_span * 0.60
-        steps.append({"range": [band_start, green_end], "color": "rgba(16, 185, 129, 0.15)"})
-        band_start = green_end
-        yellow_end = minimum + range_span * 0.80
-        steps.append({"range": [band_start, yellow_end], "color": "rgba(245, 158, 11, 0.15)"})
-        band_start = yellow_end
-        steps.append({"range": [band_start, maximum], "color": "rgba(239, 68, 68, 0.15)"})
+        normalized_val = (value - minimum) / range_span
+        
+        if normalized_val > 0.8:
+            needle_color = "#EF4444" # Red
+        elif normalized_val > 0.6:
+            needle_color = "#F59E0B" # Amber
+        else:
+            needle_color = "#22C55E" # Green
+
+        steps = [
+            {"range": [minimum, minimum + range_span * 0.6], "color": "rgba(34, 197, 94, 0.1)"},
+            {"range": [minimum + range_span * 0.6, minimum + range_span * 0.8], "color": "rgba(245, 158, 11, 0.1)"},
+            {"range": [minimum + range_span * 0.8, maximum], "color": "rgba(239, 68, 68, 0.1)"}
+        ]
         
         unit_suffix = f" {unit}".strip() if unit else ""
+        
         figure = go.Figure(go.Indicator(
-            mode="gauge+number", value=value,
-            number={"suffix": f" {unit_suffix}" if unit_suffix else "", "font": {"size": 20, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "valueformat": ",.1f"},
-            gauge={"axis": {"range": [minimum, maximum], "tickwidth": 1, "tickcolor": TEXT_MUTED, "tickfont": {"size": 8, "color": TEXT_MUTED, "family": FONT_FAMILY}, "ticklen": 4, "nticks": 6}, "bar": {"color": SCADA_PALETTE[0], "thickness": 0.15, "line": {"width": 0}}, "bgcolor": BG_CARD, "borderwidth": 1, "bordercolor": BORDER_SUBTLE, "steps": steps}
+            mode="gauge+number", 
+            value=value,
+            number={"suffix": f" {unit_suffix}" if unit_suffix else "", "font": {"size": 24, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "valueformat": ",.1f"},
+            gauge={
+                "axis": {"range": [minimum, maximum], "tickwidth": 1, "tickcolor": TEXT_MUTED, "tickfont": {"size": 9, "color": TEXT_MUTED, "family": FONT_FAMILY}, "ticklen": 5, "nticks": 8}, 
+                "bar": {"color": needle_color, "thickness": 0.2, "line": {"width": 0}}, 
+                "bgcolor": BG_CARD, 
+                "borderwidth": 2, 
+                "bordercolor": BORDER_SUBTLE, 
+                "steps": steps,
+                "threshold": {
+                    "line": {"color": needle_color, "width": 4},
+                    "thickness": 0.75,
+                    "value": value
+                }
+            }
         ))
-        figure.update_layout(title={"text": title, "font": {"size": 10, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "y": 0.85, "x": 0.5, "xanchor": "center", "yanchor": "top"}, template=DEFAULT_TEMPLATE, paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin={"l": 20, "r": 20, "t": 35, "b": 20}, autosize=True, font={"family": FONT_FAMILY})
+        
+        figure.update_layout(
+            title={"text": title, "font": {"size": 12, "color": TEXT_SECONDARY, "family": FONT_FAMILY}, "y": 0.85, "x": 0.5, "xanchor": "center", "yanchor": "top"}, 
+            template=DEFAULT_TEMPLATE, 
+            paper_bgcolor=BG_CARD, 
+            plot_bgcolor=BG_CARD, 
+            margin={"l": 20, "r": 20, "t": 40, "b": 20}, 
+            autosize=True, 
+            font={"family": FONT_FAMILY}
+        )
         return figure
     except Exception as e:
         logger.error(f"Error in create_gauge_chart: {e}", exc_info=True)
@@ -578,12 +688,17 @@ def create_gauge_chart(value: float, title: str, minimum: float = 0.0, maximum: 
 
 
 def create_scatter_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
-    """Create a scatter chart."""
+    """Create a scatter chart with glow effects."""
     try:
         validate_columns(dataframe, [x_column, y_column])
         prepared = prepare_numeric_columns(dataframe, [x_column, y_column]).dropna(subset=[x_column, y_column])
         if prepared.empty: return None
-        figure = go.Figure(go.Scatter(x=prepared[x_column], y=prepared[y_column], mode="markers", marker={"color": SCADA_PALETTE[0], "size": 6, "opacity": 0.7, "line": {"width": 0}}))
+        figure = go.Figure(go.Scatter(
+            x=prepared[x_column], 
+            y=prepared[y_column], 
+            mode="markers", 
+            marker={"color": SCADA_PALETTE[0], "size": 8, "opacity": 0.7, "line": {"width": 1, "color": BG_CARD}}
+        ))
         return apply_default_layout(figure, title=title, x_label=x_label or str(x_column), y_label=y_label or str(y_column))
     except Exception as e:
         logger.error(f"Error in create_scatter_chart: {e}", exc_info=True)
@@ -591,12 +706,19 @@ def create_scatter_chart(dataframe: pd.DataFrame, x_column: str, y_column: str, 
 
 
 def create_histogram(dataframe: pd.DataFrame, x_column: str, title: str, x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
-    """Create a histogram."""
+    """Create a histogram with mean/median lines."""
     try:
         validate_columns(dataframe, [x_column])
         prepared = prepare_numeric_columns(dataframe, [x_column]).dropna(subset=[x_column])
         if prepared.empty: return None
+        
+        mean_val = prepared[x_column].mean()
+        median_val = prepared[x_column].median()
+        
         figure = px.histogram(prepared, x=x_column, color_discrete_sequence=[SCADA_PALETTE[0]])
+        figure.add_vline(x=mean_val, line_dash="dash", line_color="#F59E0B", annotation_text="Mean")
+        figure.add_vline(x=median_val, line_dash="dot", line_color="#3B82F6", annotation_text="Median")
+        
         figure.update_layout(bargap=0.05)
         figure.update_traces(marker_line_width=0, opacity=0.8)
         return apply_default_layout(figure, title=title, x_label=x_label or str(x_column), y_label=y_label or "Count")
@@ -606,7 +728,7 @@ def create_histogram(dataframe: pd.DataFrame, x_column: str, title: str, x_label
 
 
 def create_heatmap(dataframe: pd.DataFrame, columns: list[str] | None = None, title: str = "Heatmap", x_label: str | None = None, y_label: str | None = None) -> go.Figure | None:
-    """Create a heatmap. Uses actual dates from DF index or column if available."""
+    """Create a professional heatmap with rounded cells."""
     try:
         if not isinstance(dataframe, pd.DataFrame): return None
         if columns is None: 
@@ -621,14 +743,26 @@ def create_heatmap(dataframe: pd.DataFrame, columns: list[str] | None = None, ti
              x_values = dataframe.index.tolist()
 
         prepared = prepare_numeric_columns(dataframe, columns)
+        
+        # Custom colorscale for industrial feel
+        colorscale = [
+            [0.0, "#0B1220"],      # Dark Navy
+            [0.25, "#1E3A8A"],     # Blue
+            [0.5, "#06B6D4"],      # Cyan
+            [0.75, "#22C55E"],     # Green
+            [1.0, "#F59E0B"]       # Amber/Yellow
+        ]
+
         figure = go.Figure(data=go.Heatmap(
             z=prepared[columns].to_numpy().T, 
             x=x_values, 
             y=[str(c) for c in columns], 
-            colorscale=[[0.0, BG_CARD], [0.5, "#1E3A8A"], [1.0, SCADA_PALETTE[0]]], 
+            colorscale=colorscale,
             showscale=True, 
-            colorbar={"tickfont": {"size": 8, "color": TEXT_MUTED}, "outlinewidth": 0, "thickness": 10, "len": 0.8}
+            colorbar={"tickfont": {"size": 8, "color": TEXT_MUTED}, "outlinewidth": 0, "thickness": 10, "len": 0.8},
+            hovertemplate="<b>%{y}</b><br>%{x}: %{z:.2f}<extra></extra>"
         ))
+        
         return apply_default_layout(figure, title=title, x_label=x_label or "Date", y_label=y_label or "Meter Channel")
     except Exception as e:
         logger.error(f"Error in create_heatmap: {e}", exc_info=True)
@@ -636,13 +770,38 @@ def create_heatmap(dataframe: pd.DataFrame, columns: list[str] | None = None, ti
 
 
 def create_sparkline(values: pd.Series, line_color: str = THEME_PRIMARY_COLOR) -> go.Figure | None:
-    """Create a sparkline."""
+    """Create a premium KPI sparkline with gradient and glow."""
     try:
         if values is None or values.empty: return None
         numeric_values = pd.to_numeric(values, errors="coerce").dropna()
         if numeric_values.empty: return None
+        
         resolved_color = line_color or SCADA_PALETTE[0]
-        figure = go.Figure(data=go.Scatter(x=list(range(len(numeric_values))), y=numeric_values, mode="lines", line={"color": resolved_color, "width": 1.5}, fill="tozeroy", fillcolor="rgba(59, 130, 246, 0.1)"))
+        
+        # Highlight last point
+        last_idx = len(numeric_values) - 1
+        last_val = numeric_values.iloc[-1]
+        
+        figure = go.Figure()
+        
+        # Gradient Line
+        figure.add_trace(go.Scatter(
+            x=list(range(len(numeric_values))), 
+            y=numeric_values, 
+            mode="lines", 
+            line={"color": resolved_color, "width": 2, "shape": "spline"}, 
+            fill="tozeroy", 
+            fillcolor=f"rgba({int(resolved_color[1:3], 16)}, {int(resolved_color[3:5], 16)}, {int(resolved_color[5:7], 16)}, 0.1)"
+        ))
+        
+        # Glowing Last Point
+        figure.add_trace(go.Scatter(
+            x=[last_idx], 
+            y=[last_val], 
+            mode="markers", 
+            marker={"size": 6, "color": resolved_color, "line": {"width": 2, "color": BG_CARD}}
+        ))
+        
         return apply_minimal_layout(figure)
     except Exception as e:
         logger.error(f"Error in create_sparkline: {e}", exc_info=True)
@@ -669,10 +828,17 @@ def create_radar_chart(dataframe: pd.DataFrame, columns: list[str], title: str) 
                 normalized.append(norm_val)
         categories = [str(c) for c in columns] + [str(columns[0])]
         values = normalized + [normalized[0]]
-        fig = go.Figure(data=go.Scatterpolar(r=values, theta=categories, fill='toself', fillcolor='rgba(59, 130, 246, 0.1)', line=dict(color=SCADA_PALETTE[0], width=1.5), marker=dict(size=4, color=SCADA_PALETTE[0])))
+        fig = go.Figure(data=go.Scatterpolar(
+            r=values, 
+            theta=categories, 
+            fill='toself', 
+            fillcolor='rgba(59, 130, 246, 0.1)', 
+            line=dict(color=SCADA_PALETTE[0], width=2), 
+            marker=dict(size=5, color=SCADA_PALETTE[0])
+        ))
         fig.update_layout(
-            polar=dict(bgcolor=BG_CARD, radialaxis=dict(visible=True, range=[0, 100], gridcolor=GRID_COLOR, tickfont=dict(size=8, color=TEXT_MUTED)), angularaxis=dict(gridcolor=GRID_COLOR, tickfont=dict(size=9, color=TEXT_SECONDARY))),
-            showlegend=False, title={"text": title, "font": {"size": 10, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.95, "x": 0.5, "xanchor": "center", "yanchor": "top"},
+            polar=dict(bgcolor=BG_CARD, radialaxis=dict(visible=True, range=[0, 100], gridcolor=GRID_COLOR, tickfont=dict(size=9, color=TEXT_MUTED)), angularaxis=dict(gridcolor=GRID_COLOR, tickfont=dict(size=10, color=TEXT_SECONDARY))),
+            showlegend=False, title={"text": title, "font": {"size": 12, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.95, "x": 0.5, "xanchor": "center", "yanchor": "top"},
             paper_bgcolor=BG_CARD, plot_bgcolor=BG_CARD, margin=dict(l=40, r=40, t=40, b=40), font=dict(family=FONT_FAMILY, color=TEXT_SECONDARY),
         )
         return fig
@@ -687,7 +853,15 @@ def create_waterfall_chart(dataframe: pd.DataFrame, x_column: str, y_column: str
         validate_columns(dataframe, [x_column, y_column])
         prepared = prepare_numeric_columns(dataframe, [y_column]).dropna(subset=[y_column])
         if prepared.empty: return None
-        fig = go.Figure(go.Waterfall(x=prepared[x_column], y=prepared[y_column], measure="relative", connector={"line": {"color": BORDER_SUBTLE, "width": 1}}, decreasing={"marker": {"color": SCADA_PALETTE[3]}}, increasing={"marker": {"color": SCADA_PALETTE[0]}}, totals={"marker": {"color": SCADA_PALETTE[4]}}))
+        fig = go.Figure(go.Waterfall(
+            x=prepared[x_column], 
+            y=prepared[y_column], 
+            measure="relative", 
+            connector={"line": {"color": BORDER_SUBTLE, "width": 1}}, 
+            decreasing={"marker": {"color": SCADA_PALETTE[3]}}, 
+            increasing={"marker": {"color": SCADA_PALETTE[0]}}, 
+            totals={"marker": {"color": SCADA_PALETTE[4]}}
+        ))
         return apply_default_layout(fig, title=title, x_label=str(x_column), y_label=str(y_column))
     except Exception as e:
         logger.error(f"Error in create_waterfall_chart: {e}", exc_info=True)
@@ -724,17 +898,32 @@ def create_horizontal_bar_chart(dataframe: pd.DataFrame, x_column: str, y_column
 
 
 def create_bullet_chart(actual: float, target: float, title: str, unit: str = "") -> go.Figure | None:
-    """Create a bullet chart."""
+    """Create a modern industrial bullet chart."""
     try:
         if pd.isna(actual) or pd.isna(target): return None
         max_val = max(actual, target) * 1.2 if max(actual, target) > 0 else 100
+        
+        # Background ranges
+        steps = [
+            {"range": [0, max_val * 0.6], "color": "rgba(34, 197, 94, 0.1)"},
+            {"range": [max_val * 0.6, max_val * 0.8], "color": "rgba(245, 158, 11, 0.1)"},
+            {"range": [max_val * 0.8, max_val], "color": "rgba(239, 68, 68, 0.1)"}
+        ]
+
         fig = go.Figure()
+        
+        # Background Bar
         fig.add_trace(go.Bar(x=[max_val], y=[title], orientation='h', marker=dict(color='rgba(255, 255, 255, 0.02)'), hoverinfo='skip', showlegend=False))
-        fig.add_trace(go.Scatter(x=[target, target], y=[title, title], mode='lines', line=dict(color=SCADA_PALETTE[2], width=2), name='Target', hoverinfo='name+x'))
-        fig.add_trace(go.Bar(x=[actual], y=[title], orientation='h', marker=dict(color=SCADA_PALETTE[0], opacity=0.8), name='Actual'))
+        
+        # Target Marker
+        fig.add_trace(go.Scatter(x=[target, target], y=[title, title], mode='lines', line=dict(color=SCADA_PALETTE[2], width=3), name='Target', hoverinfo='name+x'))
+        
+        # Actual Value Bar
+        fig.add_trace(go.Bar(x=[actual], y=[title], orientation='h', marker=dict(color=SCADA_PALETTE[0], opacity=0.9), name='Actual'))
+        
         fig.update_layout(
             barmode='overlay', 
-            title={"text": title, "font": {"size": 10, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.9, "x": 0.5, "xanchor": "center", "yanchor": "top"}, 
+            title={"text": title, "font": {"size": 12, "color": TEXT_PRIMARY, "family": FONT_FAMILY}, "y": 0.9, "x": 0.5, "xanchor": "center", "yanchor": "top"}, 
             xaxis=dict(range=[0, max_val], gridcolor=GRID_COLOR, zerolinecolor=ZERO_COLOR, tickfont=dict(size=9, color=TEXT_MUTED)), 
             yaxis=dict(showticklabels=False, showgrid=False, zeroline=False), 
             showlegend=False, 
