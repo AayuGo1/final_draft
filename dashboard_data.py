@@ -432,15 +432,21 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
 
     No department names, rows, or column letters are hardcoded: the parent
     rows are exactly the departments present in ``dashboard["departments"]``
-    (in their discovered order), and subsection names are the meter names the
-    parser found in the engineering block's second header row. All figures are
-    read from the department payload's ``total_values`` / ``average_values`` /
-    ``latest_values`` — nothing is recomputed or re-parsed here.
+    (in their discovered order — never sorted), and subsection names are the
+    meter names the parser found in the engineering block's second header row.
+    All figures are read from the department payload — nothing is recomputed or
+    re-parsed here.
 
-    A department's aggregate figures use its representative meter (the same
-    single-value basis the previous static table displayed), so parent rows are
-    unchanged in meaning. Only departments with more than one meter are marked
-    ``expandable``; single-meter departments expose no subsections.
+    Parent rows always show the department's aggregate figures (via its
+    representative meter), matching the Executive Summary's single-value basis.
+    Subsections show the ORIGINAL parsed meters: for a department that was
+    collapsed into a synthetic aggregate (e.g. ``Overall PNG``), the originals
+    are read from the preserved ``original_*`` keys, so the real workbook
+    subsections (e.g. DJ/DK) are shown rather than the aggregate channel. For
+    every other department the normal ``meters`` list is the original list, so
+    it is used directly. Only departments whose ORIGINAL meter list has more
+    than one entry are ``expandable``; single-meter departments expose no
+    subsections.
 
     Args:
         dashboard: The assembled dashboard dictionary produced by
@@ -458,7 +464,9 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
     rows: list[dict[str, Any]] = []
 
     for dept_name, dept_obj in departments.items():
-        meters: list[str] = dept_obj.get("meters", [])
+        # Representative-meter figures are used as the parent values for
+        # single-meter (non-expandable) departments. Multi-meter departments
+        # override these below with the aggregated department values.
         total_values: dict[str, Any] = dept_obj.get("total_values", {})
         average_values: dict[str, Any] = dept_obj.get("average_values", {})
         latest_values: dict[str, Any] = dept_obj.get("latest_values", {})
@@ -468,20 +476,52 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
         parent_average = average_values.get(representative_meter)
         parent_latest = latest_values.get(representative_meter)
 
+        # Subsections come from the ORIGINAL parsed meters. If the department was
+        # collapsed into an aggregate, the originals live under ``original_*``;
+        # otherwise the normal ``meters`` list already *is* the original.
+        if dept_obj.get("original_meters"):
+            sub_meters: list[str] = dept_obj.get("original_meters", [])
+            sub_total_values: dict[str, Any] = dept_obj.get("original_total_values", {})
+            sub_average_values: dict[str, Any] = dept_obj.get("original_average_values", {})
+            sub_latest_values: dict[str, Any] = dept_obj.get("original_latest_values", {})
+        else:
+            sub_meters = dept_obj.get("meters", [])
+            sub_total_values = total_values
+            sub_average_values = average_values
+            sub_latest_values = latest_values
+
         subsections: list[dict[str, Any]] = []
-        is_expandable = len(meters) > 1
+        is_expandable = len(sub_meters) > 1
         if is_expandable:
-            for meter in meters:
-                meter_latest = latest_values.get(meter)
+            for meter in sub_meters:
+                meter_latest = sub_latest_values.get(meter)
                 subsections.append(
                     {
                         "name": meter,
-                        "total": total_values.get(meter),
-                        "average": average_values.get(meter),
+                        "total": sub_total_values.get(meter),
+                        "average": sub_average_values.get(meter),
                         "latest": meter_latest,
                         "online": isinstance(meter_latest, (int, float)),
                     }
                 )
+
+        # Parent figures are the AGGREGATED department values, not the
+        # representative/first meter. For a multi-meter department the aggregate
+        # is the element-wise sum across its subsections (Total = Σ totals,
+        # Average = Σ averages, Previous Day/Latest = Σ latests). Because the
+        # per-meter series are date-aligned, this element-wise sum is exactly
+        # the department's row-wise aggregate (mean is linear, so Σ of per-meter
+        # means equals the mean of the summed series). This makes every
+        # multi-meter department consistent with the pre-computed Overall PNG
+        # aggregate. Single-meter departments keep their sole meter's values.
+        if is_expandable:
+            def _sum_present(values: list[Any]) -> float | None:
+                nums = [v for v in values if isinstance(v, (int, float))]
+                return float(sum(nums)) if nums else None
+
+            parent_total = _sum_present([s["total"] for s in subsections])
+            parent_average = _sum_present([s["average"] for s in subsections])
+            parent_latest = _sum_present([s["latest"] for s in subsections])
 
         rows.append(
             {
@@ -499,14 +539,26 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
     return rows
 
 def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, Any]], dept_name: str) -> None:
-    """Collapse a discovered multi-meter department into a single aggregate meter.
+    """Collapse a discovered multi-meter department into a single aggregate meter
+    while preserving its original per-meter (subsection) data.
 
     The aggregate channel is the row-wise sum of every meter belonging to the
-    department, with missing / non-numeric readings treated as zero. The result
-    replaces the department in ``departments_payload`` in place, exposing the
-    exact same structure as every other department (``meters``,
-    ``latest_values``, ``average_values``, ``total_values``, ``units``,
-    ``dataframe``, plus the auxiliary keys used elsewhere).
+    department, with missing / non-numeric readings treated as zero. The
+    department's primary structure (``meters``, ``latest_values``,
+    ``average_values``, ``total_values``, ``units``, ``dataframe``) is set to the
+    single-channel aggregate, exactly as before — so consumers that read the
+    representative meter (e.g. the Executive Summary) continue to see ONE
+    aggregate value and are entirely unaffected.
+
+    In addition, the ORIGINAL parsed per-meter data is retained on the same
+    department object under dedicated ``original_*`` keys
+    (``original_meters``, ``original_units``, ``original_latest_values``,
+    ``original_average_values``, ``original_total_values``,
+    ``original_dataframe``). Nothing else reads these except consumers that
+    explicitly want the pre-aggregation subsections (e.g. the expandable
+    Plant Operations Overview). This is how the aggregate value and the
+    original subsection meters coexist on one department: the aggregate is the
+    primary/representative view, the originals live alongside it untouched.
 
     This is a no-op if the department was not discovered by the parser (e.g. a
     workbook whose layout does not contain it), so no data is ever invented.
@@ -542,6 +594,18 @@ def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, A
     source_meters: list[str] = source.get("meters", [])
     if not source_meters:
         return
+
+    # Snapshot the ORIGINAL parsed per-meter data before the aggregate
+    # overwrites the primary fields. These are retained on the aggregated
+    # department so the expandable Operations Overview can show the real
+    # subsection meters (e.g. DJ/DK) while the Executive Summary keeps using
+    # the single aggregate value.
+    original_meters: list[str] = list(source_meters)
+    original_units: dict[str, Any] = dict(source.get("units", {}))
+    original_latest_values: dict[str, Any] = dict(source.get("latest_values", {}))
+    original_average_values: dict[str, Any] = dict(source.get("average_values", {}))
+    original_total_values: dict[str, Any] = dict(source.get("total_values", {}))
+    original_dataframe: pd.DataFrame = source.get("dataframe", pd.DataFrame())
 
     chart_df: pd.DataFrame = source.get("dataframe", pd.DataFrame())
     # The dataframe carries a leading "Date" column injected during build; the
@@ -587,6 +651,15 @@ def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, A
         "dataframe": aggregate_df,
         "totals": {aggregate_name: total_val},
         "averages": {aggregate_name: average_val},
+        # Original parsed per-meter (subsection) data, preserved so the
+        # expandable Operations Overview can show the real workbook meters while
+        # the primary/aggregate fields above keep the Executive Summary intact.
+        "original_meters": original_meters,
+        "original_units": original_units,
+        "original_latest_values": original_latest_values,
+        "original_average_values": original_average_values,
+        "original_total_values": original_total_values,
+        "original_dataframe": original_dataframe,
         "channels": {
             aggregate_name: {
                 "name": aggregate_name,
