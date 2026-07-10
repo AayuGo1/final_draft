@@ -371,32 +371,6 @@ def inject_global_styles() -> None:
             .alarm-label { font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; }
             .alarm-message { font-size: 10px; color: #F8FAFC; }
 
-            /* Equipment / Process Cards */
-            .equip-card {
-                background: #1E293B;
-                border: 1px solid #334155;
-                border-left: 3px solid var(--accent, #005DAA);
-                border-radius: 4px;
-                padding: 6px;
-                transition: all 0.2s ease;
-                height: 100%;
-            }
-            .equip-card.active {
-                border-color: #005DAA;
-                background: #273449;
-            }
-            .equip-card:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-            }
-            .equip-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px; }
-            .equip-name { font-size: 11px; font-weight: 600; color: #F8FAFC; }
-            .equip-category { font-size: 9px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
-            .equip-metrics { display: flex; flex-direction: column; gap: 2px; margin: 3px 0; padding: 3px 0; border-top: 1px solid #334155; border-bottom: 1px solid #334155; }
-            .equip-metric-row { display: flex; justify-content: space-between; font-size: 9px; color: #94A3B8; }
-            .equip-metric-row span:last-child { color: #F8FAFC; font-weight: 600; }
-            .equip-activate { font-size: 9px; font-weight: 600; color: var(--accent, #005DAA); text-align: center; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
-
             /* KPI Strip */
             .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 4px; margin-bottom: 8px; }
             .kpi-cell {
@@ -851,76 +825,41 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         st.markdown(f'<div class="ops-console">{header_html}{rows_html}</div>', unsafe_allow_html=True)
 
 
-def render_process_selector(dashboard: dict[str, Any]) -> str | None:
+def render_department_selector(dashboard: dict[str, Any]) -> str | None:
+    """Render a compact department selector that drives the Engineering Workspace.
+
+    Lists every available department from ``dashboard["departments"]`` in a
+    single Streamlit selectbox and persists the choice in ``selected_process``,
+    exactly the session-state key the Engineering Workspace already consumes.
+    This replaces the former large card grid while leaving the workspace and
+    all of its tabs/charts/metrics untouched.
+
+    Args:
+        dashboard: The assembled dashboard dictionary.
+
+    Returns:
+        The selected department name, or ``None`` if there are no departments.
+    """
     departments = dashboard.get("departments", {})
+    if not departments:
+        return None
 
-    if "selected_process" not in st.session_state:
-        st.session_state["selected_process"] = None
-
-    selected = st.session_state["selected_process"]
     dept_names = sorted(departments.keys())
-    cols = st.columns(4)
 
-    for idx, dept_name in enumerate(dept_names):
-        dept_obj = departments[dept_name]
-        config = DEPT_CONFIGS.get(dept_name, DEFAULT_CONFIG)
-        is_active = (dept_name == selected)
-        
-        rep_m = select_representative_meter(dept_obj)
-        latest_val = dept_obj.get("latest_values", {}).get(rep_m)
-        latest_str = f"{latest_val:,.2f}" if isinstance(latest_val, (int, float)) else "—"
-        unit = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
-        
-        is_online = latest_val is not None
-        status_class = "status-online" if is_online else "status-offline"
-        status_text = "ONLINE" if is_online else "OFFLINE"
-        live_color = "#22C55E" if is_online else "#E31E24"
-        
-        avg_val = dept_obj.get("average_values", {}).get(rep_m)
-        trend_class, trend_text, trend_arrow = "trend-flat", "Stable", "●"
-        if isinstance(latest_val, (int, float)) and isinstance(avg_val, (int, float)) and avg_val != 0:
-            ratio = latest_val / avg_val
-            if ratio >= 1.08:
-                trend_class, trend_text, trend_arrow = "trend-up", "Healthy", "▲"
-            elif ratio <= 0.92:
-                trend_class, trend_text, trend_arrow = "trend-down", "Low", "▼"
+    # Seed the selection before the widget is created so it defaults to the
+    # first department; the selectbox's own key is the single source of truth
+    # thereafter (avoids Streamlit's default-vs-session-state conflict).
+    if st.session_state.get("selected_process") not in dept_names:
+        st.session_state["selected_process"] = dept_names[0]
 
-        card_html = f"""
-        <div class="equip-card{' active' if is_active else ''}" style="--accent:{config['accent']};">
-            <div class="equip-header">
-                <div>
-                    <div class="equip-name">{dept_name}</div>
-                    <div class="equip-category">{config['category']}</div>
-                </div>
-                <div class="equip-live-dot" style="background:{live_color};box-shadow:0 0 4px {live_color}; width: 6px; height: 6px; border-radius: 50%; margin-top: 3px;"></div>
-            </div>
-            <div class="equip-metrics">
-                <div class="equip-metric-row">
-                    <span>Latest Value</span>
-                    <span>{latest_str} {unit}</span>
-                </div>
-                <div class="equip-metric-row">
-                    <span>Status</span>
-                    <span class="exec-status {status_class}">{status_text}</span>
-                </div>
-                <div class="equip-metric-row">
-                    <span>Trend</span>
-                    <span class="exec-trend-chip {trend_class}">{trend_arrow} {trend_text}</span>
-                </div>
-            </div>
-            <div class="equip-activate">
-                <span>{'ACTIVE ●' if is_active else 'ACTIVATE'}</span>
-            </div>
-        </div>"""
+    selected = st.selectbox(
+        "Department",
+        options=dept_names,
+        key="selected_process",
+        label_visibility="collapsed",
+    )
 
-        with cols[idx % 4]:
-            st.markdown(card_html, unsafe_allow_html=True)
-            st.button(" ", key=f"proc_{dept_name}", use_container_width=True)
-            if st.session_state.get(f"proc_{dept_name}"):
-                st.session_state["selected_process"] = dept_name
-                st.rerun()
-
-    return st.session_state["selected_process"]
+    return selected
 
 
 def _chart_box(label: str, fig) -> None:
@@ -1156,14 +1095,12 @@ def main() -> None:
     st.markdown('<div class="section-title">Plant Operations Overview</div>', unsafe_allow_html=True)
     render_operations_overview(dashboard)
 
-    st.markdown('<div class="section-title">Process Selection</div>', unsafe_allow_html=True)
-    selected_process = render_process_selector(dashboard)
-
     st.markdown('<div class="section-title">Daily Trend Overview</div>', unsafe_allow_html=True)
     render_daily_trend(dashboard)
 
+    st.markdown('<div class="section-title">Engineering Workspace</div>', unsafe_allow_html=True)
+    selected_process = render_department_selector(dashboard)
     if selected_process:
-        st.markdown('<div class="section-title">Engineering Workspace</div>', unsafe_allow_html=True)
         render_department_workspace(dashboard, selected_process)
 
     render_footer(dashboard)
