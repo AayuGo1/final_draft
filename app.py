@@ -119,25 +119,36 @@ def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
 
 def get_dashboard(start_date: str | None = None, end_date: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
     cache_key = f"dashboard_data_{start_date}_{end_date}"
-    
+    error_key = f"dashboard_error_{start_date}_{end_date}"
+
     if cache_key not in st.session_state:
-        keys_to_clear = [k for k in st.session_state if k.startswith("dashboard_data_")]
-        for k in keys_to_clear:
-            if k != cache_key:
-                del st.session_state[k]
+        # Keep only the current selection's cached dashboard + error in session
+        # state. Stale keys from previous date selections are removed so state
+        # cannot grow unbounded across many selections. (Both the dashboard and
+        # error key families are cleaned; previously the error keys accumulated.)
+        stale_keys = [
+            k for k in list(st.session_state.keys())
+            if (k.startswith("dashboard_data_") or k.startswith("dashboard_error_"))
+            and k not in (cache_key, error_key)
+        ]
+        for k in stale_keys:
+            del st.session_state[k]
 
         dashboard, error = load_dashboard_safe(start_date, end_date)
         st.session_state[cache_key] = dashboard
-        st.session_state[f"dashboard_error_{start_date}_{end_date}"] = error
+        st.session_state[error_key] = error
         st.session_state["last_refresh"] = dt.datetime.now(LOCAL_TZ)
-        
-    return st.session_state.get(cache_key), st.session_state.get(f"dashboard_error_{start_date}_{end_date}")
+
+    return st.session_state.get(cache_key), st.session_state.get(error_key)
 
 
 def refresh_dashboard() -> None:
     st.cache_data.clear()
     st.cache_resource.clear()
-    keys_to_clear = [k for k in st.session_state if k.startswith("dashboard_data")]
+    keys_to_clear = [
+        k for k in list(st.session_state.keys())
+        if k.startswith("dashboard_data") or k.startswith("dashboard_error")
+    ]
     for k in keys_to_clear:
         del st.session_state[k]
     st.session_state.pop("last_refresh", None)
