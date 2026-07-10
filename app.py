@@ -624,13 +624,13 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         total_str = _ops_fmt_total(row["total"])
         status_str = _ops_status_text(row["online"])
 
-        # Native expander title: Department | Latest | Average | Total | Status.
+        # Native expander title: Department | Previous Day | Average | Total | Status.
         # Expander labels support limited Markdown, so the department name is
         # emphasised for prominence and the figures are grouped with clear
         # separators for scannability. (Functionality/values are unchanged.)
         expander_label = (
             f"**{dept_name}**  ·  "
-            f"Latest {latest_str}{unit_suffix}  ·  "
+            f"Previous Day {latest_str}{unit_suffix}  ·  "
             f"Avg {avg_str}{unit_suffix}  ·  "
             f"Total {total_str}{unit_suffix}  ·  "
             f"{status_str}"
@@ -662,7 +662,7 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         <div class="console-col console-col-name">Subsection</div>
         <div class="console-col console-col-num">Total</div>
         <div class="console-col console-col-num">Average</div>
-        <div class="console-col console-col-num">Latest</div>
+        <div class="console-col console-col-num">Previous Day</div>
         <div class="console-col console-col-status">Status</div>
     </div>"""
 
