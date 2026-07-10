@@ -167,15 +167,24 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
     readings_matrix: pd.DataFrame = engineering_block.iloc[2:]
 
     valid_row_mask = _build_valid_row_mask(primary_df, readings_matrix, start_date, end_date)
-    
+
     available_dates: list[str] = []
     date_series_b = primary_df.iloc[readings_matrix.index, 1]
     filtered_date_series = date_series_b[valid_row_mask]
-    
+
+    # Requirement: never assume any rows survive filtering. When a date range
+    # selects no rows (or partially-empty selections leave nothing valid), we
+    # must still build a coherent, empty-but-valid dashboard rather than crash.
+    # ``has_filtered_rows`` gates every downstream step that would otherwise
+    # touch row 0 / iloc[-1] / mismatched-length inserts. When it is False the
+    # per-department payloads are still created (so the UI keeps its structure),
+    # but with empty dataframes and ``None`` aggregates.
+    has_filtered_rows: bool = bool(valid_row_mask.any()) and len(filtered_date_series) > 0
+
     for val in filtered_date_series:
         d = _get_date_string(val)
         if d: available_dates.append(d)
-            
+
     available_months: list[str] = sorted(list({date_str[:7] for date_str in available_dates}))
 
     # CREATE FILTERED OVERVIEW FOR CHARTS & DAILY TRENDS
@@ -231,10 +240,18 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
         channels: dict[str, dict[str, Any]] = {}
 
         valid_dept_df = dept_df[valid_row_mask]
-        
-        # INJECT DATE COLUMN FOR PERFECT CHART ALIGNMENT
+
+        # INJECT DATE COLUMN FOR PERFECT CHART ALIGNMENT.
+        # Guard against empty or length-mismatched filtered selections: only
+        # insert the Date column when the row counts line up (and there is at
+        # least one row). Otherwise produce an empty, correctly-shaped frame so
+        # nothing downstream tries to read from a non-existent row.
         chart_df = valid_dept_df.copy()
-        chart_df.insert(0, "Date", filtered_date_series.values)
+        date_values = filtered_date_series.values
+        if len(chart_df) > 0 and len(date_values) == len(chart_df):
+            chart_df.insert(0, "Date", date_values)
+        else:
+            chart_df = pd.DataFrame(columns=["Date", *meters_list])
 
         for meter in meters_list:
             series: pd.Series = valid_dept_df[meter]
@@ -251,7 +268,10 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
             if not series.empty:
                 final_dates = filtered_date_series.values
                 final_vals = series.values
-                if len(final_dates) > 0:
+                # Only build history when dates and values are both present and
+                # equal in length; a partially-empty filter can otherwise yield
+                # mismatched arrays, which would raise on DataFrame construction.
+                if len(final_dates) > 0 and len(final_dates) == len(final_vals):
                     history_df = pd.DataFrame({"date": final_dates, "value": final_vals})
 
             channels[meter] = {
@@ -328,6 +348,10 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
         "sheet_names": list(workbook.keys()), "months": available_months, "dates": available_dates,
         "latest_values": summary_payload["latest_values"],
         "totals": summary_payload["total_values"], "averages": summary_payload["average_values"],
+        # True only when at least one row survived date filtering. Consumers such
+        # as build_operations_overview use this to render "no data" safely
+        # instead of assuming filtered rows exist.
+        "has_filtered_data": has_filtered_rows,
     }
 
 # ==============================================================================
@@ -462,6 +486,14 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
     """
     departments = dashboard.get("departments", {}) if dashboard else {}
     rows: list[dict[str, Any]] = []
+
+    # Requirement: when a date range leaves no filtered engineering data, the
+    # overview must be empty rather than a list of rows full of ``None`` values
+    # (or worse, a crash). The dashboard exposes ``has_filtered_data`` for this;
+    # if it is explicitly False, return an empty overview. (Absent/True is
+    # treated as "data present" to preserve existing behaviour.)
+    if dashboard is not None and dashboard.get("has_filtered_data") is False:
+        return []
 
     for dept_name, dept_obj in departments.items():
         # Representative-meter figures are used as the parent values for
