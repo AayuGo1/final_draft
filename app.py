@@ -28,7 +28,7 @@ from config import (
 )
 import services.chart_service as chart_service
 from services.dashboard_loader import load_dashboard_safe
-from dashboard_data import select_representative_meter, get_date_columns
+from dashboard_data import select_representative_meter
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
@@ -719,38 +719,71 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
         st.markdown(f'<div class="exec-grid">{tiles_html}</div>', unsafe_allow_html=True)
 
 
+DAILY_TREND_PREFERRED_DEPARTMENTS: Final[list[str]] = ["NPCL", "Overall PNG"]
+
+
+def _select_daily_trend_source(dashboard: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+    """Pick a department whose plot-ready dataframe can drive the daily trend.
+
+    Every department produced by the business layer carries a ``dataframe``
+    with a real ``Date`` column plus one named column per meter — exactly the
+    shape the generic chart service expects. This selects a representative
+    department (preferring primary incoming power) and its representative
+    meter, so the chart service receives valid column *names* rather than the
+    raw engineering block (whose columns are positional integers and whose
+    header/date rows are data rows, not labels).
+
+    Args:
+        dashboard: The assembled dashboard dictionary.
+
+    Returns:
+        A ``(department_object, meter_name)`` pair, or ``(None, None)`` if no
+        department has a plottable dataframe.
+    """
+    departments = dashboard.get("departments", {})
+    if not departments:
+        return None, None
+
+    candidate_order = [
+        *DAILY_TREND_PREFERRED_DEPARTMENTS,
+        *[name for name in departments if name not in DAILY_TREND_PREFERRED_DEPARTMENTS],
+    ]
+
+    for dept_name in candidate_order:
+        dept_obj = departments.get(dept_name)
+        if not chart_service.has_ready_department_dataframe(dept_obj):
+            continue
+        meter = select_representative_meter(dept_obj)
+        if meter and meter in dept_obj["dataframe"].columns:
+            return dept_obj, meter
+
+    return None, None
+
+
 def render_daily_trend(dashboard: dict[str, Any]) -> None:
-    overview_df = dashboard.get("overview", pd.DataFrame())
-    
-    # Debugging: Print dataframe info
-    logger.debug(f"Overview DF Shape: {overview_df.shape}")
-    logger.debug(f"Overview DF Columns: {overview_df.columns.tolist()}")
-    logger.debug(f"Overview DF Head:\n{overview_df.head()}")
-    
-    if overview_df.empty:
-        logger.warning("Overview dataframe is empty.")
+    dept_obj, meter_col = _select_daily_trend_source(dashboard)
+
+    if dept_obj is None or not meter_col:
+        logger.warning("No department with a plottable dataframe found for daily trend.")
         return
-    
-    date_cols = get_date_columns(overview_df)
-    if not date_cols:
-        logger.warning("No date columns found in overview.")
-        return
-    date_col = date_cols[0]
-    
-    meter_col = chart_service.find_first_numeric_column(overview_df)
-    if not meter_col:
-        logger.warning("No numeric column found in overview for daily trend.")
-        return
-        
+
+    trend_df = dept_obj["dataframe"]
+
+    logger.debug(f"Daily Trend source dept: {dept_obj.get('name')}")
+    logger.debug(f"Daily Trend DF Columns: {trend_df.columns.tolist()}")
+    logger.debug(f"Daily Trend meter: {meter_col}")
+
     try:
-        fig, stats = chart_service.get_daily_trend_figure_and_stats(overview_df, meter_col, date_col)
-        
+        fig, stats = chart_service.get_daily_trend_figure_and_stats(
+            trend_df, meter_col, chart_service.DEFAULT_DATE_COLUMN_LABEL
+        )
+
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Average", stats.get("Average", "—"))
         col2.metric("Maximum", stats.get("Maximum", "—"))
         col3.metric("Minimum", stats.get("Minimum", "—"))
         col4.metric("Latest", stats.get("Latest", "—"))
-        
+
         if fig:
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     except Exception as e:
