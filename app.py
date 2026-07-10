@@ -40,6 +40,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Local timezone for the dashboard's operating region (India Standard Time,
+# UTC+05:30 — India observes no DST, so a fixed offset is always correct).
+# Displayed times are computed against this so the sidebar shows the correct
+# local time even when the app runs on a server in a different timezone (e.g.
+# a UTC cloud host). Built from datetime only; nothing is hardcoded.
+LOCAL_TZ = dt.timezone(dt.timedelta(hours=5, minutes=30))
+
 CRITICAL_SYSTEMS = [
     "NPCL", "Overall PNG", "Air compressor", "Rooftop Solar",
     "Freon Refrigeration", "Ammonia Refrigeration",
@@ -122,7 +129,7 @@ def get_dashboard(start_date: str | None = None, end_date: str | None = None) ->
         dashboard, error = load_dashboard_safe(start_date, end_date)
         st.session_state[cache_key] = dashboard
         st.session_state[f"dashboard_error_{start_date}_{end_date}"] = error
-        st.session_state["last_refresh"] = dt.datetime.now()
+        st.session_state["last_refresh"] = dt.datetime.now(LOCAL_TZ)
         
     return st.session_state.get(cache_key), st.session_state.get(f"dashboard_error_{start_date}_{end_date}")
 
@@ -344,6 +351,62 @@ def inject_global_styles() -> None:
             ::-webkit-scrollbar-track { background: #0B1220; }
             ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
             ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+            /* Plant Operations Overview — premium industrial expander cards.
+               Scoped to the only expander in the app (this section). Visual
+               polish only: spacing, borders, contrast, prominence. */
+            div[data-testid="stExpander"] {
+                background: #1E293B;
+                border: 1px solid #334155;
+                border-left: 3px solid #005DAA;
+                border-radius: 6px;
+                margin-bottom: 8px;
+                overflow: hidden;
+                transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            }
+            div[data-testid="stExpander"]:hover {
+                border-color: #475569;
+                border-left-color: #2E7DD1;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+            }
+            div[data-testid="stExpander"] > details {
+                background: transparent;
+                border: none;
+            }
+            div[data-testid="stExpander"] > details > summary {
+                padding: 10px 14px;
+                background: linear-gradient(90deg, rgba(0, 93, 170, 0.10), rgba(30, 41, 59, 0));
+                border-radius: 6px 6px 0 0;
+                list-style: none;
+                cursor: pointer;
+                transition: background 0.2s ease;
+            }
+            div[data-testid="stExpander"] > details > summary:hover {
+                background: linear-gradient(90deg, rgba(0, 93, 170, 0.18), rgba(30, 41, 59, 0));
+            }
+            /* Department name prominent; metrics readable and evenly spaced. */
+            div[data-testid="stExpander"] summary p {
+                font-size: 12px !important;
+                color: #CBD5E1 !important;
+                letter-spacing: 0.2px;
+                margin: 0 !important;
+            }
+            div[data-testid="stExpander"] summary p strong {
+                font-size: 13px;
+                font-weight: 700;
+                color: #F8FAFC;
+                text-transform: uppercase;
+                letter-spacing: 0.4px;
+            }
+            div[data-testid="stExpander"] summary svg {
+                fill: #94A3B8;
+            }
+            /* Body padding around the subsection table. */
+            div[data-testid="stExpander"] > details > div {
+                padding: 8px 14px 12px 14px;
+                border-top: 1px solid #334155;
+                background: #162032;
+            }
         </style>""",
         unsafe_allow_html=True,
     )
@@ -368,59 +431,6 @@ def render_sidebar_filters() -> tuple[str | None, str | None]:
         
     start_date = st.sidebar.date_input("Start Date", value=st.session_state.filter_start_date, key="start_date_input")
     end_date = st.sidebar.date_input("End Date", value=st.session_state.filter_end_date, key="end_date_input")
-    
-    st.sidebar.markdown("#### ⚡ Quick Filters")
-    cols = st.sidebar.columns(2)
-    
-    with cols[0]:
-        if st.button("Today", use_container_width=True, key="qf_today"):
-            today = dt.date.today()
-            st.session_state.filter_start_date = today
-            st.session_state.filter_end_date = today
-            st.rerun()
-        if st.button("7 Days", use_container_width=True, key="qf_l7d"):
-            end = dt.date.today()
-            start = end - dt.timedelta(days=6)
-            st.session_state.filter_start_date = start
-            st.session_state.filter_end_date = end
-            st.rerun()
-        if st.button("Month", use_container_width=True, key="qf_tm"):
-            today = dt.date.today()
-            start = today.replace(day=1)
-            st.session_state.filter_start_date = start
-            st.session_state.filter_end_date = today
-            st.rerun()
-        if st.button("YTD", use_container_width=True, key="qf_ytd"):
-            today = dt.date.today()
-            start = today.replace(month=1, day=1)
-            st.session_state.filter_start_date = start
-            st.session_state.filter_end_date = today
-            st.rerun()
-            
-    with cols[1]:
-        if st.button("Yest", use_container_width=True, key="qf_yest"):
-            yesterday = dt.date.today() - dt.timedelta(days=1)
-            st.session_state.filter_start_date = yesterday
-            st.session_state.filter_end_date = yesterday
-            st.rerun()
-        if st.button("30 Days", use_container_width=True, key="qf_l30d"):
-            end = dt.date.today()
-            start = end - dt.timedelta(days=29)
-            st.session_state.filter_start_date = start
-            st.session_state.filter_end_date = end
-            st.rerun()
-        if st.button("Prev Mo", use_container_width=True, key="qf_pm"):
-            today = dt.date.today()
-            first_day_of_month = today.replace(day=1)
-            last_month_end = first_day_of_month - dt.timedelta(days=1)
-            last_month_start = last_month_end.replace(day=1)
-            st.session_state.filter_start_date = last_month_start
-            st.session_state.filter_end_date = last_month_end
-            st.rerun()
-        if st.button("All", use_container_width=True, key="qf_all"):
-            st.session_state.filter_start_date = None
-            st.session_state.filter_end_date = None
-            st.rerun()
 
     st.sidebar.markdown("---")
     if st.sidebar.button("🔄 Refresh", use_container_width=True, key="refresh_btn"):
@@ -435,7 +445,7 @@ def render_sidebar_filters() -> tuple[str | None, str | None]:
 
 def render_sidebar_status(dashboard: dict[str, Any] | None) -> None:
     """Render the system status panel in the sidebar."""
-    now = dt.datetime.now()
+    now = dt.datetime.now(LOCAL_TZ)
     last_refresh = st.session_state.get("last_refresh")
     
     wb_ok = dashboard is not None
@@ -615,12 +625,14 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         status_str = _ops_status_text(row["online"])
 
         # Native expander title: Department | Latest | Average | Total | Status.
-        # Expander labels are plain text, so the figures are inlined directly.
+        # Expander labels support limited Markdown, so the department name is
+        # emphasised for prominence and the figures are grouped with clear
+        # separators for scannability. (Functionality/values are unchanged.)
         expander_label = (
-            f"{dept_name}    "
-            f"Latest: {latest_str}{unit_suffix}    "
-            f"Avg: {avg_str}{unit_suffix}    "
-            f"Total: {total_str}{unit_suffix}    "
+            f"**{dept_name}**  ·  "
+            f"Latest {latest_str}{unit_suffix}  ·  "
+            f"Avg {avg_str}{unit_suffix}  ·  "
+            f"Total {total_str}{unit_suffix}  ·  "
             f"{status_str}"
         )
 
@@ -690,7 +702,7 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
 def main() -> None:
     inject_global_styles()
     
-    # 1. Render Sidebar Filters (Date Range & Quick Filters)
+    # 1. Render Sidebar Filters (Date Range)
     start_date, end_date = render_sidebar_filters()
     
     # 2. Load Data
