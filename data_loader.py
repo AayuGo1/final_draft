@@ -20,7 +20,7 @@ REQUEST_TIMEOUT_SECONDS: int = 30
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner="Downloading workbook...")
-def download_workbook(url: str = WORKBOOK_RAW_URL) -> BytesIO:
+def download_workbook(url: str = WORKBOOK_RAW_URL) -> bytes:
     """Download the Excel workbook from GitHub into memory.
 
     Args:
@@ -28,7 +28,7 @@ def download_workbook(url: str = WORKBOOK_RAW_URL) -> BytesIO:
             URL built from ``config.py``.
 
     Returns:
-        An in-memory ``BytesIO`` buffer containing the raw workbook bytes.
+        The raw workbook bytes.
 
     Raises:
         ConnectionError: If GitHub cannot be reached due to a network
@@ -69,12 +69,27 @@ def download_workbook(url: str = WORKBOOK_RAW_URL) -> BytesIO:
             f"downloading the workbook from '{url}'."
         )
 
-    return BytesIO(response.content)
+    return response.content
 
 
-@st.cache_resource(ttl=CACHE_TTL_SECONDS, show_spinner="Loading workbook...")
 def load_excel(url: str = WORKBOOK_RAW_URL) -> pd.ExcelFile:
     """Load the downloaded workbook into a ``pandas.ExcelFile``.
+
+    NOT cached. The expensive, shareable step — the network download — is
+    cached upstream in ``download_workbook`` (its immutable ``bytes`` result is
+    safe to share across sessions). This function instead wraps a FRESH
+    ``BytesIO`` in a NEW ``pd.ExcelFile`` on every call, so each Streamlit rerun
+    (and each thread) gets its own file handle.
+
+    This is deliberate. A ``pd.ExcelFile`` holds an open, non-thread-safe native
+    handle (an ``openpyxl`` zipfile over a ``BytesIO``; it even carries a
+    ``_thread.RLock``, which is why it cannot be pickled and therefore cannot be
+    cached with ``st.cache_data``). Caching it with ``st.cache_resource`` instead
+    would share that single handle across every session and thread; concurrent
+    ``.parse()`` calls on one shared zipfile handle corrupt its internal C state
+    and crash the process with a native segmentation fault and no Python
+    traceback. Building a fresh handle per call removes that shared mutable
+    state. Parsed output is byte-for-byte identical either way.
 
     Args:
         url: Raw GitHub URL of the workbook to download and load.
@@ -98,7 +113,7 @@ def load_excel(url: str = WORKBOOK_RAW_URL) -> pd.ExcelFile:
     workbook_bytes = download_workbook(url)
 
     try:
-        return pd.ExcelFile(workbook_bytes)
+        return pd.ExcelFile(BytesIO(workbook_bytes))
     except ValueError as exc:
         raise ValueError(
             f"The file downloaded from '{url}' is not a valid Excel "
