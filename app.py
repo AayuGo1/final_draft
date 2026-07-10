@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import copy
 import datetime as dt
 import logging
 import re
@@ -26,7 +25,6 @@ from config import (
     THEME_PRIMARY_COLOR,
     THEME_SUCCESS_COLOR,
 )
-import services.chart_service as chart_service
 from services.dashboard_loader import load_dashboard_safe
 from dashboard_data import select_representative_meter
 
@@ -83,37 +81,6 @@ EXEC_TILE_ICONS: Final[dict[str, str]] = {
     "Freon Refrigeration": "❄️",
     "Ammonia Refrigeration": "❄️",
 }
-
-SUBSECTION_RULES: Final[list[tuple[str, list[str]]]] = [
-    ("Power & Demand", ["power", "kva", "demand", "load", "kw"]),
-    ("Energy & Consumption", ["energy", "kwh", "consumption", "unit"]),
-    ("Pressure", ["pressure", "bar", "psi"]),
-    ("Flow & Volume", ["flow", "m3", "nm3", "lpm", "volume", "air", "png", "gas", "steam", "water"]),
-    ("Temperature & Cooling", ["temp", "°c", "cop", "chill", "cool", "refrigerat"]),
-    ("Electrical Parameters", ["voltage", "current", "volt", "amp", "hz", "freq", "pf", "factor"]),
-    ("Runtime & Hours", ["hr", "hour", "run", "rpm"]),
-]
-OTHER_BUCKET_LABEL: Final[str] = "Other Channels"
-
-_chart_counter = 0
-
-
-def _bucket_meters_dynamically(meters: list[str]) -> "dict[str, list[str]]":
-    buckets: dict[str, list[str]] = {label: [] for label, _ in SUBSECTION_RULES}
-    buckets[OTHER_BUCKET_LABEL] = []
-
-    for meter in meters:
-        lower_name = str(meter).lower()
-        placed = False
-        for label, keywords in SUBSECTION_RULES:
-            if any(kw in lower_name for kw in keywords):
-                buckets[label].append(meter)
-                placed = True
-                break
-        if not placed:
-            buckets[OTHER_BUCKET_LABEL].append(meter)
-
-    return {label: meters_in_bucket for label, meters_in_bucket in buckets.items() if meters_in_bucket}
 
 
 def resolve_meter_unit(dept_obj: dict[str, Any], meter: str) -> str:
@@ -371,95 +338,6 @@ def inject_global_styles() -> None:
             .alarm-label { font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; }
             .alarm-message { font-size: 10px; color: #F8FAFC; }
 
-            /* KPI Strip */
-            .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 4px; margin-bottom: 8px; }
-            .kpi-cell {
-                background: #1E293B; border: 1px solid #334155; border-radius: 4px; padding: 4px 6px;
-            }
-            .kpi-cell-label { font-size: 9px; font-weight: 600; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px; }
-            .kpi-cell-value { font-size: 13px; font-weight: 700; color: #F8FAFC; }
-            .kpi-cell-unit { font-size: 9px; color: #94A3B8; margin-left: 2px; }
-
-            /* Workspace */
-            .workspace {
-                background: #1E293B; border: 1px solid #334155; border-radius: 4px; padding: 10px;
-                margin-bottom: 10px;
-            }
-            .workspace-header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 6px; border-bottom: 1px solid #334155; margin-bottom: 8px; }
-            .workspace-title { font-size: 14px; font-weight: 700; color: #F8FAFC; margin: 0; }
-            .workspace-label { font-size: 10px; color: #005DAA; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-
-            /* Chart Box */
-            .chart-box {
-                background: #1E293B; border: 1px solid #334155; border-radius: 4px; padding: 6px; margin-bottom: 6px;
-            }
-            .chart-label {
-                font-size: 10px; font-weight: 600; color: #94A3B8;
-                margin-bottom: 4px; padding: 0 2px; text-transform: uppercase; letter-spacing: 0.3px;
-            }
-            /* Constrain Plotly Chart Height & Hide Toolbar */
-            .chart-box .stPlotlyChart, 
-            .chart-box [data-testid="stPlotlyChart"],
-            .chart-box .js-plotly-plot,
-            .chart-box .plotly {
-                height: 350px !important;
-                min-height: 350px !important;
-                max-height: 350px !important;
-            }
-            .chart-box .modebar-container {
-                display: none !important;
-            }
-
-            /* Dataframes / Tables */
-            div[data-testid="stDataFrame"] {
-                border: 1px solid #334155 !important; border-radius: 4px !important; overflow: hidden !important;
-                background: #1E293B !important;
-            }
-            div[data-testid="stDataFrame"] th {
-                background: #273449 !important; color: #94A3B8 !important; font-weight: 600 !important;
-                text-transform: uppercase !important; font-size: 9px !important; letter-spacing: 0.3px !important;
-                border-bottom: 1px solid #334155 !important; padding: 4px 6px !important;
-                position: sticky !important; top: 0 !important; z-index: 1 !important;
-            }
-            div[data-testid="stDataFrame"] td {
-                background: #1E293B !important; color: #F8FAFC !important; border-bottom: 1px solid #334155 !important;
-                padding: 2px 6px !important; font-size: 10px !important;
-            }
-            div[data-testid="stDataFrame"] tr:nth-child(even) td {
-                background: #162032 !important;
-            }
-            div[data-testid="stDataFrame"] tr:hover td { background: #273449 !important; }
-
-            /* Tabs */
-            .workspace div[data-testid="stTabs"] {
-                border-bottom: 1px solid #334155;
-            }
-            .workspace div[data-testid="stTabs"] button[data-baseweb="tab"] {
-                font-size: 10px; font-weight: 600; color: #94A3B8; padding: 4px 10px;
-                border-radius: 4px 4px 0 0;
-            }
-            .workspace div[data-testid="stTabs"] button[aria-selected="true"] {
-                color: #F8FAFC; background: #273449; border-bottom: 2px solid #005DAA;
-            }
-
-            /* Metrics */
-            div[data-testid="stMetric"] {
-                background: #1E293B;
-                border: 1px solid #334155;
-                border-radius: 4px;
-                padding: 6px;
-            }
-            div[data-testid="stMetric"] label {
-                color: #94A3B8 !important;
-                font-size: 10px !important;
-                font-weight: 600 !important;
-            }
-            div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
-                color: #F8FAFC !important;
-                font-size: 14px !important;
-                font-weight: 700 !important;
-            }
-
             /* Scrollbar */
             ::-webkit-scrollbar { width: 4px; height: 4px; }
             ::-webkit-scrollbar-track { background: #0B1220; }
@@ -693,78 +571,6 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
         st.markdown(f'<div class="exec-grid">{tiles_html}</div>', unsafe_allow_html=True)
 
 
-DAILY_TREND_PREFERRED_DEPARTMENTS: Final[list[str]] = ["NPCL", "Overall PNG"]
-
-
-def _select_daily_trend_source(dashboard: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
-    """Pick a department whose plot-ready dataframe can drive the daily trend.
-
-    Every department produced by the business layer carries a ``dataframe``
-    with a real ``Date`` column plus one named column per meter — exactly the
-    shape the generic chart service expects. This selects a representative
-    department (preferring primary incoming power) and its representative
-    meter, so the chart service receives valid column *names* rather than the
-    raw engineering block (whose columns are positional integers and whose
-    header/date rows are data rows, not labels).
-
-    Args:
-        dashboard: The assembled dashboard dictionary.
-
-    Returns:
-        A ``(department_object, meter_name)`` pair, or ``(None, None)`` if no
-        department has a plottable dataframe.
-    """
-    departments = dashboard.get("departments", {})
-    if not departments:
-        return None, None
-
-    candidate_order = [
-        *DAILY_TREND_PREFERRED_DEPARTMENTS,
-        *[name for name in departments if name not in DAILY_TREND_PREFERRED_DEPARTMENTS],
-    ]
-
-    for dept_name in candidate_order:
-        dept_obj = departments.get(dept_name)
-        if not chart_service.has_ready_department_dataframe(dept_obj):
-            continue
-        meter = select_representative_meter(dept_obj)
-        if meter and meter in dept_obj["dataframe"].columns:
-            return dept_obj, meter
-
-    return None, None
-
-
-def render_daily_trend(dashboard: dict[str, Any]) -> None:
-    dept_obj, meter_col = _select_daily_trend_source(dashboard)
-
-    if dept_obj is None or not meter_col:
-        logger.warning("No department with a plottable dataframe found for daily trend.")
-        return
-
-    trend_df = dept_obj["dataframe"]
-
-    logger.debug(f"Daily Trend source dept: {dept_obj.get('name')}")
-    logger.debug(f"Daily Trend DF Columns: {trend_df.columns.tolist()}")
-    logger.debug(f"Daily Trend meter: {meter_col}")
-
-    try:
-        fig, stats = chart_service.get_daily_trend_figure_and_stats(
-            trend_df, meter_col, chart_service.DEFAULT_DATE_COLUMN_LABEL
-        )
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Average", stats.get("Average", "—"))
-        col2.metric("Maximum", stats.get("Maximum", "—"))
-        col3.metric("Minimum", stats.get("Minimum", "—"))
-        col4.metric("Latest", stats.get("Latest", "—"))
-
-        if fig:
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    except Exception as e:
-        logger.error(f"Error rendering daily trend: {e}", exc_info=True)
-        st.error(f"Failed to render daily trend: {e}")
-
-
 OPS_CONSOLE_PROCESSES: Final[list[str]] = [
     "NPCL",
     "Overall PNG",
@@ -825,235 +631,6 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         st.markdown(f'<div class="ops-console">{header_html}{rows_html}</div>', unsafe_allow_html=True)
 
 
-def render_department_selector(dashboard: dict[str, Any]) -> str | None:
-    """Render a compact department selector that drives the Engineering Workspace.
-
-    Lists every available department from ``dashboard["departments"]`` in a
-    single Streamlit selectbox and persists the choice in ``selected_process``,
-    exactly the session-state key the Engineering Workspace already consumes.
-    This replaces the former large card grid while leaving the workspace and
-    all of its tabs/charts/metrics untouched.
-
-    Args:
-        dashboard: The assembled dashboard dictionary.
-
-    Returns:
-        The selected department name, or ``None`` if there are no departments.
-    """
-    departments = dashboard.get("departments", {})
-    if not departments:
-        return None
-
-    dept_names = sorted(departments.keys())
-
-    # Seed the selection before the widget is created so it defaults to the
-    # first department; the selectbox's own key is the single source of truth
-    # thereafter (avoids Streamlit's default-vs-session-state conflict).
-    if st.session_state.get("selected_process") not in dept_names:
-        st.session_state["selected_process"] = dept_names[0]
-
-    selected = st.selectbox(
-        "Department",
-        options=dept_names,
-        key="selected_process",
-        label_visibility="collapsed",
-    )
-
-    return selected
-
-
-def _chart_box(label: str, fig) -> None:
-    global _chart_counter
-    _chart_counter += 1
-    unique_key = f"chart_box_{_chart_counter}"
-    
-    st.markdown(f'<div class="chart-box"><div class="chart-label">{label}</div>', unsafe_allow_html=True)
-    if fig:
-        try:
-            fig_to_render = copy.deepcopy(fig)
-        except Exception:
-            fig_to_render = fig
-            
-        st.plotly_chart(fig_to_render, use_container_width=True, config={"displayModeBar": False}, key=unique_key)
-    else:
-        st.markdown(
-            '<div style="font-size:10px;color:#64748B;padding:10px;text-align:center;">No plottable data.</div>',
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-def _render_meter_kpi_strip(dept_obj: dict[str, Any], meters: list[str]) -> None:
-    latest_vals = dept_obj.get("latest_values", {})
-    cells_html = ""
-    for m in meters[:6]:
-        unit_str = resolve_meter_unit(dept_obj, m)
-        v = latest_vals.get(m)
-        v_str = _format_exec_value(v) if isinstance(v, (int, float)) else "—"
-        cells_html += f"""
-        <div class="kpi-cell">
-            <div class="kpi-cell-label">{m}</div>
-            <div class="kpi-cell-value">{v_str}<span class="kpi-cell-unit">{unit_str}</span></div>
-        </div>"""
-    if cells_html:
-        st.markdown(f'<div class="kpi-strip">{cells_html}</div>', unsafe_allow_html=True)
-
-
-def _render_overview_tab(dashboard: dict[str, Any], process_name: str, dept_obj: dict[str, Any]) -> None:
-    overview_df = dashboard.get("overview", pd.DataFrame())
-    meters = dept_obj.get("meters", [])
-    df_block = dept_obj.get("dataframe", pd.DataFrame())
-    rep_m = select_representative_meter(dept_obj)
-    unit_lbl = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
-    
-    latest_val = dept_obj.get("latest_values", {}).get(rep_m)
-    latest_val = latest_val if isinstance(latest_val, (int, float)) else 0.0
-    
-    max_ceiling = get_gauge_max(df_block, rep_m, dept_obj) if rep_m else 100.0
-
-    _render_meter_kpi_strip(dept_obj, meters)
-
-    if process_name == "NPCL":
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Load Trend", fig)
-        with col2:
-            fig = chart_service.create_gauge_chart(latest_val, "Demand", maximum=max_ceiling, unit=unit_lbl)
-            _chart_box("Demand Gauge", fig)
-    elif process_name == "Air compressor":
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            fig = chart_service.create_gauge_chart(latest_val, "Pressure", maximum=max_ceiling, unit=unit_lbl)
-            _chart_box("Pressure Gauge", fig)
-        with col2:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Flow Trend / Stability", fig)
-    elif process_name in ("Freon Refrigeration", "Ammonia Refrigeration"):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = chart_service.create_heatmap(df_block, meters[: min(len(meters), 8)], "Temperature Heatmap")
-            _chart_box("Temperature Heatmap", fig)
-        with col2:
-            fig = chart_service.create_gauge_chart(latest_val, "COP", maximum=max_ceiling, unit=unit_lbl)
-            _chart_box("COP", fig)
-    elif process_name in ("DG", "GG"):
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            target_val = dept_obj.get("average_values", {}).get(rep_m, latest_val) or latest_val
-            fig = chart_service.create_bullet_chart(latest_val, target_val, "Generation vs Target", unit=unit_lbl)
-            _chart_box("Generation", fig)
-        with col2:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Output Trend", fig)
-    else:
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-            _chart_box("Primary Telemetry", fig)
-        with col2:
-            if rep_m:
-                fig = chart_service.create_gauge_chart(latest_val, rep_m, maximum=max_ceiling, unit=unit_lbl)
-                _chart_box("Current Status", fig)
-
-
-def _render_subsection_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any], subsection_meters: list[str]) -> None:
-    overview_df = dashboard.get("overview", pd.DataFrame())
-    _render_meter_kpi_strip(dept_obj, subsection_meters)
-
-    if len(subsection_meters) >= 1:
-        sub_section_obj = dict(dept_obj)
-        sub_section_obj["meters"] = subsection_meters
-        fig = chart_service.create_department_multi_line_chart(
-            overview_dataframe=overview_df, section=sub_section_obj, title="Channel Trend"
-        )
-        _chart_box("Channel Trend", fig)
-
-
-def _render_history_tab(dashboard: dict[str, Any], dept_obj: dict[str, Any]) -> None:
-    overview_df = dashboard.get("overview", pd.DataFrame())
-    fig = chart_service.build_section_trend_chart(overview_df, dept_obj)
-    _chart_box("Representative Channel History", fig)
-    fig2 = chart_service.create_department_multi_line_chart(
-        overview_dataframe=overview_df, section=dept_obj, title="All Channels — Full History"
-    )
-    _chart_box("Multi-Channel History", fig2)
-
-
-def _render_diagnostics_tab(dept_obj: dict[str, Any]) -> None:
-    meters = dept_obj.get("meters", [])
-    df_block = dept_obj.get("dataframe", pd.DataFrame())
-
-    if len(meters) >= 3:
-        fig = chart_service.create_radar_chart(df_block, meters[:6], "Channel Profile")
-        _chart_box("Channel Profile", fig)
-
-    units_map = dept_obj.get("units", {})
-    latest_vals = dept_obj.get("latest_values", {})
-    avg_vals = dept_obj.get("average_values", {})
-    total_vals = dept_obj.get("total_values", {})
-
-    ledger_records = []
-    for m in meters:
-        l_v = latest_vals.get(m)
-        a_v = avg_vals.get(m)
-        t_v = total_vals.get(m)
-        ledger_records.append(
-            {
-                "Channel": m,
-                "Unit": resolve_meter_unit(dept_obj, m) or "N/A",
-                "Latest": round(l_v, 2) if isinstance(l_v, (int, float)) else "N/A",
-                "Mean": round(a_v, 2) if isinstance(a_v, (int, float)) else "N/A",
-                "Total": round(t_v, 2) if isinstance(t_v, (int, float)) else "N/A",
-                "Status": "Active" if l_v is not None else "Idle",
-            }
-        )
-    if ledger_records:
-        st.markdown('<div style="font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; margin: 8px 0 4px;">Channel Register</div>', unsafe_allow_html=True)
-        st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-        st.dataframe(pd.DataFrame(ledger_records), use_container_width=True, hide_index=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-
-def render_department_workspace(dashboard: dict[str, Any], process_name: str) -> None:
-    departments = dashboard.get("departments", {})
-    dept_obj = departments.get(process_name, {})
-    if not dept_obj:
-        return
-
-    config = DEPT_CONFIGS.get(process_name, DEFAULT_CONFIG)
-    meters = dept_obj.get("meters", [])
-
-    st.markdown(
-        f"""
-    <div class="workspace" style="--accent:{config['accent']};">
-        <div class="workspace-header">
-            <h2 class="workspace-title">{process_name}</h2>
-            <div class="workspace-label">{config['category']}</div>
-        </div>
-    </div>""",
-        unsafe_allow_html=True,
-    )
-
-    dynamic_buckets = _bucket_meters_dynamically(meters)
-
-    tab_labels = ["Overview", *dynamic_buckets.keys(), "History", "Diagnostics"]
-    tabs = st.tabs(tab_labels)
-
-    with tabs[0]:
-        _render_overview_tab(dashboard, process_name, dept_obj)
-
-    for tab, (bucket_label, bucket_meters) in zip(tabs[1:-2], dynamic_buckets.items()):
-        with tab:
-            _render_subsection_tab(dashboard, dept_obj, bucket_meters)
-
-    with tabs[-2]:
-        _render_history_tab(dashboard, dept_obj)
-
-    with tabs[-1]:
-        _render_diagnostics_tab(dept_obj)
-
-
 def render_footer(dashboard: dict[str, Any] | None) -> None:
     last_refresh = st.session_state.get("last_refresh")
     refresh_text = last_refresh.strftime("%d %b %Y, %H:%M:%S") if last_refresh else "N/A"
@@ -1067,9 +644,6 @@ def render_footer(dashboard: dict[str, Any] | None) -> None:
 
 
 def main() -> None:
-    global _chart_counter
-    _chart_counter = 0
-    
     inject_global_styles()
     
     # 1. Render Sidebar Filters (Date Range & Quick Filters)
@@ -1094,14 +668,6 @@ def main() -> None:
 
     st.markdown('<div class="section-title">Plant Operations Overview</div>', unsafe_allow_html=True)
     render_operations_overview(dashboard)
-
-    st.markdown('<div class="section-title">Daily Trend Overview</div>', unsafe_allow_html=True)
-    render_daily_trend(dashboard)
-
-    st.markdown('<div class="section-title">Engineering Workspace</div>', unsafe_allow_html=True)
-    selected_process = render_department_selector(dashboard)
-    if selected_process:
-        render_department_workspace(dashboard, selected_process)
 
     render_footer(dashboard)
 
