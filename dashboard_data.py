@@ -22,11 +22,66 @@ Keep this module free of any upstream import.
 from __future__ import annotations
 
 import datetime
+import logging
 import re
 import warnings
 from typing import Any, Final
 
 import pandas as pd
+
+# Diagnostics-only logging. This module keeps its strict "no upstream imports"
+# rule (it must not import app / loader), so it configures its own module logger
+# rather than sharing app.py's. Logging here is purely for tracing where a
+# native crash (e.g. a Streamlit Cloud segmentation fault, which produces no
+# Python traceback) happens. It never logs cell values — only structural
+# metadata — and never alters any calculation or return value.
+logger = logging.getLogger(__name__)
+
+
+def _df_meta(df: Any) -> str:
+    """Return a safe, data-free description of a DataFrame/Series for diagnostics.
+
+    Reports ONLY structural metadata — shape, row/column counts, approximate
+    memory usage — never any cell values. Introspection failures are swallowed so
+    diagnostics can never crash the pipeline.
+    """
+    try:
+        if isinstance(df, pd.DataFrame):
+            rows, cols = df.shape
+            try:
+                mem = f"{int(df.memory_usage(deep=True).sum()) / 1024:.1f} KB"
+            except Exception:
+                mem = "n/a"
+            return f"shape=({rows},{cols}) rows={rows} cols={cols} mem={mem}"
+        if isinstance(df, pd.Series):
+            try:
+                mem = f"{int(df.memory_usage(deep=True)) / 1024:.1f} KB"
+            except Exception:
+                mem = "n/a"
+            return f"series len={len(df)} mem={mem}"
+        if df is None:
+            return "None"
+        return f"type={type(df).__name__}"
+    except Exception as exc:
+        return f"<meta unavailable: {type(exc).__name__}>"
+
+
+def _log_step(message: str) -> None:
+    """Emit a diagnostic step marker (flushed immediately).
+
+    Flushing matters: a native segfault can kill the process before buffered log
+    lines reach the console, so each marker is pushed out right away.
+    """
+    try:
+        logger.info(message)
+        for handler in logging.getLogger().handlers:
+            try:
+                handler.flush()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 
 # ==============================================================================
 # PRODUCTION CONSTANTS & SPECIFICATIONS
@@ -92,7 +147,13 @@ FREON_SHEET_KEYWORDS: Final[tuple[str, ...]] = ("freon",)
 # ==============================================================================
 
 def get_dashboard_data(workbook: dict[str, pd.DataFrame], start_date: str | None = None, end_date: str | None = None) -> dict[str, Any]:
-    return build_dashboard(workbook, start_date, end_date)
+    _log_step(f"get_dashboard_data: ENTER start_date={start_date} end_date={end_date} sheets={list(workbook.keys()) if isinstance(workbook, dict) else type(workbook).__name__}")
+    if isinstance(workbook, dict):
+        for _sheet_name, _sheet_df in workbook.items():
+            _log_step(f"  workbook sheet '{_sheet_name}': {_df_meta(_sheet_df)}")
+    result = build_dashboard(workbook, start_date, end_date)
+    _log_step("get_dashboard_data: EXIT")
+    return result
 
 def _is_valid_date_string(val: Any) -> bool:
     if pd.isna(val) or val is None: return False
@@ -207,8 +268,8 @@ def _apply_date_range_to_mask(
 
     ``normalized_dates`` must already be a ``pd.Timestamp``/``NaT`` series aligned
     to ``mask``. All comparisons are Timestamp-vs-Timestamp (never strings). This
-    is the single implementation of the range test, reused by both the
-    engineering-block filter and the Freon-worksheet filter.
+    is the single implementation of the range test, used only by the one
+    centralized filter below.
     """
     if not (start_date or end_date):
         return mask
@@ -220,63 +281,114 @@ def _apply_date_range_to_mask(
     return mask
 
 
-def _build_valid_row_mask(
-    primary_df: pd.DataFrame,
-    readings_matrix: pd.DataFrame,
+def _normalize_timestamp_column(dataframe: pd.DataFrame, timestamp_column: Any, positional: bool) -> pd.Series:
+    """Return a ``pd.Timestamp``/``NaT`` series for the given timestamp column.
+
+    The column is selected by position (``positional=True``) or by label, then
+    each cell is parsed via ``_get_date_object`` (mixed formats handled, values
+    outside the valid-year window or unparseable become ``NaT``). The result is
+    index-aligned 1:1 to ``dataframe``'s rows.
+    """
+    if positional:
+        raw = dataframe.iloc[:, timestamp_column]
+    else:
+        raw = dataframe[timestamp_column]
+    return pd.Series(
+        [pd.Timestamp(d) if (d := _get_date_object(v)) is not None else pd.NaT for v in raw],
+        index=dataframe.index,
+        dtype="datetime64[ns]",
+    )
+
+
+def filter_dataframe_by_date(
+    dataframe: pd.DataFrame,
+    timestamp_column: Any,
     start_date: str | None = None,
     end_date: str | None = None,
-    normalized_dates: pd.Series | None = None,
-) -> pd.Series:
-    """Return a boolean mask (aligned to ``readings_matrix``) of in-range rows.
+    positional: bool = False,
+) -> pd.DataFrame:
+    """THE single, centralized date filter for the whole dashboard.
 
-    All comparisons are performed on a single normalized ``pd.Timestamp`` series
-    (built once via ``_normalize_date_series``) so no mixed date/str types are
-    ever compared. If both bounds are supplied and ``end_date < start_date`` the
-    range is swapped automatically rather than silently yielding nothing.
+    Every department's data is filtered exactly once through this helper — no
+    department performs its own date filtering. Given a dataframe and the name
+    (or position, when ``positional=True``) of its timestamp column, it:
+
+    * converts that column to ``pd.Timestamp`` once (mixed date/datetime/str
+      formats handled; unparseable / out-of-range values become ``NaT`` and are
+      dropped);
+    * resolves the selected bounds, swapping them if ``end_date < start_date`` so
+      a reversed range is never silently empty;
+    * returns the rows whose timestamp is a valid date within the inclusive
+      ``[start_date, end_date]`` range (all rows with a valid date when no bound
+      is given, i.e. "All Dates").
+
+    The returned frame preserves the input's columns and row order and carries
+    the original row index of the surviving rows. If nothing survives (or the
+    input is empty), an empty frame with the same columns is returned — callers
+    can rely on that to build an empty-but-valid department safely, never
+    crashing.
+
+    Args:
+        dataframe: The source frame to filter.
+        timestamp_column: Label (default) or positional index (``positional``)
+            of the timestamp column.
+        start_date: Optional inclusive start (YYYY-MM-DD).
+        end_date: Optional inclusive end (YYYY-MM-DD).
+        positional: Interpret ``timestamp_column`` as an ``.iloc`` position.
+
+    Returns:
+        The date-filtered dataframe (possibly empty, never ``None``).
     """
-    if normalized_dates is None:
-        normalized_dates = _normalize_date_series(primary_df, readings_matrix)
+    if not isinstance(dataframe, pd.DataFrame) or dataframe.empty:
+        return dataframe if isinstance(dataframe, pd.DataFrame) else pd.DataFrame()
 
-    # A row is valid if it carries a parseable, in-year date (not NaT).
-    mask = normalized_dates.notna()
-
-    mask = _apply_date_range_to_mask(mask, normalized_dates, start_date, end_date)
-
-    # Guarantee a plain boolean Series aligned to the readings index.
-    return mask.fillna(False).astype(bool)
+    normalized = _normalize_timestamp_column(dataframe, timestamp_column, positional)
+    mask = normalized.notna()
+    mask = _apply_date_range_to_mask(mask, normalized, start_date, end_date)
+    mask = mask.fillna(False).astype(bool)
+    return dataframe[mask.values]
 
 def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = None, end_date: str | None = None) -> dict[str, Any]:
+    _log_step("build_dashboard: ENTER")
     _validate_workbook(workbook)
 
     first_sheet_name: str = next(iter(workbook))
     primary_df: pd.DataFrame = workbook[first_sheet_name]
+    _log_step(f"build_dashboard: primary sheet '{first_sheet_name}' {_df_meta(primary_df)}")
 
     start_idx, effective_end_idx = _discover_engineering_block(primary_df)
     _validate_boundaries(primary_df, start_idx, effective_end_idx)
+    _log_step(f"build_dashboard: engineering block cols [{start_idx}..{effective_end_idx}]")
 
     engineering_block: pd.DataFrame = primary_df.iloc[:, start_idx : effective_end_idx + 1].copy()
     _validate_headers(engineering_block)
+    _log_step(f"build_dashboard: engineering_block {_df_meta(engineering_block)}")
 
     dept_headers: pd.Series = engineering_block.iloc[0].ffill()
     meter_headers: pd.Series = engineering_block.iloc[1]
     
     readings_matrix: pd.DataFrame = engineering_block.iloc[2:]
+    _log_step(f"build_dashboard: readings_matrix {_df_meta(readings_matrix)}")
 
-    # Build ONE normalized pd.Timestamp date series aligned to readings_matrix
-    # and reuse it for every filtering / date step below. This guarantees the
-    # date series and the readings share an identical index and length, so
-    # ``filtered_date_series`` and ``filtered_readings`` can never diverge.
+    # CENTRALIZED DATE FILTERING (happens exactly once for the engineering data).
+    # Attach the normalized timestamp as a temporary column so the readings and
+    # their dates are filtered together through the single ``filter_dataframe_by_date``
+    # helper — the same helper every other department uses. This guarantees the
+    # filtered readings and filtered dates can never diverge in length, and no
+    # department performs its own filtering.
+    _DATE_COL = "__eng_date__"
     normalized_dates: pd.Series = _normalize_date_series(primary_df, readings_matrix)
+    readings_with_date = readings_matrix.copy()
+    readings_with_date[_DATE_COL] = normalized_dates.values
 
-    valid_row_mask = _build_valid_row_mask(
-        primary_df, readings_matrix, start_date, end_date, normalized_dates=normalized_dates
+    _log_step("build_dashboard: filtering engineering readings once (centralized)...")
+    filtered_with_date = filter_dataframe_by_date(
+        readings_with_date, _DATE_COL, start_date, end_date
     )
 
-    available_dates: list[str] = []
-    # Derive the filtered date series from the SAME aligned, normalized series
-    # (not a re-selected positional slice), so it stays length-locked to the
-    # filtered readings.
-    filtered_date_series = normalized_dates[valid_row_mask]
+    # Split the single filtered result back into readings + aligned date series.
+    filtered_readings = filtered_with_date.drop(columns=[_DATE_COL])
+    filtered_date_series = filtered_with_date[_DATE_COL]
 
     # Requirement: never assume any rows survive filtering. When a date range
     # selects no rows (or partially-empty selections leave nothing valid), we
@@ -285,8 +397,10 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
     # touch row 0 / iloc[-1] / mismatched-length inserts. When it is False the
     # per-department payloads are still created (so the UI keeps its structure),
     # but with empty dataframes and ``None`` aggregates.
-    has_filtered_rows: bool = bool(valid_row_mask.any()) and len(filtered_date_series) > 0
+    has_filtered_rows: bool = len(filtered_readings) > 0
+    _log_step(f"build_dashboard: has_filtered_rows={has_filtered_rows} filtered_rows={len(filtered_readings)}")
 
+    available_dates: list[str] = []
     for val in filtered_date_series:
         d = _get_date_string(val)
         if d: available_dates.append(d)
@@ -295,13 +409,12 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
 
     # CREATE FILTERED OVERVIEW FOR CHARTS & DAILY TRENDS
     filtered_overview = engineering_block.iloc[:2].copy()
-    filtered_readings = readings_matrix[valid_row_mask]
     filtered_overview = pd.concat([filtered_overview, filtered_readings])
+    _log_step(f"build_dashboard: filtered_overview {_df_meta(filtered_overview)} filtered_readings {_df_meta(filtered_readings)}")
 
-    # Requirement #5: filtered_date_series and filtered_readings must always be
-    # the same length. They are both masked by the same index-aligned boolean
-    # mask, but assert it explicitly; if they ever diverge, fall back to a safe
-    # empty state rather than risk a mismatched-array crash downstream.
+    # filtered_date_series and filtered_readings come from the SAME single
+    # filtered frame, so they are always the same length. Keep a defensive guard
+    # that falls back to a safe empty state if they ever diverge.
     if len(filtered_date_series) != len(filtered_readings):
         has_filtered_rows = False
         filtered_readings = readings_matrix.iloc[0:0]
@@ -340,15 +453,20 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
         dept_columns_map[raw_dept].append((pos, base_meter))
 
     departments_payload: dict[str, dict[str, Any]] = {}
+    _log_step(f"build_dashboard: processing {len(dept_columns_map)} departments...")
     for dept_name, col_info in dept_columns_map.items():
+        _log_step(f"build_dashboard: department '{dept_name}' ({len(col_info)} meters)...")
         meta: dict[str, Any] = dept_metadata_collector[dept_name]
         
         positions = [info[0] for info in col_info]
         new_names = [info[1] for info in col_info]
-        
-        dept_df = readings_matrix.iloc[:, positions].copy()
-        dept_df.columns = new_names
-        
+
+        # Each department receives the ALREADY-FILTERED readings (filtered once,
+        # centrally, above). It only selects its own columns — it never performs
+        # its own date filtering.
+        valid_dept_df = filtered_readings.iloc[:, positions].copy()
+        valid_dept_df.columns = new_names
+
         meters_list: list[str] = new_names
         units_map: dict[str, str] = meta["units_map"]
 
@@ -356,8 +474,6 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
         total_values: dict[str, Any] = {}
         average_values: dict[str, Any] = {}
         channels: dict[str, dict[str, Any]] = {}
-
-        valid_dept_df = dept_df[valid_row_mask]
 
         # INJECT DATE COLUMN FOR PERFECT CHART ALIGNMENT.
         # Guard against empty or length-mismatched filtered selections: only
@@ -420,7 +536,9 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
     # collapse it here, in the data layer, so app.py only ever renders finished
     # department objects. If the parser did not find the department (different
     # workbook), this is a no-op and nothing is invented.
+    _log_step("build_dashboard: collapsing Overall PNG aggregate...")
     _collapse_department_to_aggregate(departments_payload, AGGREGATE_PNG_DEPARTMENT)
+    _log_step("build_dashboard: aggregate collapse complete.")
 
     air_compressor_obj: dict[str, Any] | None = departments_payload.get("Air compressor")
     freon_obj: dict[str, Any] | None = departments_payload.get("Freon Refrigeration")
@@ -428,6 +546,15 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
 
     freon_sheet_df: pd.DataFrame | None = _find_sheet_by_keywords(workbook, ("freon",))
     ammonia_sheet_df: pd.DataFrame | None = _find_sheet_by_keywords(workbook, ("ammonia",))
+
+    # CENTRALIZED FREON FILTERING (happens exactly once, here in build_dashboard).
+    # The Freon worksheet is filtered a single time and the FILTERED worksheet is
+    # what gets stored in dashboard["freon"] below — the raw worksheet is never
+    # stored. Downstream, _discover_freon_columns only summarizes this filtered
+    # worksheet and performs no filtering of its own.
+    _log_step("build_dashboard: filtering Freon worksheet once (centralized)...")
+    filtered_freon_df: pd.DataFrame | None = _filter_freon_sheet(freon_sheet_df, start_date, end_date)
+    _log_step(f"build_dashboard: filtered freon {_df_meta(filtered_freon_df)} ammonia_sheet {_df_meta(ammonia_sheet_df)}")
 
     total_meter_count: int = sum(len(d["meters"]) for d in departments_payload.values())
     latest_timestamp: str = f"{available_dates[-1]} 00:00:00" if available_dates else "N/A"
@@ -458,11 +585,12 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
         "sheet_count": len(workbook), "months": available_months, "dates": available_dates,
     }
 
+    _log_step(f"build_dashboard: EXIT departments={len(departments_payload)} has_filtered_data={has_filtered_rows}")
     return {
         "overview": filtered_overview, # NOW FILTERED
         "departments": departments_payload,
         "air_compressor": air_compressor_obj["dataframe"] if air_compressor_obj else None,
-        "freon": freon_sheet_df if freon_sheet_df is not None else (freon_obj["dataframe"] if freon_obj else None),
+        "freon": filtered_freon_df if filtered_freon_df is not None else (freon_obj["dataframe"] if freon_obj else None),
         "ammonia": ammonia_sheet_df if ammonia_sheet_df is not None else (ammonia_obj["dataframe"] if ammonia_obj else None),
         "summary": summary_payload, "filters": filters_payload, "metadata": metadata_payload,
         "navigation": [{"key": k, "label": k, "available": True} for k in departments_payload.keys()],
@@ -610,6 +738,7 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
         ``name``, ``total``, ``average``, ``latest`` (float | None) and
         ``online`` (bool).
     """
+    _log_step(f"build_operations_overview: ENTER departments={len(dashboard.get('departments', {})) if dashboard else 0}")
     departments = dashboard.get("departments", {}) if dashboard else {}
     rows: list[dict[str, Any]] = []
 
@@ -619,6 +748,7 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
     # if it is explicitly False, return an empty overview. (Absent/True is
     # treated as "data present" to preserve existing behaviour.)
     if dashboard is not None and dashboard.get("has_filtered_data") is False:
+        _log_step("build_operations_overview: EXIT (no filtered data -> empty)")
         return []
 
     for dept_name, dept_obj in departments.items():
@@ -663,16 +793,14 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
         freon_rollup_average: float | None = None
         freon_subsections: list[dict[str, Any]] | None = None
         if dept_name == FREON_DEPARTMENT:
-            # Reuse the SAME date bounds applied to the engineering block, so the
-            # Freon worksheet honours the dashboard date filter identically.
-            date_filter = dashboard.get("date_filter", {}) if dashboard else {}
-            freon_cols = _discover_freon_columns(
-                dashboard.get("freon") if dashboard else None,
-                start_date=date_filter.get("start_date"),
-                end_date=date_filter.get("end_date"),
-            )
+            # dashboard["freon"] is ALREADY the date-filtered worksheet (filtered
+            # once in build_dashboard). The summarizer performs no filtering — it
+            # only reads this filtered worksheet.
+            _log_step(f"build_operations_overview: summarizing filtered Freon worksheet ({_df_meta(dashboard.get('freon') if dashboard else None)})...")
+            freon_cols = _discover_freon_columns(dashboard.get("freon") if dashboard else None)
             discovered_meters = freon_cols.get("meters", [])
             discovered_rollups = freon_cols.get("rollups", [])
+            _log_step(f"build_operations_overview: Freon discovery -> {len(discovered_meters)} meters, {len(discovered_rollups)} rollups.")
             if discovered_meters or discovered_rollups:
                 # Subsections show BOTH the meter columns (v1..v9) AND the rollup
                 # columns (Dunkin/BMC/CLC/Deep), in worksheet order: meters first,
@@ -766,6 +894,7 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
             }
         )
 
+    _log_step(f"build_operations_overview: EXIT rows={len(rows)}")
     return rows
 
 def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, Any]], dept_name: str) -> None:
@@ -804,6 +933,7 @@ def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, A
         dept_name: The canonical department name to collapse (also the
             aggregate meter name and the key under which the result is stored).
     """
+    _log_step(f"_collapse_department_to_aggregate: ENTER dept={dept_name!r}")
     target_norm = _normalize_name(dept_name)
     resolved_key: str | None = None
     if dept_name in departments_payload:
@@ -815,14 +945,17 @@ def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, A
                 break
 
     if resolved_key is None:
+        _log_step(f"_collapse_department_to_aggregate: EXIT (no matching department for {dept_name!r})")
         return
 
     source = departments_payload.get(resolved_key)
     if not source:
+        _log_step("_collapse_department_to_aggregate: EXIT (source empty)")
         return
 
     source_meters: list[str] = source.get("meters", [])
     if not source_meters:
+        _log_step("_collapse_department_to_aggregate: EXIT (no source meters)")
         return
 
     # Snapshot the ORIGINAL parsed per-meter data before the aggregate
@@ -838,10 +971,12 @@ def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, A
     original_dataframe: pd.DataFrame = source.get("dataframe", pd.DataFrame())
 
     chart_df: pd.DataFrame = source.get("dataframe", pd.DataFrame())
+    _log_step(f"_collapse_department_to_aggregate: source chart_df {_df_meta(chart_df)}")
     # The dataframe carries a leading "Date" column injected during build; the
     # remaining columns are the department's meters in discovery order.
     meter_cols = [c for c in chart_df.columns if c != "Date"]
     if not meter_cols:
+        _log_step("_collapse_department_to_aggregate: EXIT (no meter columns)")
         return
 
     numeric_block = chart_df[meter_cols].apply(pd.to_numeric, errors="coerce")
@@ -909,6 +1044,7 @@ def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, A
             "aggregated_from": source_meters,
         },
     }
+    _log_step(f"_collapse_department_to_aggregate: EXIT (collapsed {resolved_key!r} from {len(source_meters)} meters)")
 
 def _normalize_name(value: Any) -> str:
     """Normalize a label for case/whitespace-insensitive comparison.
@@ -1032,22 +1168,20 @@ _FREON_METER_CODE_RE: Final[re.Pattern[str]] = re.compile(r"^v\d+$", re.IGNORECA
 
 
 def _summarize_freon_column(
-    freon_sheet: pd.DataFrame,
+    filtered_block: pd.DataFrame,
     col: int,
-    data_start: int,
     name: str,
-    row_mask: pd.Series,
 ) -> dict[str, Any]:
-    """Summarize one Freon column into a Total/Average/Previous-Day record.
+    """Summarize one Freon column (from the ALREADY-FILTERED block) into a
+    Total/Average/Previous-Day record.
 
-    Only the rows selected by ``row_mask`` (the date-filtered rows) are used, so
-    every figure respects the dashboard date filter. Non-numeric markers (e.g.
+    ``filtered_block`` has already been date-filtered once by the centralized
+    ``filter_dataframe_by_date`` helper, so this performs NO filtering — it only
+    reads its column positionally and aggregates. Non-numeric markers (e.g.
     ``"---"``) are treated as missing. Never touches ``iloc[-1]`` on an empty
     series, so an empty selection yields ``None`` figures rather than crashing.
     """
-    column = freon_sheet.iloc[data_start:, col]
-    # row_mask is aligned to the same rows (data_start:) — restrict, then coerce.
-    column = column[row_mask.values]
+    column = filtered_block.iloc[:, col]
     series = pd.to_numeric(column, errors="coerce").dropna()
     if series.empty:
         total_val: float | None = None
@@ -1066,58 +1200,27 @@ def _summarize_freon_column(
     }
 
 
-def _build_freon_row_mask(
-    freon_sheet: pd.DataFrame,
-    data_start: int,
-    timestamp_col: int,
-    start_date: str | None,
-    end_date: str | None,
-) -> pd.Series:
-    """Build a boolean row mask over the Freon data rows honouring the date range.
-
-    The worksheet's ``Timestamp`` column (located dynamically by the caller and
-    passed in as ``timestamp_col`` — not assumed to be column 0) is converted to
-    ``pd.Timestamp`` safely (mixed formats handled, invalid timestamps become
-    ``NaT`` and are excluded), then the shared inclusive-range test is applied —
-    the SAME logic used for the engineering block, so there is no duplicated
-    filtering. With no date selected, every parseable-timestamp row is kept
-    (i.e. "All Dates").
-
-    Returns a boolean Series positionally aligned to ``freon_sheet.iloc[data_start:]``.
-    """
-    timestamps = freon_sheet.iloc[data_start:, timestamp_col]
-    normalized = pd.Series(
-        [pd.Timestamp(d) if (d := _get_date_object(v)) is not None else pd.NaT for v in timestamps],
-        index=timestamps.index,
-        dtype="datetime64[ns]",
-    )
-    mask = normalized.notna()
-    mask = _apply_date_range_to_mask(mask, normalized, start_date, end_date)
-    return mask.fillna(False).astype(bool)
-
-
 def _overall_average_of_columns(
     frame: pd.DataFrame,
     value_columns: list[Any],
-    row_mask: pd.Series | None = None,
     positional: bool = False,
 ) -> float | None:
     """Return the department-wide average: the mean of the per-row column sums.
 
-    This is the mathematically correct "average of the whole" — for each row it
-    sums the given value columns (missing/non-numeric treated as 0 within a row
-    that has at least one value), then averages those per-row sums across the
-    rows that have any data. It is NOT the sum of per-column averages, which only
-    coincides with this when every column shares the same valid-row count.
+    ``frame`` is expected to be ALREADY date-filtered (the centralized filter
+    runs once, upstream); this performs no filtering. This is the mathematically
+    correct "average of the whole" — for each row it sums the given value columns
+    (missing/non-numeric treated as 0 within a row that has at least one value),
+    then averages those per-row sums across the rows that have any data. It is
+    NOT the sum of per-column averages, which only coincides with this when every
+    column shares the same valid-row count.
 
     Args:
-        frame: The source dataframe.
+        frame: The (already-filtered) source dataframe.
         value_columns: The columns to combine per row. Interpreted as column
             LABELS by default, or as positional indices when ``positional`` is
             True (needed for sheets whose column labels are non-contiguous after
             cleaning, e.g. the Freon worksheet).
-        row_mask: Optional boolean mask (aligned to ``frame``) selecting the rows
-            to include (e.g. the date-filtered rows).
         positional: When True, ``value_columns`` are ``.iloc`` positions.
 
     Returns:
@@ -1129,8 +1232,6 @@ def _overall_average_of_columns(
         block = frame.iloc[:, value_columns]
     else:
         block = frame[value_columns]
-    if row_mask is not None:
-        block = block[row_mask.values]
     if block.empty:
         return None
     numeric = block.apply(pd.to_numeric, errors="coerce")
@@ -1143,17 +1244,86 @@ def _overall_average_of_columns(
     return float(row_sums.mean())
 
 
-def _discover_freon_columns(
-    freon_sheet: pd.DataFrame | None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-) -> dict[str, Any]:
-    """Discover Freon meter (subsection) and rollup (parent) columns dynamically.
+def _locate_freon_header(freon_sheet: pd.DataFrame) -> tuple[int, int] | None:
+    """Locate the Freon worksheet's header row and Timestamp column.
 
-    The Freon worksheet uses its own legend + data-table layout (distinct from
-    the engineering overview block): a header row containing a ``Timestamp``
-    header cell (located dynamically — NOT assumed to be column 0), followed by
-    three kinds of columns —
+    Scans the first rows for a cell reading ``"Timestamp"`` anywhere in the row
+    (the Timestamp column is NOT assumed to be column 0). Returns
+    ``(header_row_idx, timestamp_col)`` or ``None`` if not found.
+    """
+    scan_rows = min(30, freon_sheet.shape[0])
+    for r in range(scan_rows):
+        for col in range(freon_sheet.shape[1]):
+            cell = freon_sheet.iat[r, col]
+            if isinstance(cell, str) and cell.strip().lower() == "timestamp":
+                return r, col
+    return None
+
+
+def _filter_freon_sheet(
+    freon_sheet: pd.DataFrame | None,
+    start_date: str | None,
+    end_date: str | None,
+) -> pd.DataFrame | None:
+    """Return the Freon worksheet with ONLY its data rows date-filtered ONCE.
+
+    This is where the Freon worksheet is filtered — exactly once, during
+    ``build_dashboard`` — so the value stored in ``dashboard["freon"]`` is the
+    already-filtered worksheet, never the raw one. The header rows (everything
+    up to and including the ``Timestamp`` header row) are preserved unchanged so
+    the downstream summarizer can still locate the header and classify columns;
+    only the data rows beneath are passed through the single centralized
+    ``filter_dataframe_by_date`` helper, keyed on the discovered Timestamp column.
+
+    The worksheet's structure (header rows on top, data rows beneath) and column
+    layout are preserved, so ``_discover_freon_columns`` works on the result with
+    no further filtering. If the sheet is missing/empty or has no locatable
+    header, it is returned unchanged (an absent Freon department is handled
+    safely downstream).
+
+    Args:
+        freon_sheet: The raw "Freon Meter reading" worksheet, or ``None``.
+        start_date: Optional inclusive start (YYYY-MM-DD).
+        end_date: Optional inclusive end (YYYY-MM-DD).
+
+    Returns:
+        The worksheet with its data rows filtered (header rows intact), or the
+        original object when there is nothing to filter.
+    """
+    if freon_sheet is None or freon_sheet.empty:
+        return freon_sheet
+
+    located = _locate_freon_header(freon_sheet)
+    if located is None:
+        return freon_sheet
+
+    header_row_idx, timestamp_col = located
+    data_start = header_row_idx + 1
+
+    head_rows = freon_sheet.iloc[: data_start]
+    data_block = freon_sheet.iloc[data_start:]
+    filtered_data = filter_dataframe_by_date(
+        data_block, timestamp_col, start_date, end_date, positional=True
+    )
+    _log_step(
+        f"_filter_freon_sheet: header_row={header_row_idx} timestamp_col={timestamp_col} "
+        f"filtered rows={len(filtered_data)} of {len(data_block)}"
+    )
+    # Reassemble header rows + filtered data rows, preserving structure/columns.
+    return pd.concat([head_rows, filtered_data])
+
+
+def _discover_freon_columns(freon_sheet: pd.DataFrame | None) -> dict[str, Any]:
+    """Summarize the ALREADY-FILTERED Freon worksheet into meters + rollups.
+
+    This function performs NO date filtering. It receives the worksheet that was
+    filtered once in ``build_dashboard`` (stored as ``dashboard["freon"]``) and
+    only reads it: it locates the header row + Timestamp column, classifies the
+    columns structurally, and summarizes each column's already-filtered data.
+
+    The Freon worksheet uses its own legend + data-table layout: a header row
+    containing a ``Timestamp`` cell (located dynamically — NOT assumed to be
+    column 0), followed by three kinds of columns —
 
     * short meter codes (``v1``, ``v2`` ...) — skipped;
     * named meter columns (``vN: <name> - Active energy``) — the per-meter
@@ -1161,12 +1331,9 @@ def _discover_freon_columns(
     * plain rollup label columns (e.g. ``Dunkin``, ``BMC``, ``CLC``, ``Deep``)
       — also shown as subsections, AND combined for the PARENT Total / Average.
 
-    Every figure is computed from ONLY the rows whose ``Timestamp`` falls in the
-    selected date range (filter FIRST, then aggregate), so the Freon section
-    tracks the dashboard date filter exactly like the engineering sheet. Column
-    groups are discovered structurally from the header (never by hardcoded names
-    or fixed letters), so meters/rollups added later appear automatically, in
-    worksheet order. Non-numeric markers (``"---"``) are treated as missing.
+    Column groups are discovered structurally from the header (never by hardcoded
+    names or fixed letters), so meters/rollups added later appear automatically,
+    in worksheet order. Non-numeric markers (``"---"``) are treated as missing.
 
     Returns:
         A dict with:
@@ -1176,42 +1343,33 @@ def _discover_freon_columns(
         * ``"rollup_overall_average"`` — the department-wide average of the
           combined rollup columns (mean of per-row rollup sums), i.e. the
           mathematically correct parent Average.
-        All figures use only the filtered rows. Empty/zero-safe when the sheet is
-        missing or no rows survive filtering.
+        All figures come from the already-filtered worksheet. Empty/zero-safe
+        when the sheet is missing or contains no data rows.
     """
     empty: dict[str, Any] = {
         "meters": [], "rollups": [], "rollup_total": None, "rollup_overall_average": None,
     }
+    _log_step(f"_discover_freon_columns: ENTER freon_sheet={_df_meta(freon_sheet)}")
     if freon_sheet is None or freon_sheet.empty:
+        _log_step("_discover_freon_columns: EXIT (sheet missing/empty)")
         return empty
 
-    # Locate the header row AND the Timestamp column dynamically: scan the first
-    # rows for a cell reading "Timestamp" anywhere in the row.
-    header_row_idx: int | None = None
-    timestamp_col: int | None = None
-    scan_rows = min(30, freon_sheet.shape[0])
-    for r in range(scan_rows):
-        for col in range(freon_sheet.shape[1]):
-            cell = freon_sheet.iat[r, col]
-            if isinstance(cell, str) and cell.strip().lower() == "timestamp":
-                header_row_idx = r
-                timestamp_col = col
-                break
-        if header_row_idx is not None:
-            break
-    if header_row_idx is None or timestamp_col is None:
+    located = _locate_freon_header(freon_sheet)
+    if located is None:
         return empty
 
+    header_row_idx, timestamp_col = located
     header = freon_sheet.iloc[header_row_idx]
     data_start = header_row_idx + 1
 
-    # Date-filtered row mask (over the data rows) built from the discovered
-    # Timestamp column — reused for every column so all subsections and rollups
-    # share the exact same selection. Filter FIRST, aggregate after.
-    row_mask = _build_freon_row_mask(freon_sheet, data_start, timestamp_col, start_date, end_date)
+    # The worksheet is already date-filtered (in build_dashboard). The rows below
+    # the header are exactly the surviving rows — summarize them, no filtering.
+    filtered_block = freon_sheet.iloc[data_start:]
+    _log_step(f"_discover_freon_columns: header_row={header_row_idx} timestamp_col={timestamp_col} data_rows={len(filtered_block)}")
 
-    # If no rows survive filtering, return empty/None safely (no crash).
-    if not bool(row_mask.any()):
+    # If there are no data rows (empty filtered worksheet), return empty safely.
+    if filtered_block.empty:
+        _log_step("_discover_freon_columns: EXIT (no data rows)")
         return empty
 
     meters: list[dict[str, Any]] = []
@@ -1234,28 +1392,28 @@ def _discover_freon_columns(
         if meter_match:
             meter_name = meter_match.group(1).strip()
             if meter_name:
-                meters.append(_summarize_freon_column(freon_sheet, col, data_start, meter_name, row_mask))
+                meters.append(_summarize_freon_column(filtered_block, col, meter_name))
             continue
 
         # Anything else with a plain label after the meter block is a rollup
         # group column (e.g. Dunkin / BMC / CLC / Deep).
-        rollups.append(_summarize_freon_column(freon_sheet, col, data_start, head, row_mask))
+        rollups.append(_summarize_freon_column(filtered_block, col, head))
         rollup_cols.append(col)
 
-    # Parent Total = sum of rollup column totals (already filtered).
+    # Parent Total = sum of rollup column totals (from the already-filtered data).
     rollup_totals = [r["total"] for r in rollups if isinstance(r["total"], (int, float))]
     rollup_total: float | None = float(sum(rollup_totals)) if rollup_totals else None
 
     # Parent Average = department-wide average of the combined rollup columns:
-    # the mean of the per-row rollup sums over the filtered rows (NOT the sum of
-    # the rollups' individual averages). ``rollup_cols`` are positional indices
-    # (the Freon sheet's column labels are non-contiguous after cleaning), so we
-    # read them positionally.
-    data_block = freon_sheet.iloc[data_start:]
+    # the mean of the per-row rollup sums over the ALREADY-FILTERED block (NOT
+    # the sum of the rollups' individual averages). ``rollup_cols`` are positional
+    # indices (the Freon sheet's column labels are non-contiguous after cleaning),
+    # so we read them positionally from the filtered block.
     rollup_overall_average = _overall_average_of_columns(
-        data_block, rollup_cols, row_mask, positional=True
+        filtered_block, rollup_cols, positional=True
     )
 
+    _log_step(f"_discover_freon_columns: EXIT meters={len(meters)} rollups={len(rollups)}")
     return {
         "meters": meters,
         "rollups": rollups,
@@ -1271,10 +1429,13 @@ def _discover_freon_meters(
 ) -> list[dict[str, Any]]:
     """Backward-compatible accessor returning only the Freon meter subsections.
 
-    Delegates to ``_discover_freon_columns`` (honouring the date range) and
-    returns its ``"meters"`` list. Retained so any existing caller keeps working.
+    Retained so any existing caller keeps working. Because
+    ``_discover_freon_columns`` now summarizes an already-filtered worksheet, this
+    wrapper filters the given (raw) sheet once via ``_filter_freon_sheet`` before
+    summarizing, honouring the optional date range.
     """
-    return _discover_freon_columns(freon_sheet, start_date, end_date)["meters"]
+    filtered = _filter_freon_sheet(freon_sheet, start_date, end_date)
+    return _discover_freon_columns(filtered)["meters"]
 
 
 # ==============================================================================
