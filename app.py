@@ -42,15 +42,17 @@ st.set_page_config(
 )
 
 CRITICAL_SYSTEMS = [
-    "NPCL", "DG", "GG", "Air compressor", "Traywasher",
+    "NPCL", "Overall PNG", "Air compressor", "Rooftop Solar",
     "Freon Refrigeration", "Ammonia Refrigeration",
 ]
 
 DEPT_CONFIGS = {
     "NPCL": {"accent": "#005DAA", "category": "Electrical / Incoming Power"},
+    "Overall PNG": {"accent": "#E31E24", "category": "Fuel / Piped Natural Gas"},
     "DG": {"accent": "#F59E0B", "category": "Fuel / Diesel Generation"},
     "GG": {"accent": "#E31E24", "category": "Fuel / Gas Generation"},
     "Air compressor": {"accent": "#06B6D4", "category": "Compressed Air"},
+    "Rooftop Solar": {"accent": "#F59E0B", "category": "Renewable Generation"},
     "Freon Refrigeration": {"accent": "#8B5CF6", "category": "Cooling System"},
     "Ammonia Refrigeration": {"accent": "#8B5CF6", "category": "Cooling System"},
     "Traywasher": {"accent": "#22C55E", "category": "Sanitation / Water"},
@@ -67,19 +69,17 @@ DEFAULT_CONFIG = {"accent": "#8B5CF6", "category": "Engineering System"}
 
 EXEC_TILE_LABELS: Final[dict[str, str]] = {
     "NPCL": "Incoming Electrical",
-    "DG": "Diesel Generation",
-    "GG": "Gas Generation",
+    "Overall PNG": "Piped Natural Gas",
     "Air compressor": "Compressed Air",
-    "Traywasher": "Sanitation Water",
+    "Rooftop Solar": "Solar Generation",
     "Freon Refrigeration": "Cooling System",
     "Ammonia Refrigeration": "Cooling System",
 }
 EXEC_TILE_ICONS: Final[dict[str, str]] = {
     "NPCL": "⚡",
-    "DG": "🛢️",
-    "GG": "🔥",
+    "Overall PNG": "🔥",
     "Air compressor": "🌀",
-    "Traywasher": "💧",
+    "Rooftop Solar": "☀️",
     "Freon Refrigeration": "❄️",
     "Ammonia Refrigeration": "❄️",
 }
