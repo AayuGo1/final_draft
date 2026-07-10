@@ -45,6 +45,12 @@ REPRESENTATIVE_METER_PRIORITIES: Final[list[list[str]]] = [
     ["voltage", "current", "frequency"],
 ]
 
+# Name of the department whose meters are collapsed into a single synthetic
+# aggregate channel (row-wise sum, missing treated as zero). The department is
+# discovered dynamically by the parser; nothing about its column position is
+# assumed here.
+AGGREGATE_PNG_DEPARTMENT: Final[str] = "Overall PNG"
+
 # ==============================================================================
 # TOP-LEVEL APPLICATION ASSEMBLY INTERFACES
 # ==============================================================================
@@ -244,6 +250,17 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
             },
         }
 
+    # --------------------------------------------------------------------------
+    # SYNTHETIC AGGREGATE DEPARTMENTS
+    # --------------------------------------------------------------------------
+    # "Overall PNG" is discovered dynamically by the parser above as a normal
+    # multi-meter department. Downstream it must behave as a single aggregate
+    # value (the row-wise sum of its meters, e.g. Inside + Outside PNG). We
+    # collapse it here, in the data layer, so app.py only ever renders finished
+    # department objects. If the parser did not find the department (different
+    # workbook), this is a no-op and nothing is invented.
+    _collapse_department_to_aggregate(departments_payload, AGGREGATE_PNG_DEPARTMENT)
+
     air_compressor_obj: dict[str, Any] | None = departments_payload.get("Air compressor")
     freon_obj: dict[str, Any] | None = departments_payload.get("Freon Refrigeration")
     ammonia_obj: dict[str, Any] | None = departments_payload.get("Ammonia Refrigeration")
@@ -368,6 +385,89 @@ def select_representative_meter(section: dict[str, Any]) -> str:
         val = latest_values.get(meter)
         if isinstance(val, (int, float)): return meter
     return ""
+
+def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, Any]], dept_name: str) -> None:
+    """Collapse a discovered multi-meter department into a single aggregate meter.
+
+    The aggregate channel is the row-wise sum of every meter belonging to the
+    department, with missing / non-numeric readings treated as zero. The result
+    replaces the department in ``departments_payload`` in place, exposing the
+    exact same structure as every other department (``meters``,
+    ``latest_values``, ``average_values``, ``total_values``, ``units``,
+    ``dataframe``, plus the auxiliary keys used elsewhere).
+
+    This is a no-op if the department was not discovered by the parser (e.g. a
+    workbook whose layout does not contain it), so no data is ever invented.
+
+    Args:
+        departments_payload: The fully-built department mapping to mutate.
+        dept_name: The department to collapse (also the aggregate meter name).
+    """
+    source = departments_payload.get(dept_name)
+    if not source:
+        return
+
+    source_meters: list[str] = source.get("meters", [])
+    if not source_meters:
+        return
+
+    chart_df: pd.DataFrame = source.get("dataframe", pd.DataFrame())
+    # The dataframe carries a leading "Date" column injected during build; the
+    # remaining columns are the department's meters in discovery order.
+    meter_cols = [c for c in chart_df.columns if c != "Date"]
+    if not meter_cols:
+        return
+
+    numeric_block = chart_df[meter_cols].apply(pd.to_numeric, errors="coerce")
+    summed_series = numeric_block.fillna(0.0).sum(axis=1)
+
+    # Preserve the unit of the first meter (all PNG meters share the same unit).
+    source_units: dict[str, str] = source.get("units", {})
+    aggregate_unit: str = source_units.get(source_meters[0], "")
+
+    if "Date" in chart_df.columns:
+        date_values = chart_df["Date"].values
+    else:
+        date_values = pd.RangeIndex(start=0, stop=len(summed_series)).values
+
+    aggregate_df = pd.DataFrame({"Date": date_values, dept_name: summed_series.values})
+
+    valid_numeric = pd.to_numeric(summed_series, errors="coerce").dropna()
+    latest_val: float | None = float(valid_numeric.iloc[-1]) if not valid_numeric.empty else None
+    total_val: float | None = float(valid_numeric.sum()) if not valid_numeric.empty else None
+    average_val: float | None = float(valid_numeric.mean()) if not valid_numeric.empty else None
+
+    history_df = pd.DataFrame({"date": date_values, "value": summed_series.values})
+
+    departments_payload[dept_name] = {
+        "name": dept_name,
+        "meters": [dept_name],
+        "units": {dept_name: aggregate_unit},
+        "latest_values": {dept_name: latest_val},
+        "average_values": {dept_name: average_val},
+        "total_values": {dept_name: total_val},
+        "dataframe": aggregate_df,
+        "totals": {dept_name: total_val},
+        "averages": {dept_name: average_val},
+        "channels": {
+            dept_name: {
+                "name": dept_name,
+                "unit": aggregate_unit,
+                "latest": latest_val,
+                "average": average_val,
+                "total": total_val,
+                "history": history_df,
+            }
+        },
+        "metadata": {
+            "column_indexes": source.get("metadata", {}).get("column_indexes", []),
+            "source_sheet": source.get("metadata", {}).get("source_sheet", ""),
+            "meter_count": 1,
+            "unit_count": 1,
+            "synthetic_aggregate": True,
+            "aggregated_from": source_meters,
+        },
+    }
 
 def _excel_col_to_index(col_str: str) -> int:
     exp: int = 0
