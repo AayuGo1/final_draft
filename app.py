@@ -624,17 +624,31 @@ def render_operations_overview(dashboard: dict[str, Any]) -> None:
         total_str = _ops_fmt_total(row["total"])
         status_str = _ops_status_text(row["online"])
 
-        # Native expander title: Department | Previous Day | Average | Total | Status.
-        # Expander labels support limited Markdown, so the department name is
-        # emphasised for prominence and the figures are grouped with clear
-        # separators for scannability. (Functionality/values are unchanged.)
-        expander_label = (
-            f"**{dept_name}**  ·  "
-            f"Previous Day {latest_str}{unit_suffix}  ·  "
-            f"Avg {avg_str}{unit_suffix}  ·  "
-            f"Total {total_str}{unit_suffix}  ·  "
-            f"{status_str}"
-        )
+        # Native expander title. Expander labels support limited Markdown, so
+        # the department name is emphasised for prominence and figures are
+        # grouped with clear separators for scannability.
+        #   • Multi-subsection (expandable) departments show only the aggregated
+        #     Average, Total and Status — "Previous Day" is intentionally hidden,
+        #     since a summed previous-day figure is not meaningful for a
+        #     multi-meter aggregate.
+        #   • Single-subsection departments keep the full format including
+        #     "Previous Day".
+        # (Values themselves are unchanged; this only controls what is shown.)
+        if row["expandable"]:
+            expander_label = (
+                f"**{dept_name}**  ·  "
+                f"Avg {avg_str}{unit_suffix}  ·  "
+                f"Total {total_str}{unit_suffix}  ·  "
+                f"{status_str}"
+            )
+        else:
+            expander_label = (
+                f"**{dept_name}**  ·  "
+                f"Previous Day {latest_str}{unit_suffix}  ·  "
+                f"Avg {avg_str}{unit_suffix}  ·  "
+                f"Total {total_str}{unit_suffix}  ·  "
+                f"{status_str}"
+            )
 
         with st.expander(expander_label, expanded=False):
             # Subsection rows come from the ORIGINAL parsed meters (already
