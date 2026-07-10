@@ -21,18 +21,44 @@ direction: loader → data layer.
 
 from __future__ import annotations
 
+import streamlit as st
+
 from data_loader import load_excel
 from parser import read_all_sheets
 from dashboard_data import get_dashboard_data
 
 
+@st.cache_data(show_spinner=False)
+def _load_raw_sheets() -> dict:
+    """Download and parse the workbook once, returning the raw cleaned sheets.
+
+    This is the single expensive, date-INDEPENDENT step: it downloads the
+    workbook and reads every worksheet into cleaned DataFrames. It is wrapped in
+    ``st.cache_data`` so the download + native Excel parse runs exactly once and
+    is reused for every date selection. Previously this ran on every unique date
+    range, re-invoking the native Excel reader repeatedly; on memory-constrained
+    hosts that repeated native parsing/allocation could exhaust the process and
+    terminate it with a segmentation fault (no Python traceback). Date filtering
+    is applied later, cheaply, on top of these cached sheets.
+
+    The cache is only cleared when the user explicitly clicks Refresh
+    (``st.cache_data.clear()`` in ``app.refresh_dashboard``), never on an
+    ordinary rerun.
+
+    Returns:
+        A mapping of sheet name to cleaned ``pandas.DataFrame``.
+    """
+    excel_file = load_excel()
+    return read_all_sheets(excel_file)
+
+
 def load_dashboard(start_date: str | None = None, end_date: str | None = None) -> dict:
     """Load the workbook and assemble dashboard-ready data.
 
-    Downloads and loads the workbook, reads every worksheet into cleaned
-    DataFrames, and assembles the dashboard data dictionary. This is the
-    single reusable entry point that all dashboard pages should use
-    instead of duplicating the loading pipeline themselves.
+    Uses the cached raw sheets (downloaded and parsed once) and applies the
+    requested date filter when assembling the dashboard data dictionary. This is
+    the single reusable entry point that all dashboard pages should use instead
+    of duplicating the loading pipeline themselves.
 
     Args:
         start_date: Optional start date string (YYYY-MM-DD) for filtering.
@@ -57,8 +83,7 @@ def load_dashboard(start_date: str | None = None, end_date: str | None = None) -
         RuntimeError: If GitHub responds with any other non-success
             status code, or if a worksheet cannot be read.
     """
-    excel_file = load_excel()
-    sheets = read_all_sheets(excel_file)
+    sheets = _load_raw_sheets()
     return get_dashboard_data(sheets, start_date=start_date, end_date=end_date)
 
 
