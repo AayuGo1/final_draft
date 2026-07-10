@@ -5,6 +5,18 @@ download, parsing, and dashboard-data assembly functions into a single
 reusable entry point. It performs no parsing, no KPI calculation, no
 rendering, and introduces no new business logic beyond composing calls
 to the existing backend modules.
+
+Dependency direction (STRICTLY one-way):
+
+    data_loader ─┐
+    parser ──────┼─▶ services.dashboard_loader ─▶ dashboard_data ─▶ chart_service ─▶ app
+                 ┘
+
+This module sits ABOVE ``dashboard_data`` in the dependency graph: it imports
+``dashboard_data`` and calls into it. ``dashboard_data`` must never import this
+module back — doing so forms a ``dashboard_loader ↔ dashboard_data`` cycle that
+prevents the application from starting. The orchestration always flows in one
+direction: loader → data layer.
 """
 
 from __future__ import annotations
@@ -52,7 +64,7 @@ def load_dashboard(start_date: str | None = None, end_date: str | None = None) -
 
 def load_dashboard_safe(start_date: str | None = None, end_date: str | None = None) -> tuple[dict | None, str | None]:
     """Load dashboard while converting exceptions into friendly messages.
-    
+
     Args:
         start_date: Optional start date string (YYYY-MM-DD) for filtering.
         end_date: Optional end date string (YYYY-MM-DD) for filtering.
