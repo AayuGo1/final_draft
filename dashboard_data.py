@@ -420,6 +420,84 @@ def select_representative_meter(section: dict[str, Any]) -> str:
         if isinstance(val, (int, float)): return meter
     return ""
 
+
+def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
+    """Assemble the expandable Plant Operations Overview structure.
+
+    Business layer for the operations table. Consumes the already-parsed
+    engineering departments (discovered from the DH–GH engineering block by
+    ``build_dashboard``) and returns display-ready rows — one per department,
+    each carrying its aggregate Total/Average/Latest/Status plus, when the
+    department has more than one meter, the per-meter (subsection) breakdown.
+
+    No department names, rows, or column letters are hardcoded: the parent
+    rows are exactly the departments present in ``dashboard["departments"]``
+    (in their discovered order), and subsection names are the meter names the
+    parser found in the engineering block's second header row. All figures are
+    read from the department payload's ``total_values`` / ``average_values`` /
+    ``latest_values`` — nothing is recomputed or re-parsed here.
+
+    A department's aggregate figures use its representative meter (the same
+    single-value basis the previous static table displayed), so parent rows are
+    unchanged in meaning. Only departments with more than one meter are marked
+    ``expandable``; single-meter departments expose no subsections.
+
+    Args:
+        dashboard: The assembled dashboard dictionary produced by
+            ``build_dashboard`` / ``get_dashboard_data``.
+
+    Returns:
+        A list of parent-row dicts, each with keys:
+        ``department`` (str), ``representative_meter`` (str),
+        ``total`` / ``average`` / ``latest`` (float | None), ``online`` (bool),
+        ``expandable`` (bool), and ``subsections`` — a list of dicts with
+        ``name``, ``total``, ``average``, ``latest`` (float | None) and
+        ``online`` (bool).
+    """
+    departments = dashboard.get("departments", {}) if dashboard else {}
+    rows: list[dict[str, Any]] = []
+
+    for dept_name, dept_obj in departments.items():
+        meters: list[str] = dept_obj.get("meters", [])
+        total_values: dict[str, Any] = dept_obj.get("total_values", {})
+        average_values: dict[str, Any] = dept_obj.get("average_values", {})
+        latest_values: dict[str, Any] = dept_obj.get("latest_values", {})
+
+        representative_meter = select_representative_meter(dept_obj)
+        parent_total = total_values.get(representative_meter)
+        parent_average = average_values.get(representative_meter)
+        parent_latest = latest_values.get(representative_meter)
+
+        subsections: list[dict[str, Any]] = []
+        is_expandable = len(meters) > 1
+        if is_expandable:
+            for meter in meters:
+                meter_latest = latest_values.get(meter)
+                subsections.append(
+                    {
+                        "name": meter,
+                        "total": total_values.get(meter),
+                        "average": average_values.get(meter),
+                        "latest": meter_latest,
+                        "online": isinstance(meter_latest, (int, float)),
+                    }
+                )
+
+        rows.append(
+            {
+                "department": dept_name,
+                "representative_meter": representative_meter,
+                "total": parent_total,
+                "average": parent_average,
+                "latest": parent_latest,
+                "online": isinstance(parent_latest, (int, float)),
+                "expandable": is_expandable,
+                "subsections": subsections,
+            }
+        )
+
+    return rows
+
 def _collapse_department_to_aggregate(departments_payload: dict[str, dict[str, Any]], dept_name: str) -> None:
     """Collapse a discovered multi-meter department into a single aggregate meter.
 
