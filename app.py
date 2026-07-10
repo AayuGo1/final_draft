@@ -26,6 +26,7 @@ from config import (
     THEME_SUCCESS_COLOR,
 )
 from services.dashboard_loader import load_dashboard_safe
+import dashboard_data
 from dashboard_data import select_representative_meter
 
 # Setup logging
@@ -571,64 +572,107 @@ def render_executive_summary(dashboard: dict[str, Any]) -> None:
         st.markdown(f'<div class="exec-grid">{tiles_html}</div>', unsafe_allow_html=True)
 
 
-OPS_CONSOLE_PROCESSES: Final[list[str]] = [
-    "NPCL",
-    "Overall PNG",
-    "Dough",
-    "Traywasher",
-    "Freon Refrigeration",
-    "Ammonia Refrigeration",
-    "Bread",
-    "Donut",
-]
+def _ops_fmt_total(value: Any) -> str:
+    return f"{value:,.0f}" if isinstance(value, (int, float)) else "—"
+
+
+def _ops_fmt_avg(value: Any) -> str:
+    return f"{value:,.1f}" if isinstance(value, (int, float)) else "—"
+
+
+def _ops_fmt_latest(value: Any) -> str:
+    return f"{value:,.0f}" if isinstance(value, (int, float)) else "—"
+
+
+def _ops_status_html(online: bool) -> str:
+    return (
+        '<span class="status-online">● ONLINE</span>' if online
+        else '<span class="status-offline">○ OFFLINE</span>'
+    )
+
+
+def _ops_status_text(online: bool) -> str:
+    return "● ONLINE" if online else "○ OFFLINE"
 
 
 def render_operations_overview(dashboard: dict[str, Any]) -> None:
+    # Business layer supplies the parent/subsection structure (parsed
+    # engineering departments only — no hardcoded names/rows/columns, discovery
+    # order preserved). No KPIs are recalculated here.
+    overview_rows = dashboard_data.build_operations_overview(dashboard)
     departments = dashboard.get("departments", {})
-    rows_html = ""
 
-    header_html = """
+    for row in overview_rows:
+        dept_name = row["department"]
+        dept_obj = departments.get(dept_name, {})
+        rep_m = row.get("representative_meter", "")
+        unit_str = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
+        unit_suffix = f" {unit_str}" if unit_str else ""
+
+        latest_str = _ops_fmt_latest(row["latest"])
+        avg_str = _ops_fmt_avg(row["average"])
+        total_str = _ops_fmt_total(row["total"])
+        status_str = _ops_status_text(row["online"])
+
+        # Native expander title: Department | Latest | Average | Total | Status.
+        # Expander labels are plain text, so the figures are inlined directly.
+        expander_label = (
+            f"{dept_name}    "
+            f"Latest: {latest_str}{unit_suffix}    "
+            f"Avg: {avg_str}{unit_suffix}    "
+            f"Total: {total_str}{unit_suffix}    "
+            f"{status_str}"
+        )
+
+        with st.expander(expander_label, expanded=False):
+            # Subsection rows come from the ORIGINAL parsed meters (already
+            # resolved by the business layer). Multi-meter / aggregated
+            # departments expose them in ``subsections``; single-meter
+            # departments have one meter (the representative), whose figures
+            # equal the parent — no recalculation, no invented names.
+            if row["subsections"]:
+                sub_rows = row["subsections"]
+            elif rep_m:
+                sub_rows = [
+                    {
+                        "name": rep_m,
+                        "total": row["total"],
+                        "average": row["average"],
+                        "latest": row["latest"],
+                        "online": row["online"],
+                    }
+                ]
+            else:
+                sub_rows = []
+
+            header_html = """
     <div class="console-row console-row-head">
-        <div class="console-col console-col-name">Process</div>
+        <div class="console-col console-col-name">Subsection</div>
         <div class="console-col console-col-num">Total</div>
         <div class="console-col console-col-num">Average</div>
         <div class="console-col console-col-num">Latest</div>
         <div class="console-col console-col-status">Status</div>
     </div>"""
 
-    for idx, dept_name in enumerate(OPS_CONSOLE_PROCESSES):
-        if dept_name not in departments:
-            continue
-        dept_obj = departments[dept_name]
-        rep_m = select_representative_meter(dept_obj)
-        
-        total_val = dept_obj.get("total_values", {}).get(rep_m)
-        avg_val = dept_obj.get("average_values", {}).get(rep_m)
-        latest_val = dept_obj.get("latest_values", {}).get(rep_m)
-        unit_str = resolve_meter_unit(dept_obj, rep_m) if rep_m else ""
-
-        total_str = f"{total_val:,.0f}" if isinstance(total_val, (int, float)) else "—"
-        avg_str = f"{avg_val:,.1f}" if isinstance(avg_val, (int, float)) else "—"
-        latest_str = f"{latest_val:,.0f}" if isinstance(latest_val, (int, float)) else "—"
-
-        is_online = isinstance(latest_val, (int, float))
-        status_html = (
-            '<span class="status-online">● ONLINE</span>' if is_online
-            else '<span class="status-offline">○ OFFLINE</span>'
-        )
-        row_shade = "console-row-alt" if idx % 2 else ""
-
-        rows_html += f"""
+            rows_html = ""
+            for idx, sub in enumerate(sub_rows):
+                sub_unit = resolve_meter_unit(dept_obj, sub["name"])
+                sub_total = _ops_fmt_total(sub["total"])
+                sub_avg = _ops_fmt_avg(sub["average"])
+                sub_latest = _ops_fmt_latest(sub["latest"])
+                sub_status = _ops_status_html(sub["online"])
+                row_shade = "console-row-alt" if idx % 2 else ""
+                rows_html += f"""
         <div class="console-row {row_shade}">
-            <div class="console-col console-col-name">{dept_name}</div>
-            <div class="console-col console-col-num"><span class="ops-val">{total_str}</span><span class="ops-unit">{unit_str}</span></div>
-            <div class="console-col console-col-num"><span class="ops-val">{avg_str}</span><span class="ops-unit">{unit_str}</span></div>
-            <div class="console-col console-col-num"><span class="ops-val">{latest_str}</span><span class="ops-unit">{unit_str}</span></div>
-            <div class="console-col console-col-status">{status_html}</div>
+            <div class="console-col console-col-name">{sub['name']}</div>
+            <div class="console-col console-col-num"><span class="ops-val">{sub_total}</span><span class="ops-unit">{sub_unit}</span></div>
+            <div class="console-col console-col-num"><span class="ops-val">{sub_avg}</span><span class="ops-unit">{sub_unit}</span></div>
+            <div class="console-col console-col-num"><span class="ops-val">{sub_latest}</span><span class="ops-unit">{sub_unit}</span></div>
+            <div class="console-col console-col-status">{sub_status}</div>
         </div>"""
 
-    if rows_html:
-        st.markdown(f'<div class="ops-console">{header_html}{rows_html}</div>', unsafe_allow_html=True)
+            if rows_html:
+                st.markdown(f'<div class="ops-console">{header_html}{rows_html}</div>', unsafe_allow_html=True)
 
 
 def render_footer(dashboard: dict[str, Any] | None) -> None:
