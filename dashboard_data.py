@@ -200,20 +200,27 @@ def _get_date_string(val: Any) -> str | None:
     if d: return d.strftime("%Y-%m-%d")
     return None
 
-def _normalize_date_series(primary_df: pd.DataFrame, readings_matrix: pd.DataFrame) -> pd.Series:
+def _normalize_date_series(primary_df: pd.DataFrame, readings_matrix: pd.DataFrame, date_col_idx: int = 1) -> pd.Series:
     """Build one normalized ``pd.Timestamp`` date series aligned to the readings.
 
     Requirement: convert every workbook date to ``pandas.Timestamp`` **once** and
     reuse it for all filtering, so comparisons never mix ``datetime.date``,
-    ``datetime.datetime`` and ``str`` values. The raw date column (column index
-    1 of the primary worksheet) is selected positionally for exactly the rows of
-    ``readings_matrix`` and re-indexed onto ``readings_matrix``'s own index, so
-    the returned series is guaranteed to align 1:1 with the readings. Values that
-    cannot be parsed, or that fall outside the valid year window, become ``NaT``.
+    ``datetime.datetime`` and ``str`` values. The raw date column — the
+    engineering block's own ``Date`` column (its discovered ``start_idx``,
+    passed in as ``date_col_idx``) — is selected positionally for exactly the
+    rows of ``readings_matrix`` and re-indexed onto ``readings_matrix``'s own
+    index, so the returned series is guaranteed to align 1:1 with the readings.
+    Values that cannot be parsed, or that fall outside the valid year window,
+    become ``NaT``. ``date_col_idx`` defaults to 1 only as a safety fallback
+    for callers that do not pass the discovered block column.
 
     Args:
         primary_df: The cleaned primary worksheet.
         readings_matrix: The engineering readings rows (index defines alignment).
+        date_col_idx: Positional index of the actual ``Date`` column to read
+            (the engineering block's own date column, not an unrelated
+            timestamp column elsewhere in the sheet, e.g. a form-submission
+            time).
 
     Returns:
         A ``pd.Series`` of ``pd.Timestamp``/``NaT`` indexed like
@@ -222,8 +229,8 @@ def _normalize_date_series(primary_df: pd.DataFrame, readings_matrix: pd.DataFra
     n = len(readings_matrix)
     # Positionally take the date column for just the readings rows, then re-index
     # onto the readings' own index so downstream boolean masks align exactly.
-    if primary_df.shape[1] > 1 and n > 0:
-        raw = primary_df.iloc[:, 1].to_numpy()
+    if primary_df.shape[1] > date_col_idx and n > 0:
+        raw = primary_df.iloc[:, date_col_idx].to_numpy()
         # readings_matrix occupies the rows after the two header rows; take the
         # last ``n`` date cells positionally to match it 1:1.
         raw_slice = raw[-n:] if len(raw) >= n else raw
@@ -377,7 +384,7 @@ def build_dashboard(workbook: dict[str, pd.DataFrame], start_date: str | None = 
     # filtered readings and filtered dates can never diverge in length, and no
     # department performs its own filtering.
     _DATE_COL = "__eng_date__"
-    normalized_dates: pd.Series = _normalize_date_series(primary_df, readings_matrix)
+    normalized_dates: pd.Series = _normalize_date_series(primary_df, readings_matrix, date_col_idx=start_idx)
     readings_with_date = readings_matrix.copy()
     readings_with_date[_DATE_COL] = normalized_dates.values
 
