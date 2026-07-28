@@ -699,6 +699,32 @@ def select_representative_meter(section: dict[str, Any]) -> str:
     return ""
 
 
+def _compute_period_days(dashboard: dict[str, Any] | None) -> int | None:
+    """Number of days the currently loaded dataset represents.
+
+    Uses the explicit Start/End Date selection when both are present
+    (inclusive day count: ``(end - start).days + 1``). Otherwise falls back
+    to the count of distinct calendar dates actually present in the loaded
+    dataset (``dashboard["dates"]``). Returns ``None`` if neither is available.
+    """
+    if not dashboard:
+        return None
+    date_filter = dashboard.get("date_filter", {}) or {}
+    start_date = date_filter.get("start_date")
+    end_date = date_filter.get("end_date")
+    if start_date and end_date:
+        try:
+            start_ts = pd.Timestamp(start_date)
+            end_ts = pd.Timestamp(end_date)
+            if end_ts < start_ts:
+                start_ts, end_ts = end_ts, start_ts
+            return (end_ts - start_ts).days + 1
+        except (ValueError, TypeError):
+            pass
+    unique_days = len(set(dashboard.get("dates", []) or []))
+    return unique_days if unique_days > 0 else None
+
+
 def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
     """Assemble the expandable Plant Operations Overview structure.
 
@@ -741,6 +767,11 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
     _log_step(f"build_operations_overview: ENTER departments={len(dashboard.get('departments', {})) if dashboard else 0}")
     departments = dashboard.get("departments", {}) if dashboard else {}
     rows: list[dict[str, Any]] = []
+
+    # Parent-level Average displayed in each section header must be
+    # Total / Number of Days (never a sum or average of subsection averages).
+    # Computed once per call — the same period applies to every department.
+    period_days = _compute_period_days(dashboard)
 
     # Requirement: when a date range leaves no filtered engineering data, the
     # overview must be empty rather than a list of rows full of ``None`` values
@@ -880,6 +911,12 @@ def build_operations_overview(dashboard: dict[str, Any]) -> list[dict[str, Any]]
         if dept_name == FREON_DEPARTMENT and freon_subsections is not None:
             parent_total = freon_rollup_total
             parent_average = freon_rollup_average
+
+        # Parent-level Average shown in the section header = Total / Number of
+        # Days — never a sum/average of subsection averages. Overrides
+        # whatever parent_average was computed above for every department.
+        if period_days and isinstance(parent_total, (int, float)):
+            parent_average = parent_total / period_days
 
         rows.append(
             {
